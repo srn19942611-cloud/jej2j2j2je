@@ -24,7 +24,6 @@
     return isNaN(v) ? fallback : v;
   }
 
-  // CO2 surcharge, progressive across the three official bands.
   function co2Surcharge(g) {
     const band1 = num("co2Band1", 294);
     const band2 = num("co2Band2", 587);
@@ -36,20 +35,15 @@
     return t1 * band1 + t2 * band2 + t3 * band3;
   }
 
-  // Forward: given pre-tax value V and CO2 surcharge, compute registration tax.
   function taxFromValue(V, co2Add) {
     const threshold = num("bracketThreshold", 71500);
     const low = num("lowRate", 25) / 100;
     const high = num("highRate", 150) / 100;
     const ded = num("deduction", 25000);
-    const base =
-      low * Math.min(V, threshold) + high * Math.max(V - threshold, 0);
+    const base = low * Math.min(V, threshold) + high * Math.max(V - threshold, 0);
     return Math.max(base + co2Add - ded, 0);
   }
 
-  // Reverse: given a tax-paid Danish market price P (from Bilbasen) and CO2 surcharge,
-  // solve for the pre-tax value V and resulting registration tax, so that V + tax(V) = P.
-  // Piecewise-linear in V, so solved per bracket segment.
   function reverseSolveTax(P, co2Add) {
     const threshold = num("bracketThreshold", 71500);
     const low = num("lowRate", 25) / 100;
@@ -58,21 +52,16 @@
 
     if (!P || P <= 0) return { V: 0, tax: 0 };
 
-    // Case A: assume V <= threshold (whole value taxed at "low" rate)
-    // P = V + low*V + co2Add - ded  =>  V = (P - co2Add + ded) / (1 + low)
     let V = (P - co2Add + ded) / (1 + low);
     let tax = taxFromValue(Math.max(V, 0), co2Add);
 
     if (V > threshold || V < 0) {
-      // Case B: V > threshold
-      // P = V + low*threshold + high*(V-threshold) + co2Add - ded
       const thresholdTaxPart = low * threshold - high * threshold;
       V = (P - co2Add + ded - thresholdTaxPart) / (1 + high);
       tax = taxFromValue(Math.max(V, 0), co2Add);
     }
 
     if (V < 0) {
-      // Deduction wipes out the entire tax; car sells for less than its untaxed value would suggest.
       V = P;
       tax = 0;
     }
@@ -94,7 +83,7 @@
       ["Bilbasen-pris (dansk værdi, inkl. afgift)", fmtDKK(P)],
       ["Anslået bilværdi ekskl. afgift", fmtDKK(V)],
       ["CO2-tillæg (" + (g || 0) + " g/km)", fmtDKK(co2Add)],
-      ["Bundfradrag", "−" + fmtDKK(num("deduction", 25000))],
+      ["Bundfradrag", "&minus;" + fmtDKK(num("deduction", 25000))],
     ];
 
     let html = '<table class="breakdown-table">';
@@ -120,11 +109,8 @@
     const make = el.make.value.trim();
     const model = el.model.value.trim();
 
-    // mobile.de: no stable guessable deep-link without their internal taxonomy IDs,
-    // so we open the site and offer a copyable search string instead.
     document.getElementById("openMobile").href = "https://www.mobile.de/";
 
-    // Bilbasen supports friendly /brugt/bil/<make>/<model> paths for known makes/models.
     let bbUrl = "https://www.bilbasen.dk/brugt/bil";
     if (make) {
       bbUrl += "/" + slug(make);
@@ -219,9 +205,11 @@
   }
 
   function saveState() {
-    const data = {};
-    ids.forEach((id) => (data[id] = el[id].value));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    try {
+      const data = {};
+      ids.forEach((id) => (data[id] = el[id].value));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) { /* private mode / storage unavailable */ }
   }
 
   function loadState() {
@@ -232,9 +220,7 @@
       ids.forEach((id) => {
         if (data[id] !== undefined && el[id]) el[id].value = data[id];
       });
-    } catch (e) {
-      /* ignore corrupt local storage */
-    }
+    } catch (e) { /* ignore corrupt local storage */ }
   }
 
   ids.forEach((id) => {
@@ -247,15 +233,19 @@
       showToast("Udfyld mærke/model først");
       return;
     }
-    navigator.clipboard
-      .writeText(text)
-      .then(() => showToast('Kopieret: "' + text + '" — indsæt i mobile.de søgefelt'))
-      .catch(() => showToast("Kunne ikke kopiere"));
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => showToast('Kopieret: "' + text + '" — indsæt i mobile.de søgefelt'))
+        .catch(() => showToast("Kunne ikke kopiere"));
+    } else {
+      showToast("Kopiering understøttes ikke her");
+    }
   });
 
   document.getElementById("resetBtn").addEventListener("click", () => {
     if (!confirm("Ryd alle indtastede felter?")) return;
-    localStorage.removeItem(STORAGE_KEY);
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
     ids.forEach((id) => (el[id].value = ""));
     el.fxRate.value = "7.46";
     el.expectedSalePct.value = "95";
