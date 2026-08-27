@@ -1,13 +1,27 @@
 """FusionSolar (Huawei) Northbound OpenAPI connector - live mode.
 
-Requires a whitelisted "Northbound" app account (username/password, NOT the consumer app
-login) provisioned by Huawei/your installer. Auth is session-cookie + xsrf-token based and
-expires ~30 min; the documented rate limit is roughly 1 call / 5 min per endpoint, enforced
-here via MinIntervalGate so this connector can never exceed it even if polled more often.
+Requires a whitelisted "Northbound" app account (username + "system code" - a password
+issued for this API, NOT the consumer FusionSolar app login) provisioned by Huawei/your
+installer. Auth is XSRF-token based and expires ~30 min; the documented rate limit is
+roughly 1 call / 5 min per endpoint, enforced here via MinIntervalGate so this connector
+can never exceed it even if polled more often.
 
-Structurally complete but UNTESTED against a real account (no credentials available while
-building this) - validate the exact response field names in mapper.py against your
-account's actual payload before relying on it.
+Login endpoint, request body shape ({"userName", "systemCode"}), and the XSRF-token
+mechanism below are confirmed against public open-source Northbound API clients
+(tijsverkoyen/HomeAssistant-FusionSolar, pjugowiec/fusion-solar-unofficial-client) - not
+guessed. What's NOT independently confirmed (Huawei only shares the full field-level
+Northbound Interface Reference with account holders directly) is the exact getDevRealKpi
+response field names in mapper.py - those follow the commonly-referenced convention
+(active_power, day_cap, total_cap, run_state, mppt_N_power) but validate them against
+your account's actual payload (check raw_payloads in the DB after a live poll) before
+fully trusting the normalized values.
+
+`ConnectorConfig.external_plant_id` is tried directly as a device ID first (devIds). If
+that returns no data, this falls back to calling `getDevList` with the same value as a
+STATION code to discover the station's actual device IDs (a real device ID is opaque and
+usually only obtainable this way per the open-source clients above, not something an
+operator can read off the FusionSolar UI) and retries getDevRealKpi with those - so this
+connector works whether external_plant_id was configured as a device ID or a station code.
 """
 
 import logging
@@ -58,24 +72,63 @@ class FusionSolarConnector(BaseConnector):
             raise RuntimeError("FusionSolar login did not return an xsrf-token")
         self._token_expiry = datetime.now(timezone.utc) + timedelta(minutes=25)
 
+    def _get_dev_real_kpi(self, dev_ids: str) -> httpx.Response:
+        return self._client.post(
+            "/thirdData/getDevRealKpi",
+            headers={"xsrf-token": self._xsrf_token or ""},
+            json={"devIds": dev_ids, "devTypeId": 1},
+        )
+
+    def _discover_dev_ids_from_station(self, station_code: str) -> str | None:
+        """Falls back to getDevList when external_plant_id turns out to be a station code
+        rather than a device ID - see module docstring."""
+
+        def _fetch():
+            return self._client.post(
+                "/thirdData/getDevList",
+                headers={"xsrf-token": self._xsrf_token or ""},
+                json={"stationCodes": station_code},
+            )
+
+        try:
+            resp = with_backoff(_fetch, max_retries=2, retryable_exceptions=(httpx.HTTPError,))
+            resp.raise_for_status()
+        except httpx.HTTPError:
+            log.warning("FusionSolar getDevList lookup failed for station %s", station_code)
+            return None
+
+        devices = resp.json().get("data", [])
+        dev_ids = [str(d["id"]) for d in devices if d.get("devTypeId") == 1 and "id" in d]
+        return ",".join(dev_ids) if dev_ids else None
+
     def fetch_raw(self) -> RawFetchResult:
         endpoint = "/thirdData/getDevRealKpi"
         gate_key = f"{self.connector_config.site_id}:{endpoint}"
         if not _gate.ready(gate_key):
             return RawFetchResult(endpoint=endpoint, http_status=None, payload={}, error="rate_limited_locally")
 
-        def _fetch():
-            return self._client.post(
-                endpoint,
-                headers={"xsrf-token": self._xsrf_token or ""},
-                json={"devIds": self.connector_config.external_plant_id, "devTypeId": 1},
-            )
+        dev_ids = self.connector_config.external_plant_id or ""
 
         try:
-            resp = with_backoff(_fetch, max_retries=3, retryable_exceptions=(httpx.HTTPError,))
+            resp = with_backoff(
+                lambda: self._get_dev_real_kpi(dev_ids), max_retries=3, retryable_exceptions=(httpx.HTTPError,)
+            )
             _gate.mark(gate_key)
             resp.raise_for_status()
-            return RawFetchResult(endpoint=endpoint, http_status=resp.status_code, payload=resp.json())
+            payload = resp.json()
+
+            if not payload.get("data"):
+                # external_plant_id likely holds a station code, not a device ID - discover
+                # the real device IDs once and retry (see module docstring).
+                discovered = self._discover_dev_ids_from_station(dev_ids)
+                if discovered:
+                    resp = with_backoff(
+                        lambda: self._get_dev_real_kpi(discovered), max_retries=3, retryable_exceptions=(httpx.HTTPError,)
+                    )
+                    resp.raise_for_status()
+                    payload = resp.json()
+
+            return RawFetchResult(endpoint=endpoint, http_status=resp.status_code, payload=payload)
         except httpx.HTTPError as exc:
             return RawFetchResult(endpoint=endpoint, http_status=None, payload={}, error=str(exc))
 
