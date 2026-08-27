@@ -9,6 +9,9 @@ hitting the real vendor API on the next poll.
 
 import os
 
+import app.config  # noqa: F401 - importing pushes solar-portal/.env into os.environ
+                    # (see config.py's load_dotenv call) before the os.environ.get() below,
+                    # regardless of whether anything else has imported app.config yet.
 from app.connectors.base import BaseConnector
 from app.db.models.connector_config import ConnectorConfig
 from app.db.models.site import Site

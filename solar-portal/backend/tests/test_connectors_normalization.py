@@ -11,7 +11,7 @@ from app.connectors.mock.fault_scenarios import (
     zero_production_profile,
 )
 from app.connectors.mock.simulator import simulate_production
-from app.connectors.solax.mapper import map_realtime_info
+from app.connectors.solax.mapper import map_realtime_info_legacy, map_realtime_info_oauth
 from app.connectors.solplanet.mapper import map_realtime_record
 from app.db.models.site import Site
 from app.weather.synthetic_fallback import generate_hourly_weather
@@ -84,12 +84,31 @@ def test_solplanet_mapper_unverified_but_normalizes():
     assert len(reading.strings) == 1
 
 
-def test_solax_mapper_sums_strings_for_dc_power():
-    result = {"acpower": 20000.0, "powerdc": [10000.0, 9500.0], "yieldtoday": 60.0, "yieldtotal": 4000.0, "inverterStatus": 1}
-    reading = map_realtime_info(result, site_external_id="SN-1")
+def test_solax_legacy_mapper_sums_strings_for_dc_power():
+    result = {
+        "acpower": 20000.0,
+        "dcPowerString1": 10000.0,
+        "dcPowerString2": 9500.0,
+        "eToday": 60.0,
+        "eTotal": 4000.0,
+        "status": 1,
+    }
+    reading = map_realtime_info_legacy(result, site_external_id="SN-1")
+    assert reading.ac_power_w == 20000.0
     assert reading.dc_power_w == 19500.0
     assert reading.inverter_status == "normal"
     assert len(reading.strings) == 2
+
+
+def test_solax_oauth_mapper_handles_plausible_field_variants():
+    # UNVERIFIED real shape (see mapper.py docstring) - this only checks the defensive
+    # fallback logic picks a value when the "modern" field-name variant is used instead
+    # of the legacy one, not that it matches SolaX's actual Developer Portal response.
+    result = {"activePower": 15000.0, "todayEnergy": 42.0, "totalEnergy": 999.0, "inverterStatus": 1}
+    reading = map_realtime_info_oauth(result, site_external_id="SN-2")
+    assert reading.ac_power_w == 15000.0
+    assert reading.energy_today_kwh == 42.0
+    assert reading.inverter_status == "normal"
 
 
 def _weather_window():
