@@ -108,6 +108,24 @@
   .route-caption .dot{width:5px; height:5px; border-radius:50%; background:currentColor;}
   .route-caption .line{flex:0 0 28px; height:1px; background:currentColor; opacity:0.5;}
 
+  .search-hero{
+    margin-top:18px; background:var(--surface); border:1px solid var(--border);
+    border-radius:16px; padding:16px 18px 14px; box-shadow:var(--shadow);
+  }
+  .search-hero label{
+    display:block; font-size:0.76rem; font-weight:600; color:var(--muted);
+    margin:0 0 7px; letter-spacing:0.01em; text-transform:uppercase;
+  }
+  .search-row{display:flex; gap:8px;}
+  .search-row input{
+    flex:1; min-width:0; padding:12px 14px; border-radius:10px; border:1px solid var(--border);
+    background:var(--surface-2); color:var(--ink); font-size:1rem;
+    font-family:"IBM Plex Sans", sans-serif;
+  }
+  .search-row input:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .search-row .btn{padding:12px 20px; font-size:0.9rem;}
+  .search-hero-hint{margin:9px 0 0; font-size:0.78rem; color:var(--muted); line-height:1.5;}
+
   main{max-width:640px; margin:0 auto; padding:4px 18px 0;}
 
   .rail{position:relative; padding-left:26px;}
@@ -246,6 +264,15 @@
   </div>
   <p class="tagline">Slå bilen op på mobile.de, tjek dens danske værdi på Bilbasen, og få et fuldt regnestykke med registreringsafgift, gebyrer og forventet fortjeneste.</p>
   <div class="route-caption"><span>Tyskland</span><span class="line"></span><span class="dot"></span><span class="line"></span><span>Danmark</span></div>
+
+  <div class="search-hero">
+    <label for="searchQuery">Søg efter bil</label>
+    <div class="search-row">
+      <input type="text" id="searchQuery" placeholder="f.eks. BMW 320d 2019" autocomplete="off">
+      <button class="btn primary" id="searchBtn" type="button">Søg</button>
+    </div>
+    <p class="hint search-hero-hint">Åbner mobile.de og Bilbasen i nye faner med det samme og udfylder mærke/model/år nedenfor. Søgeteksten kopieres automatisk, så du kan indsætte den (Ctrl/Cmd+V) i mobile.de's søgefelt — de holder ikke en offentlig prisdata-API, så det sidste tryk er dit.</p>
+  </div>
 </header>
 
 <main>
@@ -255,7 +282,7 @@
     <div class="card">
       <div class="step-node">1</div>
       <h2>Bilen, fra mobile.de</h2>
-      <p class="hint">Indtast mærke og model, og indsæt link til annoncen.</p>
+      <p class="hint">Brug søgefeltet øverst, eller udfyld direkte her. Indsæt prisen fra annoncen — kommatal og €-tegn tolkes automatisk.</p>
       <div class="row">
         <div>
           <label for="make">Mærke</label>
@@ -303,7 +330,7 @@
     <div class="card">
       <div class="step-node">2</div>
       <h2>Dansk markedsværdi, fra Bilbasen</h2>
-      <p class="hint">Find tilsvarende biler (samme mærke/model/årgang/km) og brug gennemsnitsprisen — det er den, registreringsafgiften regnes ud fra.</p>
+      <p class="hint">Find tilsvarende biler (samme mærke/model/årgang/km) og brug gennemsnitsprisen — det er den, registreringsafgiften regnes ud fra. Indsæt prisen direkte fra siden; "kr." og punktummer fjernes automatisk.</p>
       <div class="linkbar">
         <a class="btn primary" id="openBilbasen" href="https://www.bilbasen.dk/brugt/bil" target="_blank" rel="noopener">Åbn Bilbasen-søgning</a>
       </div>

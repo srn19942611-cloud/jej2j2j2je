@@ -105,18 +105,55 @@
       .replace(/\s+/g, "-");
   }
 
+  function bilbasenUrlFor(make, model) {
+    let url = "https://www.bilbasen.dk/brugt/bil";
+    if (make) {
+      url += "/" + slug(make);
+      if (model) url += "/" + slug(model);
+    }
+    return url;
+  }
+
   function updateLinks() {
     const make = el.make.value.trim();
     const model = el.model.value.trim();
-
     document.getElementById("openMobile").href = "https://www.mobile.de/";
+    document.getElementById("openBilbasen").href = bilbasenUrlFor(make, model);
+  }
 
-    let bbUrl = "https://www.bilbasen.dk/brugt/bil";
-    if (make) {
-      bbUrl += "/" + slug(make);
-      if (model) bbUrl += "/" + slug(model);
+  // Best-effort split of a free-text query like "BMW 320d 2019" into make/model/year.
+  // A trailing 4-digit token (19xx/20xx) is treated as the year; the first remaining
+  // word is the make, the rest is the model.
+  function parseSearchQuery(query) {
+    const tokens = query.trim().split(/\s+/).filter(Boolean);
+    let year = "";
+    if (tokens.length && /^(19|20)\d{2}$/.test(tokens[tokens.length - 1])) {
+      year = tokens.pop();
     }
-    document.getElementById("openBilbasen").href = bbUrl;
+    const make = tokens.shift() || "";
+    const model = tokens.join(" ");
+    return { make, model, year };
+  }
+
+  // Parses a price pasted straight from a listing ("15.700 €", "kr. 239.995,-", "€15700")
+  // using German/Danish number formatting (. = thousands, , = decimal).
+  function parseMoneyPaste(raw) {
+    let s = (raw || "").replace(/[^0-9.,-]/g, "");
+    if (!s) return null;
+    s = s.replace(/\./g, "").replace(/,/g, ".");
+    const val = parseFloat(s);
+    return isNaN(val) ? null : Math.round(val);
+  }
+
+  function wireMoneyPaste(id) {
+    el[id].addEventListener("paste", (e) => {
+      const raw = (e.clipboardData || window.clipboardData).getData("text");
+      const val = parseMoneyPaste(raw);
+      if (val === null) return;
+      e.preventDefault();
+      el[id].value = val;
+      calcAll();
+    });
   }
 
   function showToast(msg) {
@@ -241,6 +278,36 @@
     } else {
       showToast("Kopiering understøttes ikke her");
     }
+  });
+
+  ["priceEur", "extraDeCost", "dkMarketPrice"].forEach(wireMoneyPaste);
+
+  function runSearch() {
+    const query = document.getElementById("searchQuery").value.trim();
+    if (!query) {
+      showToast("Skriv mærke og model først, fx “BMW 320d”");
+      return;
+    }
+    const { make, model, year } = parseSearchQuery(query);
+    el.make.value = make;
+    el.model.value = model;
+    if (year) el.year.value = year;
+
+    window.open("https://www.mobile.de/", "_blank", "noopener");
+    window.open(bilbasenUrlFor(make, model), "_blank", "noopener");
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(query).catch(() => {});
+    }
+    showToast('Åbnede mobile.de + Bilbasen. Søgetekst kopieret — indsæt i mobile.de’s søgefelt.');
+
+    calcAll();
+    document.querySelector(".rail .card").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  document.getElementById("searchBtn").addEventListener("click", runSearch);
+  document.getElementById("searchQuery").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") runSearch();
   });
 
   document.getElementById("resetBtn").addEventListener("click", () => {
