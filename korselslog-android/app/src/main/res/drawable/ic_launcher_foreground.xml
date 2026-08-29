@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A road bending away between two markers: the log of a route. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M46,28h16v52h-16z" />
+    <path
+        android:fillColor="#2E6F40"
+        android:pathData="M52,34h4v8h-4z M52,48h4v8h-4z M52,62h4v8h-4z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,30m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,78m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+</vector>

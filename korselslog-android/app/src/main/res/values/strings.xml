@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Kørselslog</string>
+    <string name="tracking_channel_name">Kørselsregistrering</string>
+    <string name="tracking_notification_title">Kørselslog registrerer tur</string>
+</resources>

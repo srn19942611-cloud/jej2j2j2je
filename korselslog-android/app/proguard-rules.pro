@@ -1,0 +1,2 @@
+-keep class dk.korselslog.data.** { *; }
+-dontwarn org.jetbrains.annotations.**
