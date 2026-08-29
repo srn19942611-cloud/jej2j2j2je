@@ -5,7 +5,6 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import androidx.room.Transaction
 import androidx.room.Update
 import dk.korselslog.data.DayMarkerEntity
 import dk.korselslog.data.PlaceEntity
@@ -88,12 +87,6 @@ interface TripDao {
 
     @Query("UPDATE trip_points SET tripId = :targetId WHERE tripId = :sourceId")
     suspend fun repointPoints(sourceId: Long, targetId: Long)
-
-    @Transaction
-    suspend fun deleteWithPoints(id: Long) {
-        deletePointsFor(id)
-        deleteById(id)
-    }
 }
 
 @Dao

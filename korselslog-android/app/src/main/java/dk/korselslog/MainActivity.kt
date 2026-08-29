@@ -91,7 +91,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             KoerselslogTheme {
-                KoerselslogApp(
+                KoerselslogRoot(
                     onRequestPermissions = { requestPermissions() },
                     onTrackingChanged = { enabled ->
                         prefs.autoTrackingEnabled = enabled
@@ -131,7 +131,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun KoerselslogApp(
+private fun KoerselslogRoot(
     onRequestPermissions: () -> Unit,
     onTrackingChanged: (Boolean) -> Unit,
     trackingEnabled: Boolean,

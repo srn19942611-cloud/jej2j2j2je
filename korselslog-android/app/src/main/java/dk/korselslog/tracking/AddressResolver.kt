@@ -4,6 +4,7 @@ import android.content.Context
 import android.location.Geocoder
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import java.util.Locale
 import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +41,7 @@ class AddressResolver(context: Context) {
         } ?: ""
     }
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private suspend fun resolveAsync(coder: Geocoder, lat: Double, lon: Double): String =
         suspendCancellableCoroutine { cont ->
             coder.getFromLocation(lat, lon, 1, object : Geocoder.GeocodeListener {

@@ -52,7 +52,10 @@ class KoerselslogRepository(context: Context) {
 
     suspend fun updateTrip(trip: TripEntity) = trips.update(trip.copy(manuallyEdited = true, needsReview = false))
 
-    suspend fun deleteTrip(id: Long) = trips.deleteWithPoints(id)
+    suspend fun deleteTrip(id: Long) {
+        trips.deletePointsFor(id)
+        trips.deleteById(id)
+    }
 
     suspend fun setClassification(id: Long, classification: Classification) {
         trips.byId(id)?.let {

@@ -11,10 +11,6 @@ import dk.korselslog.data.dao.PlaceDao
 import dk.korselslog.data.dao.TaxYearRatesDao
 import dk.korselslog.data.dao.TripDao
 import dk.korselslog.domain.DefaultRates
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 
 @Database(
     entities = [
@@ -47,12 +43,33 @@ abstract class KoerselslogDatabase : RoomDatabase() {
             Room.databaseBuilder(context, KoerselslogDatabase::class.java, "koerselslog.db")
                 .addCallback(object : RoomDatabase.Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
-                        // Seed the known satser on first run. They are stored
-                        // unverified, so the app asks the user to confirm them
-                        // against skat.dk before any figure is filed.
-                        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                            val dao = get(context).taxYearRatesDao()
-                            DefaultRates.seeded.forEach { dao.upsert(it.toEntity()) }
+                        // Seed the known satser on first run, writing straight to
+                        // the database being created - going back through get()
+                        // would re-enter the builder from another thread.
+                        //
+                        // They are stored unverified, so the app keeps asking the
+                        // user to confirm them against skat.dk before filing.
+                        DefaultRates.seeded.forEach { rates ->
+                            db.execSQL(
+                                """
+                                INSERT OR REPLACE INTO tax_year_rates (
+                                    year, noDeductionUpToKm, upperTierStartsAtKm,
+                                    lowerBandRate, upperBandRate, peripheralRate,
+                                    usePeripheralRate, verifiedForYear, sourceNote
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """.trimIndent(),
+                                arrayOf(
+                                    rates.year,
+                                    rates.noDeductionUpToKm,
+                                    rates.upperTierStartsAtKm,
+                                    rates.lowerBandRate,
+                                    rates.upperBandRate,
+                                    rates.peripheralRate,
+                                    if (rates.usePeripheralRate) 1 else 0,
+                                    rates.verifiedForYear,
+                                    rates.sourceNote,
+                                ),
+                            )
                         }
                     }
                 })
