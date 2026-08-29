@@ -45,9 +45,12 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
-    ksp {
-        arg("room.schemaLocation", "$projectDir/schemas")
-    }
+}
+
+// Project-level, not inside android {} - the ksp extension is not an Android one.
+// Exporting the schema keeps a migration trail as the database evolves.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
