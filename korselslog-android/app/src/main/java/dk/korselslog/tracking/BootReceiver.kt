@@ -11,8 +11,15 @@ class BootReceiver : BroadcastReceiver() {
             intent.action != Intent.ACTION_MY_PACKAGE_REPLACED
         ) return
 
-        if (TrackingPrefs(context).autoTrackingEnabled) {
-            ActivityRecognitionManager(context).register()
+        val prefs = TrackingPrefs(context)
+        if (!prefs.autoTrackingEnabled) return
+
+        ActivityRecognitionManager(context).register()
+
+        // A reboot or an app update mid-drive would otherwise lose the rest of
+        // the trip: if the car's Bluetooth is already connected, we are driving.
+        if (CarBluetooth.connectedCarDevice(context, prefs) != null) {
+            TripTrackingService.start(context)
         }
     }
 }

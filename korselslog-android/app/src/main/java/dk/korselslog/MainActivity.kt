@@ -38,7 +38,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dk.korselslog.tracking.ActivityRecognitionManager
+import dk.korselslog.tracking.CarBluetooth
+import dk.korselslog.tracking.PairedDevice
 import dk.korselslog.tracking.TrackingPrefs
+import dk.korselslog.tracking.TripTrackingService
 import dk.korselslog.ui.DashboardViewModel
 import dk.korselslog.ui.DaysViewModel
 import dk.korselslog.ui.ExportViewModel
@@ -81,7 +84,7 @@ class MainActivity : ComponentActivity() {
     private val backgroundLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted && prefs.autoTrackingEnabled) recognition.register()
+        if (granted && prefs.autoTrackingEnabled) armTracking()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -96,12 +99,13 @@ class MainActivity : ComponentActivity() {
                     onTrackingChanged = { enabled ->
                         prefs.autoTrackingEnabled = enabled
                         if (enabled) {
-                            if (Permissions.hasAll(this)) recognition.register() else requestPermissions()
+                            if (Permissions.hasAll(this)) armTracking() else requestPermissions()
                         } else {
                             recognition.unregister()
                         }
                     },
                     trackingEnabled = prefs.autoTrackingEnabled,
+                    prefs = prefs,
                 )
             }
         }
@@ -115,9 +119,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Arms both triggers. The Bluetooth receiver is declared in the manifest, so
+     * it needs no registration here - but a drive may already be under way when
+     * tracking is switched on, and that should not be missed.
+     */
+    private fun armTracking() {
+        recognition.register()
+        if (CarBluetooth.connectedCarDevice(this, prefs) != null) {
+            TripTrackingService.start(this)
+        }
+    }
+
     private fun requestBackgroundLocation() {
         if (Permissions.hasBackground(this)) {
-            if (prefs.autoTrackingEnabled) recognition.register()
+            if (prefs.autoTrackingEnabled) armTracking()
             return
         }
         if (Permissions.backgroundIsRequestable()) {
@@ -135,12 +151,20 @@ private fun KoerselslogRoot(
     onRequestPermissions: () -> Unit,
     onTrackingChanged: (Boolean) -> Unit,
     trackingEnabled: Boolean,
+    prefs: TrackingPrefs,
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
     val backStack by navController.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
     var tracking by remember { mutableStateOf(trackingEnabled) }
+    var btTrigger by remember { mutableStateOf(prefs.bluetoothTriggerEnabled) }
+    var carDevices by remember { mutableStateOf(prefs.carBluetoothAddresses) }
+    // Re-read on every visit to Settings: the user may have paired the car, or
+    // granted the Bluetooth permission, since the last look.
+    val pairedDevices: List<PairedDevice> = remember(route, btTrigger) {
+        CarBluetooth.pairedDevices(context)
+    }
 
     val title = BOTTOM_DESTS.firstOrNull { it.route == route }?.label ?: "Kørselslog"
 
@@ -216,6 +240,18 @@ private fun KoerselslogRoot(
                     onTrackingChanged = { tracking = it; onTrackingChanged(it) },
                     onRequestPermissions = onRequestPermissions,
                     permissionsComplete = Permissions.hasAll(context),
+                    pairedDevices = pairedDevices,
+                    carDeviceAddresses = carDevices,
+                    bluetoothTriggerEnabled = btTrigger,
+                    onBluetoothTriggerChanged = {
+                        btTrigger = it
+                        prefs.bluetoothTriggerEnabled = it
+                    },
+                    onCarDeviceToggled = { address, isCar ->
+                        prefs.toggleCarDevice(address, isCar)
+                        carDevices = prefs.carBluetoothAddresses
+                    },
+                    bluetoothPermissionGranted = CarBluetooth.hasPermission(context),
                 )
             }
         }

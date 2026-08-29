@@ -26,6 +26,31 @@ class TrackingPrefs(context: Context) {
         get() = prefs.getFloat(KEY_MIN_KM, 0.5f)
         set(value) = prefs.edit().putFloat(KEY_MIN_KM, value).apply()
 
+    /**
+     * MAC addresses of the Bluetooth devices that mean "I am in the car" -
+     * usually the car stereo or a handsfree kit. Connecting to one of these
+     * starts a trip; disconnecting ends it.
+     */
+    var carBluetoothAddresses: Set<String>
+        get() = prefs.getStringSet(KEY_CAR_BT, emptySet()).orEmpty()
+        set(value) = prefs.edit().putStringSet(KEY_CAR_BT, value).apply()
+
+    /** Whether the Bluetooth trigger is armed at all. */
+    var bluetoothTriggerEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BT_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_BT_ENABLED, value).apply()
+
+    fun isCarDevice(address: String?): Boolean =
+        address != null && bluetoothTriggerEnabled && address in carBluetoothAddresses
+
+    fun toggleCarDevice(address: String, isCar: Boolean) {
+        carBluetoothAddresses = if (isCar) {
+            carBluetoothAddresses + address
+        } else {
+            carBluetoothAddresses - address
+        }
+    }
+
     var lastVerifiedRatesYear: Int
         get() = prefs.getInt(KEY_RATES_YEAR, 0)
         set(value) = prefs.edit().putInt(KEY_RATES_YEAR, value).apply()
@@ -37,5 +62,7 @@ class TrackingPrefs(context: Context) {
         private const val KEY_DWELL = "stop_dwell_minutes"
         private const val KEY_MIN_KM = "min_trip_km"
         private const val KEY_RATES_YEAR = "rates_verified_year"
+        private const val KEY_CAR_BT = "car_bluetooth_addresses"
+        private const val KEY_BT_ENABLED = "bluetooth_trigger_enabled"
     }
 }

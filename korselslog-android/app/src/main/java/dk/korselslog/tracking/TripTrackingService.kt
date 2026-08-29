@@ -85,10 +85,18 @@ class TripTrackingService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
 
+        // Every one of these arrives via startForegroundService(), and Android
+        // kills the process if startForeground() does not follow within a few
+        // seconds - including for the actions that only ask us to wind down,
+        // which may find no trip running at all (a Bluetooth disconnect after a
+        // drive too short to keep, say). So promote first, then decide.
+        startForegroundWithType()
+
         when (intent?.action) {
             ACTION_VEHICLE_EXITED -> {
                 // A hint that the drive is over. Record it, but let the dwell
-                // logic have the final say.
+                // logic have the final say - activity recognition reports a
+                // brief exit at long traffic lights.
                 exitHintedAtMs = System.currentTimeMillis()
                 Log.i(TAG, "Vehicle exit hint received")
                 maybeFinish(exitHintedAtMs)
@@ -96,7 +104,10 @@ class TripTrackingService : LifecycleService() {
             }
 
             ACTION_STOP_NOW -> {
-                Log.i(TAG, "Manual stop")
+                // The car's Bluetooth dropped, or the user tapped the
+                // notification action. Either way the drive is definitively
+                // over, so no dwell period.
+                Log.i(TAG, "Immediate stop requested")
                 finish()
                 return START_NOT_STICKY
             }
@@ -104,8 +115,9 @@ class TripTrackingService : LifecycleService() {
 
         if (tripStartedMs == 0L) {
             tripStartedMs = System.currentTimeMillis()
-            startForegroundWithType()
             requestLocationUpdates()
+        } else {
+            Log.i(TAG, "Trip already in progress - ignoring duplicate start")
         }
         return START_STICKY
     }

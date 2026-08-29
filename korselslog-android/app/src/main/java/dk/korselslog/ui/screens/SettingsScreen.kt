@@ -34,6 +34,7 @@ import dk.korselslog.data.PlaceEntity
 import dk.korselslog.domain.DefaultRates
 import dk.korselslog.domain.PlaceKind
 import dk.korselslog.domain.SixtyDayRule
+import dk.korselslog.tracking.PairedDevice
 import dk.korselslog.domain.TaxYearRates
 import dk.korselslog.ui.SettingsViewModel
 import dk.korselslog.ui.components.LabelValueRow
@@ -48,6 +49,12 @@ fun SettingsScreen(
     onTrackingChanged: (Boolean) -> Unit,
     onRequestPermissions: () -> Unit,
     permissionsComplete: Boolean,
+    pairedDevices: List<PairedDevice>,
+    carDeviceAddresses: Set<String>,
+    bluetoothTriggerEnabled: Boolean,
+    onBluetoothTriggerChanged: (Boolean) -> Unit,
+    onCarDeviceToggled: (String, Boolean) -> Unit,
+    bluetoothPermissionGranted: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -69,7 +76,8 @@ fun SettingsScreen(
                     Column(Modifier.weight(1f)) {
                         Text("Registrér ture automatisk", style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            "Bruger aktivitetsgenkendelse - GPS tændes kun, når bilen kører.",
+                            "Starter på bilens Bluetooth, med aktivitetsgenkendelse som " +
+                                "reserve. GPS kører kun undervejs.",
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -80,6 +88,91 @@ fun SettingsScreen(
                         onClick = onRequestPermissions,
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     ) { Text("Giv tilladelser") }
+                }
+            }
+        }
+
+        item {
+            SectionCard("Bilens Bluetooth") {
+                Text(
+                    "Vælg den enhed, din telefon forbinder til i bilen - typisk " +
+                        "bilradioen eller håndfrisættet. Turen starter i det " +
+                        "sekund forbindelsen oprettes, og slutter når den " +
+                        "afbrydes. Det er mere præcist end bevægelsesgenkendelse, " +
+                        "som først er sikker et stykke inde i turen.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Brug Bluetooth som udløser", style = MaterialTheme.typography.bodyMedium)
+                    Switch(
+                        checked = bluetoothTriggerEnabled,
+                        onCheckedChange = onBluetoothTriggerChanged,
+                    )
+                }
+
+                when {
+                    !bluetoothPermissionGranted -> {
+                        WarningCard(
+                            title = "Mangler Bluetooth-tilladelse",
+                            body = "Appen skal kunne se dine parrede enheder for at " +
+                                "genkende bilen.",
+                            actionLabel = "Giv tilladelse",
+                            onAction = onRequestPermissions,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+
+                    pairedDevices.isEmpty() -> {
+                        Text(
+                            "Ingen parrede enheder fundet. Par telefonen med bilen, " +
+                                "og kom tilbage hertil.",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+
+                    else -> {
+                        pairedDevices.forEach { device ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(device.name, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        if (device.looksLikeCar) {
+                                            "Ligner en bilenhed"
+                                        } else {
+                                            device.address
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
+                                Switch(
+                                    checked = device.address in carDeviceAddresses,
+                                    onCheckedChange = { onCarDeviceToggled(device.address, it) },
+                                    enabled = bluetoothTriggerEnabled,
+                                )
+                            }
+                        }
+
+                        if (carDeviceAddresses.isEmpty()) {
+                            Text(
+                                "Ingen enhed valgt endnu - indtil da starter ture kun " +
+                                    "på bevægelsesgenkendelse.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
+                        }
+                    }
                 }
             }
         }

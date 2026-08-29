@@ -13,6 +13,19 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!--
+      The car's Bluetooth connection is the primary "a drive is starting" signal.
+      BLUETOOTH_CONNECT is the Android 12+ runtime permission; the two legacy
+      permissions cover older releases, where it was install-time.
+    -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
     <application
@@ -45,6 +58,20 @@
         <receiver
             android:name=".tracking.ActivityTransitionReceiver"
             android:exported="false" />
+
+        <!--
+          ACL_CONNECTED / ACL_DISCONNECTED are on Android's implicit-broadcast
+          exemption list, so this still fires on Android 8+ with the app closed.
+        -->
+        <receiver
+            android:name=".tracking.BluetoothTripReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name=".tracking.BootReceiver"

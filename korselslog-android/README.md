@@ -92,10 +92,27 @@ the stricter reading.
 
 ## Trip detection
 
-The design priority was not splitting one drive into several.
+The design priority was capturing every drive whole, without splitting one into
+several.
 
-- **Start** — Play Services activity recognition fires an `IN_VEHICLE` ENTER
-  transition. Nothing polls; GPS only runs between an enter and its matching stop.
+**Two triggers, so nothing is missed:**
+
+- **The car's Bluetooth (primary).** Pick your car stereo or handsfree kit under
+  Indstillinger → Bilens Bluetooth. Connecting starts a trip within seconds of
+  the ignition; disconnecting ends it immediately, with no dwell period, because
+  the car powering down is a definitive end of drive. This beats activity
+  recognition, which needs the car moving before it is confident and so joins
+  every trip late.
+- **Activity recognition (fallback).** Play Services fires an `IN_VEHICLE` ENTER
+  transition. Covers a borrowed car, or a phone that is not paired. Its EXIT
+  transition is only a *hint* — the dwell still has to elapse, since it reports
+  brief exits at long traffic lights.
+
+The service ignores a start while a trip is already running, so the two triggers
+cannot double-log a drive. If the car is already connected when you enable
+tracking — or after a reboot mid-drive — the trip is picked up rather than lost.
+
+- **Start** — as above. Nothing polls; GPS only runs between a start and its stop.
 - **Distance** — fixes worse than 50 m accuracy are dropped, movement under 20 m
   is treated as jitter, and a fix implying >60 m/s becomes a new anchor without
   billing the phantom kilometres (that is what a cold lock or a tunnel exit looks
