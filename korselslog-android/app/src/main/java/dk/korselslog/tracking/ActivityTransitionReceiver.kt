@@ -27,7 +27,7 @@ class ActivityTransitionReceiver : BroadcastReceiver() {
             when (event.transitionType) {
                 ActivityTransition.ACTIVITY_TRANSITION_ENTER -> {
                     Log.i(TAG, "Entered vehicle - starting trip tracking")
-                    TripTrackingService.start(context)
+                    TripTrackingService.startTrip(context)
                 }
 
                 ActivityTransition.ACTIVITY_TRANSITION_EXIT -> {

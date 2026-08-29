@@ -46,7 +46,7 @@ class BluetoothTripReceiver : BroadcastReceiver() {
         when (intent.action) {
             BluetoothDevice.ACTION_ACL_CONNECTED -> {
                 Log.i(TAG, "Car Bluetooth connected - starting trip tracking")
-                TripTrackingService.start(context)
+                TripTrackingService.startTrip(context)
             }
 
             BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
@@ -54,7 +54,7 @@ class BluetoothTripReceiver : BroadcastReceiver() {
                 // so close the trip now and let the merge rules re-join it if a
                 // brief dropout turns out to have been mid-drive.
                 Log.i(TAG, "Car Bluetooth disconnected - ending trip")
-                TripTrackingService.stopNow(context)
+                TripTrackingService.stopTrip(context)
             }
         }
     }

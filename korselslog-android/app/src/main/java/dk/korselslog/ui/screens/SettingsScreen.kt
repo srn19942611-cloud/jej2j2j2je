@@ -34,7 +34,10 @@ import dk.korselslog.data.PlaceEntity
 import dk.korselslog.domain.DefaultRates
 import dk.korselslog.domain.PlaceKind
 import dk.korselslog.domain.SixtyDayRule
+import dk.korselslog.tracking.BatteryOptimisation
 import dk.korselslog.tracking.PairedDevice
+import dk.korselslog.tracking.TrackingSnapshot
+import dk.korselslog.tracking.TrackingState
 import dk.korselslog.domain.TaxYearRates
 import dk.korselslog.ui.SettingsViewModel
 import dk.korselslog.ui.components.LabelValueRow
@@ -55,6 +58,9 @@ fun SettingsScreen(
     onBluetoothTriggerChanged: (Boolean) -> Unit,
     onCarDeviceToggled: (String, Boolean) -> Unit,
     bluetoothPermissionGranted: Boolean,
+    trackingSnapshot: TrackingSnapshot,
+    batteryExempt: Boolean,
+    onRequestBatteryExemption: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -66,6 +72,60 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp),
     ) {
+        // The live state of the tracker, so "is it actually running?" is
+        // answerable without digging through the notification shade.
+        item {
+            val (statusText, statusBody) = when (trackingSnapshot.state) {
+                TrackingState.RECORDING ->
+                    "Registrerer tur nu" to
+                        "%.1f km indtil videre.".format(trackingSnapshot.currentTripKm)
+
+                TrackingState.ARMED ->
+                    "Aktiv og venter på kørsel" to
+                        "Turen starter automatisk, når bilen kobler på Bluetooth."
+
+                TrackingState.OFF ->
+                    "Slået fra" to
+                        "Ingen ture bliver registreret automatisk."
+            }
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        statusText,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (trackingSnapshot.state == TrackingState.OFF) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                    )
+                    Text(statusBody, style = MaterialTheme.typography.bodySmall)
+                    if (trackingSnapshot.lastTripEndedMs > 0L) {
+                        Text(
+                            "Seneste tur: %.1f km".format(trackingSnapshot.lastTripKm),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        if (!batteryExempt) {
+            item {
+                WarningCard(
+                    title = "Batterioptimering slår sporingen ihjel",
+                    body = "Android og din telefonproducent lukker apps ned i " +
+                        "baggrunden for at spare strøm. Uden en undtagelse " +
+                        "stopper Kørselslog med at registrere ture efter kort " +
+                        "tid. " + BatteryOptimisation.oemAdvice(),
+                    actionLabel = "Undtag Kørselslog",
+                    onAction = onRequestBatteryExemption,
+                )
+            }
+        }
+
         item {
             SectionCard("Automatisk registrering") {
                 Row(

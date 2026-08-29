@@ -112,6 +112,32 @@ The service ignores a start while a trip is already running, so the two triggers
 cannot double-log a drive. If the car is already connected when you enable
 tracking — or after a reboot mid-drive — the trip is picked up rather than lost.
 
+**The service stays running whenever tracking is on**, in one of two states:
+
+- **Armed** — no GPS, no location callbacks, effectively no battery cost. Just a
+  live process holding a quiet notification, waiting for the car.
+- **Recording** — a drive is under way; the notification shows the distance so far.
+
+This is what makes it work with the app closed. Starting the service only when a
+trip begins fails in exactly the case that matters: a process that is not running
+cannot react to a broadcast, and Android 12+ refuses most attempts to start a
+foreground service from the background. Arming once from the foreground and never
+stopping sidesteps both — the background broadcasts only change the state of a
+service that is already alive.
+
+The permanent notification is deliberate. It is the only honest way to show that
+background tracking is really running, and Android requires it for a foreground
+service anyway.
+
+### Battery optimisation — the thing that will actually break it
+
+Doze and the manufacturers' own battery managers are the usual reason a
+background tracker works for a day and then quietly stops. Settings shows a
+warning until the app is on the exemption list, with a button for the system
+prompt and manufacturer-specific instructions (Samsung, Xiaomi, Huawei, OPPO,
+OnePlus, vivo and others each hide it somewhere different). Grant it — without
+it, trips will go missing.
+
 - **Start** — as above. Nothing polls; GPS only runs between a start and its stop.
 - **Distance** — fixes worse than 50 m accuracy are dropped, movement under 20 m
   is treated as jitter, and a fix implying >60 m/s becomes a new anchor without

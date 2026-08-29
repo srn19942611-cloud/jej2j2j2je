@@ -12,6 +12,12 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!--
+      Lets the app show the system's own "exempt from battery optimisation"
+      prompt. Without the exemption, Doze and the OEM battery managers defer or
+      kill the tracker after a day or two of background running.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!--
       The car's Bluetooth connection is the primary "a drive is starting" signal.

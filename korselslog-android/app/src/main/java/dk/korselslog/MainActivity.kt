@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -38,7 +39,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dk.korselslog.tracking.ActivityRecognitionManager
+import dk.korselslog.tracking.BatteryOptimisation
 import dk.korselslog.tracking.CarBluetooth
+import dk.korselslog.tracking.TrackingStatus
 import dk.korselslog.tracking.PairedDevice
 import dk.korselslog.tracking.TrackingPrefs
 import dk.korselslog.tracking.TripTrackingService
@@ -92,6 +95,12 @@ class MainActivity : ComponentActivity() {
         prefs = TrackingPrefs(this)
         recognition = ActivityRecognitionManager(this)
 
+        // A service the system killed while the app was closed comes back the
+        // next time the user opens the app, rather than staying silently dead.
+        if (prefs.autoTrackingEnabled && Permissions.hasAll(this)) {
+            armTracking()
+        }
+
         setContent {
             KoerselslogTheme {
                 KoerselslogRoot(
@@ -102,10 +111,19 @@ class MainActivity : ComponentActivity() {
                             if (Permissions.hasAll(this)) armTracking() else requestPermissions()
                         } else {
                             recognition.unregister()
+                            TripTrackingService.disarm(this)
                         }
                     },
                     trackingEnabled = prefs.autoTrackingEnabled,
                     prefs = prefs,
+                    onRequestBatteryExemption = {
+                        try {
+                            startActivity(BatteryOptimisation.requestExemption(this))
+                        } catch (e: Exception) {
+                            // Some OEMs remove the direct prompt; the list still works.
+                            runCatching { startActivity(BatteryOptimisation.batterySettingsIntent()) }
+                        }
+                    },
                 )
             }
         }
@@ -124,10 +142,18 @@ class MainActivity : ComponentActivity() {
      * it needs no registration here - but a drive may already be under way when
      * tracking is switched on, and that should not be missed.
      */
+    /**
+     * Brings both triggers up and starts the always-on service.
+     *
+     * Called from the foreground, which is what makes the foreground-service
+     * start legal on Android 12+; once running it simply stays running, so the
+     * background broadcasts only ever change its state.
+     */
     private fun armTracking() {
         recognition.register()
+        TripTrackingService.arm(this)
         CarBluetooth.findConnectedCarDevice(this, prefs) { address ->
-            if (address != null) TripTrackingService.start(this)
+            if (address != null) TripTrackingService.startTrip(this)
         }
     }
 
@@ -152,6 +178,7 @@ private fun KoerselslogRoot(
     onTrackingChanged: (Boolean) -> Unit,
     trackingEnabled: Boolean,
     prefs: TrackingPrefs,
+    onRequestBatteryExemption: () -> Unit,
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
@@ -165,6 +192,10 @@ private fun KoerselslogRoot(
     val pairedDevices: List<PairedDevice> = remember(route, btTrigger) {
         CarBluetooth.pairedDevices(context)
     }
+    val trackingSnapshot by TrackingStatus.snapshot.collectAsStateWithLifecycle()
+    // Re-read whenever the user comes back to Settings, which is where they
+    // land after granting the exemption.
+    val batteryExempt = remember(route) { BatteryOptimisation.isExempt(context) }
 
     val title = BOTTOM_DESTS.firstOrNull { it.route == route }?.label ?: "Kørselslog"
 
@@ -252,6 +283,9 @@ private fun KoerselslogRoot(
                         carDevices = prefs.carBluetoothAddresses
                     },
                     bluetoothPermissionGranted = CarBluetooth.hasPermission(context),
+                    trackingSnapshot = trackingSnapshot,
+                    batteryExempt = batteryExempt,
+                    onRequestBatteryExemption = onRequestBatteryExemption,
                 )
             }
         }

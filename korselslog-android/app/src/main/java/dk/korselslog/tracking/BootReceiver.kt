@@ -16,6 +16,11 @@ class BootReceiver : BroadcastReceiver() {
 
         ActivityRecognitionManager(context).register()
 
+        // Bring the listener back up. BOOT_COMPLETED is an exemption from the
+        // Android 12 restriction on starting a foreground service in the
+        // background, so this is allowed to run here.
+        TripTrackingService.arm(context)
+
         // A reboot or an app update mid-drive would otherwise lose the rest of
         // the trip: if the car's Bluetooth is already connected, we are driving.
         // Binding the Bluetooth profile proxy outlives onReceive, so hold the
@@ -23,7 +28,7 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CarBluetooth.findConnectedCarDevice(context, prefs) { address ->
             try {
-                if (address != null) TripTrackingService.start(context)
+                if (address != null) TripTrackingService.startTrip(context)
             } finally {
                 pending.finish()
             }

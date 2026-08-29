@@ -1,5 +1,10 @@
 <resources>
     <string name="app_name">Kørselslog</string>
     <string name="tracking_channel_name">Kørselsregistrering</string>
-    <string name="tracking_notification_title">Kørselslog registrerer tur</string>
+    <string name="tracking_channel_description">Viser at automatisk registrering af ture er aktiv</string>
+    <string name="tracking_notification_armed">Kørselslog er aktiv</string>
+    <string name="tracking_notification_armed_body">Venter på kørsel — turen starter automatisk</string>
+    <string name="tracking_notification_recording">Registrerer tur</string>
+    <string name="tracking_action_start">Start tur nu</string>
+    <string name="tracking_action_end">Afslut tur</string>
 </resources>
