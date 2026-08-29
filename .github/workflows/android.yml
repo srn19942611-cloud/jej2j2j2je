@@ -32,11 +32,35 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Gradle's failure output is thousands of lines of stack trace with the
+      # actual compiler diagnostics buried in the middle, so capture the run and
+      # re-print just the diagnostics at the end where they are readable.
       - name: Unit tests (tax engine, segmenter, exports)
-        run: ./gradlew test --no-daemon --stacktrace
+        run: |
+          ./gradlew test --no-daemon --console=plain > build.log 2>&1 || {
+            echo "::group::Compiler diagnostics"
+            grep -E '^(e|w): ' build.log | head -150 || echo "(no e:/w: lines)"
+            echo "::endgroup::"
+            echo "::group::Test failures"
+            grep -E 'FAILED|Test.*failed|AssertionError' build.log | head -60 || echo "(none)"
+            echo "::endgroup::"
+            echo "===== last 40 lines ====="
+            tail -40 build.log
+            exit 1
+          }
+          echo "Tests passed."
+          grep -cE '^w: ' build.log | xargs -I{} echo "{} compiler warnings"
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          ./gradlew assembleDebug --no-daemon --console=plain > apk.log 2>&1 || {
+            echo "::group::Compiler diagnostics"
+            grep -E '^(e|w): ' apk.log | head -150 || echo "(no e:/w: lines)"
+            echo "::endgroup::"
+            tail -40 apk.log
+            exit 1
+          }
+          ls -la app/build/outputs/apk/debug/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -45,10 +69,13 @@ jobs:
           path: korselslog-android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-      - name: Upload test report
+      - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: unit-test-report
-          path: korselslog-android/app/build/reports/tests/testDebugUnitTest
+          name: build-logs
+          path: |
+            korselslog-android/build.log
+            korselslog-android/apk.log
+            korselslog-android/app/build/reports/tests/testDebugUnitTest
           if-no-files-found: ignore
