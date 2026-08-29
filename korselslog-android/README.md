@@ -200,13 +200,18 @@ JVM.
 segmenter's stop/merge logic, the classifier, and all three exporters — including
 worked examples at the 24 km floor, the 120 km band edge, and the peripheral rate.
 
-**The Android build is only partly verified.** The environment this was written
-in blocks `dl.google.com`, so AGP, the Android SDK and every androidx artifact
-were unreachable locally. CI has compiled the app: the first runs failed on two
-bad imports (`androidx.compose.foundation.lazy.item`, which is a LazyListScope
-member and not importable), which are fixed. A fully green run — Room codegen,
-Compose, the APK — had not been observed at the time of writing, so check the
-latest Actions run before trusting the APK.
+**The Android build is green.** CI compiles the app, runs the unit tests and
+produces the debug APK (~17,5 MB), uploaded as the `koerselslog-debug-apk`
+artifact on every run. The environment this was written in blocks
+`dl.google.com`, so AGP, the Android SDK and androidx were unreachable locally
+and the first CI runs were the first real compile; they failed on two bad
+imports (`androidx.compose.foundation.lazy.item` — `item` is a `LazyListScope`
+member, so only `items` is importable), which are fixed.
+
+What that does *not* cover: nothing has run on a real device. Trip detection,
+the permission flow, reverse geocoding and the share-sheet exports are compiled
+and unit-tested where they are pure logic, but unexercised against actual GPS,
+Play Services and Android's background-location behaviour.
 
 ## Known limitations
 
