@@ -2,7 +2,6 @@ package dk.korselslog.export
 
 import dk.korselslog.data.PlaceEntity
 import dk.korselslog.data.TripEntity
-import dk.korselslog.domain.Box51Result
 import dk.korselslog.domain.Classification
 import dk.korselslog.domain.DayMarkerKind
 import java.time.Instant

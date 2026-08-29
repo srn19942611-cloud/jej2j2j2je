@@ -1,6 +1,5 @@
 package dk.korselslog.domain
 
-import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin

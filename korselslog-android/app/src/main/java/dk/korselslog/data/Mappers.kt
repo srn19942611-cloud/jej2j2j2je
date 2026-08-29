@@ -1,6 +1,5 @@
 package dk.korselslog.data
 
-import dk.korselslog.domain.CommuteDay
 import dk.korselslog.domain.DayMarkerKind
 import dk.korselslog.domain.GpsPoint
 import dk.korselslog.domain.KnownPlace

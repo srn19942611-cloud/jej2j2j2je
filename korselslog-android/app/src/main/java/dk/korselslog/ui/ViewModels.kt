@@ -35,7 +35,6 @@ data class DashboardState(
     val year: Int = LocalDate.now().year,
     val result: Box51Result? = null,
     val needsReviewCount: Int = 0,
-    val daysNeedingReview: Int = 0,
     val loading: Boolean = true,
 )
 
@@ -55,7 +54,6 @@ class DashboardViewModel(app: Application) : RepositoryViewModel(app) {
                     year = year,
                     result = result,
                     needsReviewCount = reviewCount,
-                    daysNeedingReview = result.days.count { !it.qualifies && it.commuteKm > 0 },
                     loading = false,
                 )
             }
