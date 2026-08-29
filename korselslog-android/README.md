@@ -200,11 +200,13 @@ JVM.
 segmenter's stop/merge logic, the classifier, and all three exporters — including
 worked examples at the 24 km floor, the 120 km band edge, and the peripheral rate.
 
-**The Android build itself has not been compiled.** The environment this was
-written in blocks `dl.google.com`, so AGP, the Android SDK and every androidx
-artifact were unreachable; the Gradle scripts parse and resolve, but the app,
-Room codegen and Compose have never been through a compiler. The CI workflow is
-the first real build — check it before trusting the APK.
+**The Android build is only partly verified.** The environment this was written
+in blocks `dl.google.com`, so AGP, the Android SDK and every androidx artifact
+were unreachable locally. CI has compiled the app: the first runs failed on two
+bad imports (`androidx.compose.foundation.lazy.item`, which is a LazyListScope
+member and not importable), which are fixed. A fully green run — Room codegen,
+Compose, the APK — had not been observed at the time of writing, so check the
+latest Actions run before trusting the APK.
 
 ## Known limitations
 

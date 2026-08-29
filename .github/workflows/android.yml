@@ -35,9 +35,11 @@ jobs:
       # Gradle's failure output is thousands of lines of stack trace with the
       # actual compiler diagnostics buried in the middle, so capture the run and
       # re-print just the diagnostics at the end where they are readable.
+      # testDebugUnitTest, not test: the latter also builds and runs the release
+      # variant, doubling Kotlin/Compose compilation for no extra coverage.
       - name: Unit tests (tax engine, segmenter, exports)
         run: |
-          ./gradlew test --no-daemon --console=plain > build.log 2>&1 || {
+          ./gradlew testDebugUnitTest --no-daemon --console=plain > build.log 2>&1 || {
             echo "::group::Compiler diagnostics"
             grep -E '^(e|w): ' build.log | head -150 || echo "(no e:/w: lines)"
             echo "::endgroup::"
