@@ -1,279 +1,348 @@
 import { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  Pressable,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { View, Text, ScrollView, StyleSheet, Pressable, RefreshControl } from 'react-native';
+import { Link, useFocusEffect, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { Card } from '../../src/components/Card';
-import { Button, Field, Stat } from '../../src/components/ui';
-import { colors, radius, spacing } from '../../src/theme';
-import {
-  addDays,
-  formatFullDate,
-  formatRelativeDate,
-  todayISO,
-  type ISODate,
-} from '../../src/lib/date';
-import { openDatePicker } from '../../src/lib/datePicker';
-import { fmt, fmtSigned, parseDecimal } from '../../src/lib/format';
-import { summarize, type Point } from '../../src/lib/stats';
-import {
-  deleteWeight,
-  getWeight,
-  listRecentWeights,
-  listWeights,
-  upsertWeight,
-  type WeightEntry,
-} from '../../src/db/weight';
-import { getGoal, type WeightGoal } from '../../src/db/goal';
+import { MacroRow } from '../../src/components/MacroRow';
+import { Button, Note, ProgressBar, Stat } from '../../src/components/ui';
+import { colors, motion, radius, shadow, spacing } from '../../src/theme';
+import { fmt, fmtSigned } from '../../src/lib/format';
+import { formatRelativeDate, todayISO } from '../../src/lib/date';
+import { buildSummary, type AppSummary } from '../../src/lib/summary';
+import { WORKOUT_TYPES } from '../../src/db/workouts';
+import { getStatus, lastSync, syncFromHealthConnect } from '../../src/lib/healthConnect';
 
-export default function LogScreen() {
-  const [date, setDate] = useState<ISODate>(todayISO());
-  const [weight, setWeight] = useState('');
-  const [fat, setFat] = useState('');
-  const [note, setNote] = useState('');
-  const [existing, setExisting] = useState<WeightEntry | null>(null);
-  const [recent, setRecent] = useState<WeightEntry[]>([]);
-  const [points, setPoints] = useState<Point[]>([]);
-  const [goal, setGoal] = useState<WeightGoal | null>(null);
+export default function TodayScreen() {
+  const router = useRouter();
+  const [summary, setSummary] = useState<AppSummary | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+  const [hcReady, setHcReady] = useState(false);
+  const [synced, setSynced] = useState<Date | null>(null);
 
-  const loadForDate = useCallback(async (d: ISODate) => {
-    const entry = await getWeight(d);
-    setExisting(entry);
-    setWeight(entry ? fmt(entry.weight_kg) : '');
-    setFat(entry?.body_fat_pct != null ? fmt(entry.body_fat_pct) : '');
-    setNote(entry?.note ?? '');
-  }, []);
-
-  const reload = useCallback(async () => {
-    const [all, list, g] = await Promise.all([listWeights(), listRecentWeights(14), getGoal()]);
-    setPoints(all.map((e) => ({ date: e.date, value: e.weight_kg })));
-    setRecent(list);
-    setGoal(g);
+  const load = useCallback(async () => {
+    const [s, status, last] = await Promise.all([buildSummary(), getStatus(), lastSync()]);
+    setSummary(s);
+    setHcReady(status === 'klar');
+    setSynced(last);
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void reload();
-      void loadForDate(date);
-    }, [reload, loadForDate, date]),
+      void load();
+    }, [load]),
   );
 
-  const pickDate = () =>
-    openDatePicker({ value: date, maximumDate: todayISO(), onPick: changeDate });
-
-  const changeDate = (d: ISODate) => {
-    setDate(d);
-    void loadForDate(d);
-  };
-
-  const save = async () => {
-    const kg = parseDecimal(weight);
-    if (kg === null || kg <= 20 || kg >= 400) {
-      Alert.alert('Ugyldig vægt', 'Skriv vægten i kg, f.eks. 82,4.');
-      return;
+  const sync = async () => {
+    setSyncing(true);
+    setSyncNote(null);
+    try {
+      const res = await syncFromHealthConnect(30);
+      setSyncNote(
+        `Hentet: ${res.metricDays} dage, ${res.workouts} pas, ${res.weights} vægtmålinger. ` +
+          `Sendt: ${res.pushedWeights} vægt, ${res.pushedWorkouts} pas.` +
+          (res.skipped.length ? ` Mangler adgang til: ${res.skipped.join(', ')}.` : ''),
+      );
+      await load();
+    } catch (e) {
+      setSyncNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSyncing(false);
     }
-    const fatPct = parseDecimal(fat);
-    if (fat.trim() !== '' && (fatPct === null || fatPct <= 0 || fatPct >= 80)) {
-      Alert.alert('Ugyldig fedtprocent', 'Fedtprocent skal være mellem 0 og 80 — eller stå tom.');
-      return;
-    }
-    await upsertWeight({
-      date,
-      weight_kg: Math.round(kg * 10) / 10,
-      body_fat_pct: fatPct === null ? null : Math.round(fatPct * 10) / 10,
-      note: note.trim() === '' ? null : note.trim(),
-      source: 'manual',
-    });
-    await reload();
-    await loadForDate(date);
   };
 
-  const remove = () => {
-    Alert.alert('Slet måling', `Slet vægten for ${formatFullDate(date)}?`, [
-      { text: 'Fortryd', style: 'cancel' },
-      {
-        text: 'Slet',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteWeight(date);
-          await reload();
-          await loadForDate(date);
-        },
-      },
-    ]);
-  };
+  if (!summary) return <View style={styles.screen} />;
 
-  const summary = summarize(points, goal);
-  const isToday = date === todayISO();
+  const { progress: p, today, week, targets } = summary;
+  const kcalLeft = targets ? targets.targetKcal - today.kcal : null;
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={false} onRefresh={() => void load()} tintColor={colors.accent} />
+      }
     >
-      <ScrollView
-        style={styles.screen}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Card>
-          <View style={styles.hero}>
-            <View>
-              <Text style={styles.heroLabel}>Seneste vægt</Text>
-              <Text style={styles.heroValue}>
-                {fmt(summary.latestKg)} <Text style={styles.heroUnit}>kg</Text>
-              </Text>
-              <Text style={styles.heroSub}>
-                {summary.latestDate ? formatRelativeDate(summary.latestDate) : 'ingen målinger endnu'}
-              </Text>
-            </View>
-            <View style={styles.heroStats}>
+      {/* Vægt og fremskridt */}
+      <Card index={0}>
+        <View style={styles.heroRow}>
+          <View>
+            <Text style={styles.heroLabel}>Vægt</Text>
+            <Text style={styles.heroValue}>
+              {fmt(p.latestKg)} <Text style={styles.heroUnit}>kg</Text>
+            </Text>
+            <Text style={styles.heroSub}>
+              {p.latestDate ? formatRelativeDate(p.latestDate) : 'ingen målinger endnu'}
+            </Text>
+          </View>
+          <View style={styles.heroStats}>
+            <Stat
+              label="Trend"
+              value={p.weeklyKg == null ? '–' : `${fmtSigned(p.weeklyKg)} kg/uge`}
+              align="right"
+              tone={p.weeklyKg == null ? undefined : p.weeklyKg < -0.05 ? 'good' : 'warn'}
+            />
+            {summary.goal ? (
               <Stat
-                label="Trend/uge"
-                value={summary.weeklyKg == null ? '–' : `${fmtSigned(summary.weeklyKg)} kg`}
+                label="Til mål"
+                value={p.remainingKg == null ? '–' : `${fmt(p.remainingKg)} kg`}
+                align="right"
               />
-              {goal ? (
-                <Stat
-                  label="Til mål"
-                  value={summary.remainingKg == null ? '–' : `${fmt(summary.remainingKg)} kg`}
-                />
-              ) : null}
-            </View>
+            ) : null}
           </View>
-        </Card>
+        </View>
 
-        <Card title="Log vægt">
-          <View style={styles.dateRow}>
-            <Pressable style={styles.arrow} onPress={() => changeDate(addDays(date, -1))}>
-              <Ionicons name="chevron-back" size={20} color={colors.text} />
-            </Pressable>
-            <Pressable style={styles.dateButton} onPress={pickDate}>
-              <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
-              <Text style={styles.dateText}>{formatFullDate(date)}</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.arrow, isToday && styles.arrowDisabled]}
-              disabled={isToday}
-              onPress={() => changeDate(addDays(date, 1))}
-            >
-              <Ionicons name="chevron-forward" size={20} color={colors.text} />
-            </Pressable>
+        {summary.goal ? (
+          <View style={{ marginTop: spacing.md }}>
+            <ProgressBar value={p.progress ?? 0} />
+            <Text style={styles.progressText}>
+              {p.progress == null
+                ? 'Sæt en måling ind for at følge fremskridtet'
+                : `${Math.round(p.progress * 100)} % af vejen mod ${fmt(summary.goal.targetWeightKg)} kg`}
+            </Text>
           </View>
+        ) : (
+          <View style={{ marginTop: spacing.md }}>
+            <Button title="Sæt et mål" variant="secondary" onPress={() => router.push('/goal')} />
+          </View>
+        )}
+      </Card>
 
-          <Field
-            label="Vægt (kg)"
-            value={weight}
-            onChangeText={setWeight}
-            keyboardType="decimal-pad"
-            placeholder="82,4"
-          />
-          <Field
-            label="Fedtprocent (valgfri)"
-            value={fat}
-            onChangeText={setFat}
-            keyboardType="decimal-pad"
-            placeholder="—"
-          />
-          <Field
-            label="Note (valgfri)"
-            value={note}
-            onChangeText={setNote}
-            placeholder="f.eks. målt efter morgenmad"
-          />
-
-          <Button title={existing ? 'Opdatér måling' : 'Gem måling'} onPress={save} />
-          {existing ? (
-            <View style={{ marginTop: spacing.sm }}>
-              <Button title="Slet måling" variant="danger" onPress={remove} />
+      {/* Dagens energi */}
+      <Card
+        title="I dag"
+        subtitle={targets ? undefined : 'Udfyld profil og mål under Indstillinger for at få kaloriemål'}
+        index={1}
+      >
+        {targets ? (
+          <>
+            <View style={styles.kcalRow}>
+              <View>
+                <Text style={styles.kcalBig}>{Math.round(today.kcal)}</Text>
+                <Text style={styles.kcalLabel}>spist i dag</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text
+                  style={[
+                    styles.kcalBig,
+                    { color: (kcalLeft ?? 0) < 0 ? colors.warn : colors.good },
+                  ]}
+                >
+                  {kcalLeft != null ? Math.abs(Math.round(kcalLeft)) : '–'}
+                </Text>
+                <Text style={styles.kcalLabel}>
+                  {(kcalLeft ?? 0) < 0 ? 'over målet' : `tilbage af ${targets.targetKcal}`}
+                </Text>
+              </View>
             </View>
-          ) : null}
-        </Card>
+            <ProgressBar
+              value={today.kcal / targets.targetKcal}
+              tone={today.kcal > targets.targetKcal ? colors.warn : colors.accent}
+              height={10}
+            />
+            <View style={{ height: spacing.lg }} />
+            <MacroRow
+              label="Protein"
+              value={today.protein_g}
+              target={targets.proteinG}
+              tone={colors.protein}
+            />
+            <MacroRow label="Fedt" value={today.fat_g} target={null} tone={colors.fat} />
+            <MacroRow label="Kulhydrat" value={today.carbs_g} target={null} tone={colors.carbs} />
+          </>
+        ) : (
+          <Button
+            title="Opsæt profil og mål"
+            variant="secondary"
+            onPress={() => router.push('/settings')}
+          />
+        )}
+      </Card>
 
-        <Card title="Seneste målinger">
-          {recent.length === 0 ? (
-            <Text style={styles.empty}>Ingen målinger gemt endnu.</Text>
-          ) : (
-            recent.map((e, i) => {
-              const prev = recent[i + 1];
-              const diff = prev ? e.weight_kg - prev.weight_kg : null;
-              return (
-                <Pressable key={e.date} style={styles.row} onPress={() => changeDate(e.date)}>
-                  <Text style={styles.rowDate}>{formatRelativeDate(e.date)}</Text>
-                  <View style={styles.rowRight}>
-                    {e.body_fat_pct != null ? (
-                      <Text style={styles.rowFat}>{fmt(e.body_fat_pct)} %</Text>
-                    ) : null}
-                    {diff != null ? (
-                      <Text
-                        style={[
-                          styles.rowDiff,
-                          { color: diff <= 0 ? colors.good : colors.textMuted },
-                        ]}
-                      >
-                        {fmtSigned(diff)}
-                      </Text>
-                    ) : null}
-                    <Text style={styles.rowWeight}>{fmt(e.weight_kg)} kg</Text>
-                  </View>
-                </Pressable>
-              );
-            })
-          )}
-        </Card>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      {/* Aktivitet fra Health Connect */}
+      <Card
+        title="Aktivitet"
+        subtitle={
+          synced ? `Synkroniseret ${formatRelativeDate(todayISO())} kl. ${synced.getHours()}:${String(synced.getMinutes()).padStart(2, '0')}` : undefined
+        }
+        index={2}
+      >
+        <View style={styles.metricRow}>
+          <Metric icon="footsteps-outline" label="Skridt" value={today.steps == null ? '–' : String(today.steps)} />
+          <Metric
+            icon="flame-outline"
+            label="Aktivt"
+            value={today.activeKcal == null ? '–' : `${Math.round(today.activeKcal)} kcal`}
+          />
+          <Metric
+            icon="moon-outline"
+            label="Søvn"
+            value={today.sleepMin == null ? '–' : `${(today.sleepMin / 60).toFixed(1)} t`}
+          />
+        </View>
+
+        {hcReady ? (
+          <View style={{ marginTop: spacing.md }}>
+            <Button
+              title={syncing ? 'Synkroniserer…' : 'Synkronisér Health Connect'}
+              variant="secondary"
+              loading={syncing}
+              onPress={() => void sync()}
+            />
+          </View>
+        ) : (
+          <Note tone="accent">
+            Health Connect er ikke tilgængelig her. På telefonen finder du opsætningen under
+            Indstillinger.
+          </Note>
+        )}
+        {syncNote ? (
+          <Animated.View entering={FadeIn.duration(motion.base)} style={{ marginTop: spacing.md }}>
+            <Note tone="good">{syncNote}</Note>
+          </Animated.View>
+        ) : null}
+      </Card>
+
+      {/* Ugen */}
+      <Card title="Denne uge" index={3}>
+        <View style={styles.statRow}>
+          <Stat label="Pas" value={String(week.workouts)} sub={`${Math.round(week.totalMinutes)} min`} />
+          <Stat label="Styrke" value={String(week.strengthSessions)} sub="sessioner" />
+          <Stat
+            label="Skridt"
+            value={week.avgSteps == null ? '–' : String(week.avgSteps)}
+            sub="i snit"
+          />
+        </View>
+        {today.workouts.length > 0 ? (
+          <View style={{ marginTop: spacing.md, gap: 6 }}>
+            {today.workouts.map((w) => (
+              <View key={w.id} style={styles.workoutRow}>
+                <Ionicons name="barbell-outline" size={16} color={colors.accent} />
+                <Text style={styles.workoutText}>
+                  {WORKOUT_TYPES.find((t) => t.value === w.type)?.label ?? w.type} ·{' '}
+                  {w.duration_min} min
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </Card>
+
+      {/* Genveje */}
+      <View style={styles.actions}>
+        <Action icon="scale-outline" label="Vej dig" onPress={() => router.push('/weight')} />
+        <Action icon="camera-outline" label="Måltid" onPress={() => router.push('/food')} />
+        <Action icon="add-circle-outline" label="Træning" onPress={() => router.push('/workout')} />
+        <Action icon="cart-outline" label="Madplan" onPress={() => router.push('/mealplan')} />
+      </View>
+
+      <Link href="/coach" asChild>
+        <Pressable>
+          <Card index={5} style={styles.coachCard}>
+            <View style={styles.coachRow}>
+              <Ionicons name="chatbubbles" size={22} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.coachTitle}>Spørg coachen</Text>
+                <Text style={styles.coachBody}>
+                  Få et check-in på dagen eller ugen — bygget på dine egne tal.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+            </View>
+          </Card>
+        </Pressable>
+      </Link>
+    </ScrollView>
+  );
+}
+
+function Metric({
+  icon,
+  label,
+  value,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.metric}>
+      <Ionicons name={icon} size={18} color={colors.accent} />
+      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={styles.metricLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function Action({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={styles.action} onPress={onPress}>
+      <Ionicons name={icon} size={22} color={colors.accent} />
+      <Text style={styles.actionLabel}>{label}</Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
-  hero: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
-  heroLabel: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
-  heroValue: { fontSize: 40, fontWeight: '700', color: colors.text, lineHeight: 46 },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl * 2 },
+
+  heroRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
+  heroLabel: { fontSize: 12, color: colors.textMuted, fontWeight: '700' },
+  heroValue: { fontSize: 42, fontWeight: '700', color: colors.text, lineHeight: 48, letterSpacing: -1.5 },
   heroUnit: { fontSize: 18, fontWeight: '600', color: colors.textMuted },
   heroSub: { fontSize: 13, color: colors.textMuted },
-  heroStats: { flex: 1, gap: spacing.md, alignItems: 'flex-end', justifyContent: 'center' },
-  dateRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
-  arrow: {
-    padding: 8,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  arrowDisabled: { opacity: 0.3 },
-  dateButton: {
+  heroStats: { gap: spacing.md, justifyContent: 'center' },
+  progressText: { fontSize: 12, color: colors.textMuted, marginTop: 7 },
+
+  kcalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.md },
+  kcalBig: { fontSize: 30, fontWeight: '700', color: colors.text, letterSpacing: -1 },
+  kcalLabel: { fontSize: 12, color: colors.textMuted },
+
+  metricRow: { flexDirection: 'row', gap: spacing.sm },
+  metric: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
+    gap: 3,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.cardAlt,
     borderRadius: radius.md,
-    backgroundColor: colors.accentSoft,
   },
-  dateText: { fontSize: 15, fontWeight: '600', color: colors.text },
-  empty: { color: colors.textMuted, fontSize: 13 },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  metricValue: { fontSize: 16, fontWeight: '700', color: colors.text },
+  metricLabel: { fontSize: 11, color: colors.textMuted },
+
+  statRow: { flexDirection: 'row', gap: spacing.md },
+  workoutRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  workoutText: { fontSize: 14, color: colors.text },
+
+  actions: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  action: {
+    flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    gap: 6,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    ...shadow,
   },
-  rowDate: { fontSize: 15, color: colors.text },
-  rowRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  rowFat: { fontSize: 12, color: colors.textMuted },
-  rowDiff: { fontSize: 13, minWidth: 44, textAlign: 'right' },
-  rowWeight: { fontSize: 16, fontWeight: '600', color: colors.text, minWidth: 68, textAlign: 'right' },
+  actionLabel: { fontSize: 11, fontWeight: '600', color: colors.textMuted },
+
+  coachCard: { backgroundColor: colors.accentSoft, borderColor: '#cfdefb' },
+  coachRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  coachTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
+  coachBody: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
 });

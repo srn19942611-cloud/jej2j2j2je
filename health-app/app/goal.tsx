@@ -1,19 +1,20 @@
 import { useCallback, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert, Pressable } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-import { Card } from '../../src/components/Card';
-import { Button, Field, Stat } from '../../src/components/ui';
-import { colors, radius, spacing } from '../../src/theme';
-import { addDays, formatFullDate, todayISO, type ISODate } from '../../src/lib/date';
-import { openDatePicker } from '../../src/lib/datePicker';
-import { fmt, fmtSigned, parseDecimal } from '../../src/lib/format';
-import { planFromGoal, summarize, type Point } from '../../src/lib/stats';
-import { getLatestWeight, listWeights } from '../../src/db/weight';
-import { clearGoal, getGoal, saveGoal, type WeightGoal } from '../../src/db/goal';
+import { Card } from '../src/components/Card';
+import { Button, Field, Note, ProgressBar, Stat } from '../src/components/ui';
+import { colors, radius, spacing } from '../src/theme';
+import { addDays, formatFullDate, todayISO, type ISODate } from '../src/lib/date';
+import { openDatePicker } from '../src/lib/datePicker';
+import { fmt, fmtSigned, parseDecimal } from '../src/lib/format';
+import { planFromGoal, summarize, type Point } from '../src/lib/stats';
+import { getLatestWeight, listWeights } from '../src/db/weight';
+import { clearGoal, getGoal, saveGoal, type WeightGoal } from '../src/db/goal';
 
 export default function GoalScreen() {
+  const router = useRouter();
   const [goal, setGoal] = useState<WeightGoal | null>(null);
   const [points, setPoints] = useState<Point[]>([]);
   const [editing, setEditing] = useState(false);
@@ -45,13 +46,6 @@ export default function GoalScreen() {
     }, [reload]),
   );
 
-  const pickDate = () =>
-    openDatePicker({
-      value: targetDate ?? addDays(todayISO(), 84),
-      minimumDate: addDays(todayISO(), 7),
-      onPick: setTargetDate,
-    });
-
   const save = async () => {
     const start = parseDecimal(startKg);
     const target = parseDecimal(targetKg);
@@ -63,13 +57,12 @@ export default function GoalScreen() {
       Alert.alert('Ugyldig målvægt', 'Skriv målvægten i kg, f.eks. 82,0.');
       return;
     }
-    const next: WeightGoal = {
+    await saveGoal({
       startDate: goal?.startDate ?? todayISO(),
       startWeightKg: Math.round(start * 10) / 10,
       targetWeightKg: Math.round(target * 10) / 10,
       targetDate,
-    };
-    await saveGoal(next);
+    });
     await reload();
   };
 
@@ -89,7 +82,6 @@ export default function GoalScreen() {
 
   const summary = summarize(points, goal);
 
-  // Live-forhåndsvisning mens man taster, så tallene kan justeres inden man gemmer.
   const draft: WeightGoal | null = (() => {
     const s = parseDecimal(startKg);
     const t = parseDecimal(targetKg);
@@ -106,14 +98,21 @@ export default function GoalScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       {goal && !editing ? (
-        <Card title="Mit mål">
+        <Card title="Mit mål" index={0}>
           <View style={styles.statRow}>
             <Stat label="Start" value={`${fmt(goal.startWeightKg)} kg`} />
             <Stat label="Nu" value={summary.latestKg == null ? '–' : `${fmt(summary.latestKg)} kg`} />
             <Stat label="Mål" value={`${fmt(goal.targetWeightKg)} kg`} />
           </View>
 
-          <ProgressBar value={summary.progress} />
+          <View style={{ marginTop: spacing.md }}>
+            <ProgressBar value={summary.progress ?? 0} />
+            <Text style={styles.pct}>
+              {summary.progress == null
+                ? 'Ingen målinger endnu'
+                : `${Math.round(summary.progress * 100)} % af vejen`}
+            </Text>
+          </View>
 
           <View style={[styles.statRow, { marginTop: spacing.md }]}>
             <Stat
@@ -143,16 +142,19 @@ export default function GoalScreen() {
         <Card
           title={goal ? 'Redigér mål' : 'Sæt et mål'}
           subtitle="Nuværende vægt, målvægt og hvornår du gerne vil være der."
+          index={0}
         >
           <Field
-            label="Nuværende vægt (kg)"
+            label="Nuværende vægt"
+            suffix="kg"
             value={startKg}
             onChangeText={setStartKg}
             keyboardType="decimal-pad"
             placeholder="92,0"
           />
           <Field
-            label="Målvægt (kg)"
+            label="Målvægt"
+            suffix="kg"
             value={targetKg}
             onChangeText={setTargetKg}
             keyboardType="decimal-pad"
@@ -161,7 +163,16 @@ export default function GoalScreen() {
 
           <Text style={styles.label}>Ønsket slutdato</Text>
           <View style={styles.dateRow}>
-            <Pressable style={styles.dateButton} onPress={pickDate}>
+            <Pressable
+              style={styles.dateButton}
+              onPress={() =>
+                openDatePicker({
+                  value: targetDate ?? addDays(todayISO(), 84),
+                  minimumDate: addDays(todayISO(), 7),
+                  onPick: setTargetDate,
+                })
+              }
+            >
               <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
               <Text style={styles.dateText}>
                 {targetDate ? formatFullDate(targetDate) : 'Ingen frist'}
@@ -174,10 +185,22 @@ export default function GoalScreen() {
             ) : null}
           </View>
 
-          {plan ? <PlanNote plan={plan} /> : null}
+          {plan ? (
+            <View style={{ marginTop: spacing.md }}>
+              <Note tone={plan.realistic ? 'good' : 'warn'}>
+                {plan.neededWeeklyKg != null
+                  ? `Det svarer til ${fmt(Math.abs(plan.neededWeeklyKg), 2)} kg om ugen. Sikker øvre grænse er ca. ${fmt(plan.safeMaxWeeklyKg, 2)} kg/uge.${
+                      plan.realistic
+                        ? ''
+                        : ` Fristen er stram — med et forsvarligt tempo tager målet omkring ${plan.suggestedWeeks} uger.`
+                    }`
+                  : 'Uden frist regner appen ikke et ugentligt tempo — den følger bare din trend.'}
+              </Note>
+            </View>
+          ) : null}
 
           <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
-            <Button title="Gem mål" onPress={save} />
+            <Button title="Gem mål" onPress={() => void save()} />
             {goal ? (
               <Button title="Fortryd" variant="secondary" onPress={() => setEditing(false)} />
             ) : null}
@@ -185,68 +208,34 @@ export default function GoalScreen() {
         </Card>
       ) : null}
 
-      <Card title="Sådan regnes tallene">
+      <Card title="Sådan regnes tallene" index={1}>
         <Text style={styles.body}>
-          Et sikkert vægttab ligger normalt på ca. 0,5–1 % af kropsvægten om ugen. Appen
-          bruger 1 % som øvre grænse og siger til, hvis din frist kræver mere.
+          Et sikkert vægttab ligger normalt på ca. 0,5–1 % af kropsvægten om ugen. Appen bruger
+          1 % som øvre grænse og siger til, hvis din frist kræver mere.
         </Text>
         <Text style={[styles.body, { marginTop: spacing.sm }]}>
-          Fremskridt og trend regnes udelukkende på de målinger, du selv har logget —
-          appen gætter ikke tal, der ikke findes.
+          Kaloriemålet regnes ud fra dit mål og dine egne tal — se Indstillinger for profilen, der
+          skal til.
         </Text>
+        <View style={{ marginTop: spacing.md }}>
+          <Button
+            title="Åbn indstillinger"
+            variant="ghost"
+            onPress={() => router.push('/settings')}
+          />
+        </View>
       </Card>
     </ScrollView>
   );
 }
 
-function PlanNote({ plan }: { plan: ReturnType<typeof planFromGoal> }) {
-  const tone = plan.realistic ? colors.good : colors.warn;
-  return (
-    <View style={[styles.note, { borderLeftColor: tone }]}>
-      {plan.neededWeeklyKg != null ? (
-        <Text style={styles.noteText}>
-          Det svarer til {fmt(Math.abs(plan.neededWeeklyKg), 2)} kg om ugen. Sikker øvre
-          grænse er ca. {fmt(plan.safeMaxWeeklyKg, 2)} kg/uge.
-        </Text>
-      ) : (
-        <Text style={styles.noteText}>
-          Uden frist regner appen ikke et ugentligt tempo — den følger bare din trend.
-        </Text>
-      )}
-      {!plan.realistic ? (
-        <Text style={[styles.noteText, { marginTop: 6, color: colors.warn }]}>
-          Fristen er stram. Med ca. {fmt(plan.safeMaxWeeklyKg, 2)} kg/uge tager målet omkring{' '}
-          {plan.suggestedWeeks} uger.
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
-function ProgressBar({ value }: { value: number | null }) {
-  const pct = value == null ? 0 : Math.round(value * 100);
-  return (
-    <View style={{ marginTop: spacing.md }}>
-      <View style={styles.track}>
-        <View style={[styles.fill, { width: `${pct}%` }]} />
-      </View>
-      <Text style={styles.pct}>{value == null ? 'Ingen målinger endnu' : `${pct} % af vejen`}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
   statRow: { flexDirection: 'row', gap: spacing.md },
   meta: { fontSize: 12, color: colors.textMuted, marginTop: spacing.md },
   body: { fontSize: 13, color: colors.text, lineHeight: 19 },
-  label: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textMuted,
-    marginBottom: spacing.xs,
-  },
+  label: { fontSize: 12, fontWeight: '700', color: colors.textMuted, marginBottom: spacing.xs },
   dateRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
   dateButton: {
     flex: 1,
@@ -254,32 +243,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 11,
+    paddingVertical: 12,
     borderRadius: radius.md,
     backgroundColor: colors.accentSoft,
   },
-  dateText: { fontSize: 15, fontWeight: '600', color: colors.text },
+  dateText: { fontSize: 15, fontWeight: '700', color: colors.text },
   clearDate: {
     paddingHorizontal: spacing.md,
-    paddingVertical: 11,
+    paddingVertical: 12,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
   clearDateText: { fontSize: 14, color: colors.textMuted },
-  note: {
-    marginTop: spacing.md,
-    borderLeftWidth: 3,
-    paddingLeft: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  noteText: { fontSize: 13, color: colors.text, lineHeight: 19 },
-  track: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.accentSoft,
-    overflow: 'hidden',
-  },
-  fill: { height: 8, borderRadius: 4, backgroundColor: colors.accent },
-  pct: { fontSize: 12, color: colors.textMuted, marginTop: 6 },
+  pct: { fontSize: 12, color: colors.textMuted, marginTop: 7 },
 });

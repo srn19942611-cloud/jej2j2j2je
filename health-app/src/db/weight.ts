@@ -99,3 +99,22 @@ export async function countWeights(): Promise<number> {
   );
   return row?.n ?? 0;
 }
+
+/** Målinger, du selv har logget, som endnu ikke er sendt til Health Connect. */
+export async function listUnsyncedWeights(): Promise<WeightEntry[]> {
+  const db = await getDb();
+  return db.getAllAsync<WeightEntry>(
+    "SELECT * FROM weight_entries WHERE source = 'manual' AND synced_to_hc = 0 ORDER BY date ASC",
+  );
+}
+
+export async function markWeightSynced(
+  date: ISODate,
+  hcRecordId: string | null,
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'UPDATE weight_entries SET synced_to_hc = 1, hc_record_id = ? WHERE date = ?',
+    [hcRecordId, date],
+  );
+}

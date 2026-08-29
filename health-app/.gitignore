@@ -42,3 +42,7 @@ yarn-error.*
 
 # hemmeligheder (API-nøgler til senere faser)
 .env
+
+# testbyg
+.test-build-*
+dist-web/

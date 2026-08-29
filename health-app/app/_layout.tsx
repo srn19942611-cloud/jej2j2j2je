@@ -36,7 +36,23 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.bg },
+          headerStyle: { backgroundColor: colors.bg },
+          headerShadowVisible: false,
+          headerTintColor: colors.text,
+          headerTitleStyle: { fontWeight: '700' },
+        }}
+      >
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="settings" options={{ headerShown: true, title: 'Indstillinger' }} />
+        <Stack.Screen name="goal" options={{ headerShown: true, title: 'Mit mål' }} />
+        <Stack.Screen name="workout" options={{ headerShown: true, title: 'Træningspas' }} />
+        <Stack.Screen name="catalog" options={{ headerShown: true, title: 'Tilbudsaviser' }} />
+        <Stack.Screen name="mealplan" options={{ headerShown: true, title: 'Madplan' }} />
+      </Stack>
     </SafeAreaProvider>
   );
 }
