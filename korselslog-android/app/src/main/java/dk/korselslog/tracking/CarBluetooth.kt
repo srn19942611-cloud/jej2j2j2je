@@ -3,13 +3,15 @@ package dk.korselslog.tracking
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /** A paired Bluetooth device, as the settings screen needs to show it. */
 data class PairedDevice(
@@ -37,7 +39,7 @@ object CarBluetooth {
             ) == PackageManager.PERMISSION_GRANTED
 
     private fun adapter(context: Context): BluetoothAdapter? =
-        (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+        (context.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager)?.adapter
 
     /**
      * Paired devices, with a guess at which ones are cars so the user does not
@@ -60,28 +62,69 @@ object CarBluetooth {
     }
 
     /**
-     * Is one of the user's car devices connected right now? Used on boot and on
-     * app start, so a drive already under way is not missed.
+     * Is one of the user's car devices connected right now? Used on boot and
+     * when tracking is switched on, so a drive already under way is not missed.
+     *
+     * Asynchronous because the only API that names the connected devices for
+     * the A2DP and HEADSET profiles is the service proxy, which has to bind
+     * first. (BluetoothManager.getConnectedDevices looks like the easy answer
+     * but only supports the GATT profiles, and throws for these two.)
+     * [onResult] is always called exactly once, on the main thread.
      */
-    fun connectedCarDevice(context: Context, prefs: TrackingPrefs): String? {
-        if (!hasPermission(context)) return null
-        val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-            ?: return null
-        return try {
-            // A2DP (stereo audio) and HEADSET (handsfree) are what car kits use.
-            listOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET)
-                .asSequence()
-                .flatMap { profile -> manager.getConnectedDevices(profile).asSequence() }
-                .map { it.address }
-                .firstOrNull { prefs.isCarDevice(it) }
-        } catch (e: SecurityException) {
-            Log.w(TAG, "No permission to read connection state", e)
-            null
-        } catch (e: Exception) {
-            // getConnectedDevices throws IllegalArgumentException for profiles
-            // the device does not support.
-            Log.w(TAG, "Could not read connected devices", e)
-            null
+    fun findConnectedCarDevice(
+        context: Context,
+        prefs: TrackingPrefs,
+        onResult: (String?) -> Unit,
+    ) {
+        val adapter = adapter(context)
+        if (!hasPermission(context) || adapter == null || !adapter.isEnabled) {
+            onResult(null)
+            return
+        }
+
+        val profiles = listOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET)
+        val outstanding = AtomicInteger(profiles.size)
+        val found = AtomicReference<String?>(null)
+
+        fun settle() {
+            if (outstanding.decrementAndGet() == 0) onResult(found.get())
+        }
+
+        profiles.forEach { profile ->
+            // A proxy reports connect and disconnect separately, and either can
+            // arrive more than once; only the first counts towards the tally.
+            val reported = AtomicBoolean(false)
+
+            val listener = object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(which: Int, proxy: BluetoothProfile) {
+                    try {
+                        proxy.connectedDevices
+                            .firstOrNull { prefs.isCarDevice(it.address) }
+                            ?.let { found.compareAndSet(null, it.address) }
+                    } catch (e: SecurityException) {
+                        Log.w(TAG, "No permission to read connected devices", e)
+                    } finally {
+                        try {
+                            adapter.closeProfileProxy(which, proxy)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Could not close profile proxy", e)
+                        }
+                        if (reported.compareAndSet(false, true)) settle()
+                    }
+                }
+
+                override fun onServiceDisconnected(which: Int) {
+                    if (reported.compareAndSet(false, true)) settle()
+                }
+            }
+
+            val requested = try {
+                adapter.getProfileProxy(context, listener, profile)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not request profile proxy for $profile", e)
+                false
+            }
+            if (!requested && reported.compareAndSet(false, true)) settle()
         }
     }
 

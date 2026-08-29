@@ -126,8 +126,8 @@ class MainActivity : ComponentActivity() {
      */
     private fun armTracking() {
         recognition.register()
-        if (CarBluetooth.connectedCarDevice(this, prefs) != null) {
-            TripTrackingService.start(this)
+        CarBluetooth.findConnectedCarDevice(this, prefs) { address ->
+            if (address != null) TripTrackingService.start(this)
         }
     }
 

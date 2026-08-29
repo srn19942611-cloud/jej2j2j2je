@@ -18,8 +18,15 @@ class BootReceiver : BroadcastReceiver() {
 
         // A reboot or an app update mid-drive would otherwise lose the rest of
         // the trip: if the car's Bluetooth is already connected, we are driving.
-        if (CarBluetooth.connectedCarDevice(context, prefs) != null) {
-            TripTrackingService.start(context)
+        // Binding the Bluetooth profile proxy outlives onReceive, so hold the
+        // broadcast open until the answer arrives.
+        val pending = goAsync()
+        CarBluetooth.findConnectedCarDevice(context, prefs) { address ->
+            try {
+                if (address != null) TripTrackingService.start(context)
+            } finally {
+                pending.finish()
+            }
         }
     }
 }
