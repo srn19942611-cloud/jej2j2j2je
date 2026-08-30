@@ -133,6 +133,66 @@ fun SettingsScreen(
         }
 
         item {
+            SectionCard("Regneark der opdateres automatisk") {
+                Text(
+                    "Vælg én gang hvor regnearket skal ligge - Google Drev, " +
+                        "OneDrive, Dropbox eller telefonen. Derefter overskrives " +
+                        "den samme fil efter hver tur, så linket bliver ved med " +
+                        "at virke.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+                Text(
+                    "Fanen \"Måneder\" viser privat, erhverv og pendling pr. " +
+                        "måned med fradraget efter rubrik 51. Fanen \"Ture\" " +
+                        "viser alle ture med mellemstop og samlet distance.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+
+                if (spreadsheetName.isBlank()) {
+                    Button(
+                        onClick = onChooseSpreadsheet,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    ) { Text("Vælg placering for regnearket") }
+                } else {
+                    LabelValueRow("Fil", spreadsheetName)
+                    LabelValueRow(
+                        "Sidst opdateret",
+                        if (spreadsheetLastSyncMs > 0L) {
+                            java.text.SimpleDateFormat("dd-MM-yyyy HH:mm", java.util.Locale("da", "DK"))
+                                .format(java.util.Date(spreadsheetLastSyncMs))
+                        } else {
+                            "Ikke endnu"
+                        },
+                    )
+                    if (spreadsheetError.isNotBlank()) {
+                        Text(
+                            spreadsheetError,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(onClick = onSyncSpreadsheetNow, modifier = Modifier.weight(1f)) {
+                            Text("Opdatér nu")
+                        }
+                        OutlinedButton(onClick = onChooseSpreadsheet, modifier = Modifier.weight(1f)) {
+                            Text("Skift fil")
+                        }
+                    }
+                    TextButton(
+                        onClick = onForgetSpreadsheet,
+                        modifier = Modifier.padding(top = 4.dp),
+                    ) { Text("Slå automatisk opdatering fra") }
+                }
+            }
+        }
+
+        item {
             SectionCard("Automatisk registrering") {
                 Row(
                     Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -244,66 +304,6 @@ fun SettingsScreen(
         }
 
         item {
-            SectionCard("Regneark der opdateres automatisk") {
-                Text(
-                    "Vælg én gang hvor regnearket skal ligge - Google Drev, " +
-                        "OneDrive, Dropbox eller telefonen. Derefter overskrives " +
-                        "den samme fil efter hver tur, så linket bliver ved med " +
-                        "at virke.",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(vertical = 8.dp),
-                )
-                Text(
-                    "Fanen \"Måneder\" viser privat, erhverv og pendling pr. " +
-                        "måned med fradraget efter rubrik 51. Fanen \"Ture\" " +
-                        "viser alle ture med mellemstop og samlet distance.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-
-                if (spreadsheetName.isBlank()) {
-                    Button(
-                        onClick = onChooseSpreadsheet,
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                    ) { Text("Vælg placering for regnearket") }
-                } else {
-                    LabelValueRow("Fil", spreadsheetName)
-                    LabelValueRow(
-                        "Sidst opdateret",
-                        if (spreadsheetLastSyncMs > 0L) {
-                            java.text.SimpleDateFormat("dd-MM-yyyy HH:mm", java.util.Locale("da", "DK"))
-                                .format(java.util.Date(spreadsheetLastSyncMs))
-                        } else {
-                            "Ikke endnu"
-                        },
-                    )
-                    if (spreadsheetError.isNotBlank()) {
-                        Text(
-                            spreadsheetError,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
-                    }
-                    Row(
-                        Modifier.fillMaxWidth().padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Button(onClick = onSyncSpreadsheetNow, modifier = Modifier.weight(1f)) {
-                            Text("Opdatér nu")
-                        }
-                        OutlinedButton(onClick = onChooseSpreadsheet, modifier = Modifier.weight(1f)) {
-                            Text("Skift fil")
-                        }
-                    }
-                    TextButton(
-                        onClick = onForgetSpreadsheet,
-                        modifier = Modifier.padding(top = 4.dp),
-                    ) { Text("Slå automatisk opdatering fra") }
-                }
-            }
-        }
-
-        item {
             Text(
                 "Satser pr. skatteår",
                 style = MaterialTheme.typography.titleMedium,
@@ -398,6 +398,18 @@ fun SettingsScreen(
                 onClick = { viewModel.reclassifyAll() },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Klassificér ure-rettede ture igen") }
+        }
+
+        item {
+            // Which build is on the phone. Without this, "is the new feature in
+            // there?" can only be answered by guessing from a download link.
+            Text(
+                "Version ${dk.korselslog.BuildConfig.VERSION_NAME} " +
+                    "(build ${dk.korselslog.BuildConfig.BUILD_NUMBER}, " +
+                    "${dk.korselslog.BuildConfig.GIT_SHA})",
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
+            )
         }
     }
 

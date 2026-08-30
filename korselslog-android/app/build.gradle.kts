@@ -16,6 +16,13 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Stamped into the app so "which build am I actually running?" is
+        // answerable from the phone, without guessing from a download link.
+        val gitSha = providers.environmentVariable("GITHUB_SHA").orNull?.take(7) ?: "lokal"
+        val buildNumber = providers.environmentVariable("GITHUB_RUN_NUMBER").orNull ?: "dev"
+        buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
+        buildConfigField("String", "BUILD_NUMBER", "\"$buildNumber\"")
     }
 
     buildTypes {
@@ -41,6 +48,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"

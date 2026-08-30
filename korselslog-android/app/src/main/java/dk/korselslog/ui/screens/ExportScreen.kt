@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,7 +33,14 @@ import java.time.LocalDate
 import kotlinx.coroutines.launch
 
 @Composable
-fun ExportScreen(viewModel: ExportViewModel, modifier: Modifier = Modifier) {
+fun ExportScreen(
+    viewModel: ExportViewModel,
+    spreadsheetConfigured: Boolean,
+    spreadsheetName: String,
+    onOpenSpreadsheetSettings: () -> Unit,
+    onShareWorkbook: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var year by remember { mutableStateOf(LocalDate.now().year) }
@@ -66,6 +74,39 @@ fun ExportScreen(viewModel: ExportViewModel, modifier: Modifier = Modifier) {
                     selected = year == candidate,
                     onClick = { year = candidate },
                     label = { Text(candidate.toString()) },
+                )
+            }
+        }
+
+        // The Excel workbook is what most people come to this screen for, so it
+        // goes first rather than being buried in Settings.
+        SectionCard("Excel-regneark") {
+            Text(
+                if (spreadsheetConfigured) {
+                    "Opdateres automatisk efter hver tur i \"$spreadsheetName\". " +
+                        "Fanen \"Måneder\" viser privat, erhverv og pendling pr. " +
+                        "måned med fradraget efter rubrik 51; fanen \"Ture\" viser " +
+                        "alle ture med mellemstop."
+                } else {
+                    "To faner: \"Måneder\" med privat, erhverv og pendling pr. " +
+                        "måned inkl. fradrag efter rubrik 51, og \"Ture\" med alle " +
+                        "ture, mellemstop og samlet distance. Vælg en placering, " +
+                        "så opdateres den samme fil automatisk efter hver tur."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+            Button(
+                onClick = { onShareWorkbook(year) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Del regneark for $year") }
+            OutlinedButton(
+                onClick = onOpenSpreadsheetSettings,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                Text(
+                    if (spreadsheetConfigured) "Skift placering for automatisk opdatering"
+                    else "Vælg placering for automatisk opdatering"
                 )
             }
         }

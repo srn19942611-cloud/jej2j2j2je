@@ -46,6 +46,8 @@ import dk.korselslog.sync.SpreadsheetDestination
 import dk.korselslog.sync.SpreadsheetSync
 import dk.korselslog.sync.SpreadsheetSyncWorker
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import dk.korselslog.sync.WorkbookExport
 import kotlinx.coroutines.launch
 import androidx.lifecycle.lifecycleScope
 import dk.korselslog.tracking.PairedDevice
@@ -163,6 +165,7 @@ class MainActivity : ComponentActivity() {
                         SpreadsheetSyncWorker.cancelPeriodic(this)
                         spreadsheetRevision.intValue++
                     },
+                    onShareWorkbook = { year -> shareWorkbook(year) },
                     onRequestBatteryExemption = {
                         try {
                             startActivity(BatteryOptimisation.requestExemption(this))
@@ -184,6 +187,44 @@ class MainActivity : ComponentActivity() {
                     if (cursor.moveToFirst()) cursor.getString(0) else null
                 }
         }.getOrNull()
+
+    /**
+     * Builds the workbook and hands it to the share sheet. The one-off escape
+     * hatch for when automatic syncing is not set up, or the destination is
+     * somewhere the file picker will not write to.
+     */
+    private fun shareWorkbook(year: Int) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val bytes = runCatching { WorkbookExport(applicationContext).build(year) }.getOrNull()
+            withContext(Dispatchers.Main) {
+                if (bytes == null) {
+                    android.widget.Toast.makeText(
+                        this@MainActivity,
+                        "Kunne ikke bygge regnearket.",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                    return@withContext
+                }
+                runCatching {
+                    val uri = dk.korselslog.export.ExportFiles.writeBytes(
+                        this@MainActivity,
+                        SpreadsheetDestination.suggestedFileName(year),
+                        bytes,
+                    )
+                    startActivity(
+                        Intent.createChooser(
+                            dk.korselslog.export.ExportFiles.shareIntent(
+                                uri,
+                                SpreadsheetDestination.MIME_XLSX,
+                                "Kørselslog $year",
+                            ),
+                            "Del regneark",
+                        )
+                    )
+                }
+            }
+        }
+    }
 
     private fun requestPermissions() {
         if (!Permissions.hasForeground(this)) {
@@ -240,6 +281,7 @@ private fun KoerselslogRoot(
     onChooseSpreadsheet: () -> Unit,
     onSyncSpreadsheetNow: () -> Unit,
     onForgetSpreadsheet: () -> Unit,
+    onShareWorkbook: (Int) -> Unit,
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
@@ -322,7 +364,13 @@ private fun KoerselslogRoot(
             }
             composable(Dest.Export.route) {
                 val vm: ExportViewModel = viewModel()
-                ExportScreen(viewModel = vm)
+                ExportScreen(
+                    viewModel = vm,
+                    spreadsheetConfigured = remember(spreadsheetRevision) { spreadsheet.isConfigured },
+                    spreadsheetName = remember(spreadsheetRevision) { spreadsheet.displayName },
+                    onOpenSpreadsheetSettings = onChooseSpreadsheet,
+                    onShareWorkbook = onShareWorkbook,
+                )
             }
             composable(Dest.Settings.route) {
                 val vm: SettingsViewModel = viewModel()

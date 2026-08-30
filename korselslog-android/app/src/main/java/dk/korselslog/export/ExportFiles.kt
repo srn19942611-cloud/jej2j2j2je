@@ -21,6 +21,14 @@ object ExportFiles {
         return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     }
 
+    /** Same as [write], for content that is already bytes rather than text. */
+    fun writeBytes(context: Context, fileName: String, content: ByteArray): Uri {
+        val dir = File(context.cacheDir, "exports").apply { mkdirs() }
+        val file = File(dir, fileName)
+        file.writeBytes(content)
+        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    }
+
     fun shareIntent(uri: Uri, mimeType: String, subject: String): Intent =
         Intent(Intent.ACTION_SEND).apply {
             type = mimeType
