@@ -44,16 +44,25 @@ kræver en ny `eas build`.
 
 ### Byg en færdig APK
 
-En APK, du bare kan installere og bruge — uden dev-server:
+APK'en bygges automatisk af GitHub Actions. Hver gang der skubbes ændringer
+til `health-app/`, kører workflowet `.github/workflows/build-apk.yml` og
+lægger en installerbar `.apk` på repoets **Releases**-side.
 
-```bash
-eas build --profile preview --platform android
-```
+Du kan også starte et build i hånden under fanen **Actions → Byg APK →
+Run workflow**.
 
-EAS bygger i skyen og giver dig et link til `.apk`-filen, når den er klar.
+**Sådan installerer du den:** hent `.apk`-filen fra Releases ned på
+telefonen, åbn den, og tillad installation fra ukendte kilder, hvis Android
+spørger. Appen kræver Android 8.0 (API 26) eller nyere.
 
-Vil du bygge lokalt i stedet — uden EAS-konto — kræver det Android SDK
-(Android Studio) og JDK 17+ på maskinen:
+APK'en er en `release`-build: JavaScript'et er bundtet ind, så appen kører
+alene uden en dev-server. Den er signeret med det keystore, `prebuild`
+genererer — fint til at installere selv, men ikke til Google Play, som
+kræver din egen nøgle.
+
+#### Bygge den lokalt i stedet
+
+Kræver Android Studio (SDK + NDK) og JDK 17:
 
 ```bash
 npx expo prebuild --platform android   # laver ./android
@@ -62,6 +71,9 @@ cd android && ./gradlew assembleRelease
 
 APK'en lander i `android/app/build/outputs/apk/release/`.
 Mappen `android/` er med i `.gitignore` — den genskabes af `prebuild`.
+
+Har du en Expo-konto, kan du også bruge EAS: `eas build --profile preview
+--platform android`.
 
 ### Se det på computeren
 
