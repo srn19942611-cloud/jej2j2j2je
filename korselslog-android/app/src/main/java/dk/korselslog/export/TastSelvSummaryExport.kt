@@ -32,6 +32,12 @@ object TastSelvSummaryExport {
         val days: Int,
         val kmPerDay: Double,
         val kroner: Double,
+        /**
+         * True when the days behind this line touched more than one workplace.
+         * TastSelv wants one workplace per line, so these need a decision from
+         * the user rather than being typed in as they stand.
+         */
+        val multipleWorkplaces: Boolean = false,
     )
 
     /** Groups the year's qualifying days into TastSelv-shaped lines. */
@@ -45,7 +51,7 @@ object TastSelvSummaryExport {
             .orEmpty()
 
         // Which workplace(s) each day's commute legs touched.
-        val workplacesByDate: Map<LocalDate, String> = trips
+        val workplacesByDate: Map<LocalDate, List<String>> = trips
             .filter { it.classification == Classification.COMMUTE }
             .groupBy { LocalDate.ofEpochDay(it.dateEpochDay) }
             .mapValues { (_, dayTrips) ->
@@ -54,8 +60,7 @@ object TastSelvSummaryExport {
                     .mapNotNull { places[it] }
                     .filter { it.kind == PlaceKind.WORK }
                     .distinctBy { it.id }
-                    .joinToString(" / ") { it.address.ifBlank { it.name } }
-                    .ifBlank { "Ukendt arbejdssted" }
+                    .map { it.address.ifBlank { it.name } }
             }
 
         return result.days
@@ -63,7 +68,8 @@ object TastSelvSummaryExport {
             .groupBy {
                 // Round to whole km: TastSelv takes one distance per line, and
                 // GPS noise should not fragment a period into dozens of lines.
-                workplacesByDate[it.date].orEmpty() to Math.round(it.commuteKm)
+                workplacesByDate[it.date].orEmpty().joinToString(" / ") to
+                    Math.round(it.commuteKm)
             }
             .map { (key, days) ->
                 val (workplace, roundedKm) = key
@@ -75,6 +81,9 @@ object TastSelvSummaryExport {
                     days = days.size,
                     kmPerDay = roundedKm.toDouble(),
                     kroner = days.sumOf { it.kroner },
+                    multipleWorkplaces = days.any {
+                        (workplacesByDate[it.date]?.size ?: 0) > 1
+                    },
                 )
             }
             .sortedWith(compareBy({ it.fromDate }, { it.workplace }))

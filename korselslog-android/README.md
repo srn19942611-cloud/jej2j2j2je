@@ -235,8 +235,18 @@ Two sheets:
 
 | Sheet | Contents |
 |---|---|
+| **Rubrik 51** | Ready to type into TastSelv: one row per entry line, in the order the fields appear there — period, both addresses, day count, km per day — plus a control figure to check TastSelv's own result against, and the assumptions behind it. |
 | **Måneder** | Each month split into private, business and commuting kilometres, with qualifying days and the rubrik 51 deduction that commuting earns. Totals row, the rubrik 51 figure in whole kroner, and the rates used. |
 | **Ture** | Every trip with its intermediate stops (`Butik Aarhus (25 min)`), distance, classification and notes, then total distance driven, the commute/business split, and the year's deduction. |
+
+The Rubrik 51 sheet gets one detail deliberately right: the km column carries
+the **whole daily round trip**, not the deductible remainder. TastSelv applies
+the 24 km floor itself, so entering the already-reduced figure would quietly
+under-claim by 24 km every single day. The instructions on the sheet say so.
+
+Days that touched more than one workplace are flagged rather than merged —
+TastSelv wants one workplace per line, so those need a decision rather than a
+guess.
 
 Befordringsfradrag is a **daily** figure — the 24 km floor and the rate bands
 apply to a whole day's home-work distance — so a trip's share of it is not a

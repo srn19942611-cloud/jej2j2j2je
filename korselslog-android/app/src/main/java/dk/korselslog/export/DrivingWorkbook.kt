@@ -47,10 +47,181 @@ object DrivingWorkbook {
         generatedAt: LocalDate = LocalDate.now(),
     ): ByteArray = Xlsx.build(
         listOf(
+            // First, because it is the thing the whole app exists to produce.
+            taxReturnSheet(year, result, trips, places),
             monthSheet(year, result, trips, generatedAt),
             tripSheet(year, result, trips, stopsByTrip, places, zone),
         )
     )
+
+    // ---- sheet 0: ready to type into TastSelv ---------------------------
+
+    /**
+     * The rubrik 51 entry sheet: one row per line to type into TastSelv's
+     * befordringsfradrag calculator, in the order the fields appear there.
+     *
+     * The critical detail is which distance goes in. TastSelv asks for the
+     * *whole* daily round trip and applies the 24 km floor itself, so entering
+     * the already-reduced deductible distance would quietly under-claim by
+     * 24 km every single day. The column is labelled accordingly and the
+     * instructions say so outright.
+     *
+     * Days are grouped into as few lines as the form will accept - by workplace
+     * and by daily distance rounded to whole kilometres - because TastSelv
+     * expects a handful of periods, not one row per driving day.
+     */
+    internal fun taxReturnSheet(
+        year: Int,
+        result: Box51Result,
+        trips: List<TripEntity>,
+        places: Map<Long, PlaceEntity>,
+    ): Xlsx.Sheet {
+        val rows = mutableListOf<List<Xlsx.Cell>>()
+        val lines = TastSelvSummaryExport.buildLines(result, trips, places)
+
+        rows.row(Xlsx.Cell.Text("RUBRIK 51 - BEFORDRINGSFRADRAG $year", bold = true))
+        rows.row()
+
+        rows.row(Xlsx.Cell.Text("Sådan indtaster du det i TastSelv", bold = true))
+        listOf(
+            "1. Log ind på skat.dk og vælg Årsopgørelsen for $year.",
+            "2. Vælg \"Ret årsopgørelsen\" (eller oplysningsskemaet).",
+            "3. Find rubrik 51, Befordringsfradrag, og åbn beregneren.",
+            "4. Indtast én linje pr. række i tabellen nedenfor.",
+            "5. VIGTIGT: i feltet for antal km skal du skrive dagens SAMLEDE " +
+                "km tur/retur. TastSelv trækker selv de første " +
+                "${result.rates.noDeductionUpToKm.toInt()} km fra - " +
+                "gør du det selv, får du for lidt i fradrag.",
+            "6. Sammenlign til sidst TastSelvs resultat med kontroltallet nederst.",
+        ).forEach { rows.row(Xlsx.Cell.Text(it)) }
+        rows.row()
+
+        rows.row(
+            Xlsx.Cell.Text("Linje", bold = true),
+            Xlsx.Cell.Text("Periode fra", bold = true),
+            Xlsx.Cell.Text("Periode til", bold = true),
+            Xlsx.Cell.Text("Bopælsadresse", bold = true),
+            Xlsx.Cell.Text("Arbejdsadresse", bold = true),
+            Xlsx.Cell.Text("Antal dage", bold = true),
+            Xlsx.Cell.Text("Km pr. dag (tur/retur)", bold = true),
+            Xlsx.Cell.Text("Forventet fradrag kr.", bold = true),
+            Xlsx.Cell.Text("Bemærk", bold = true),
+        )
+
+        lines.forEachIndexed { index, line ->
+            rows.row(
+                Xlsx.Cell.Whole((index + 1).toLong()),
+                Xlsx.Cell.Text(line.fromDate.format(DATE)),
+                Xlsx.Cell.Text(line.toDate.format(DATE)),
+                Xlsx.Cell.Text(line.homeAddress.ifBlank { "(sæt din bopæl i appen)" }),
+                Xlsx.Cell.Text(line.workplace),
+                Xlsx.Cell.Whole(line.days.toLong()),
+                Xlsx.Cell.Number(line.kmPerDay, decimals = 0),
+                Xlsx.Cell.Number(line.kroner, decimals = 2),
+                Xlsx.Cell.Text(
+                    if (line.multipleWorkplaces) {
+                        "Flere arbejdssteder samme dag - TastSelv vil have ét " +
+                            "pr. linje, så del linjen op eller vælg det sted du " +
+                            "kørte længst til"
+                    } else {
+                        ""
+                    }
+                ),
+            )
+        }
+
+        if (lines.isEmpty()) {
+            rows.row(Xlsx.Cell.Text("Ingen fradragsberettigede dage registreret i $year endnu."))
+        }
+
+        rows.row(
+            Xlsx.Cell.Text("I ALT", bold = true),
+            Xlsx.Cell.Empty,
+            Xlsx.Cell.Empty,
+            Xlsx.Cell.Empty,
+            Xlsx.Cell.Empty,
+            Xlsx.Cell.Whole(lines.sumOf { it.days }.toLong()),
+            Xlsx.Cell.Empty,
+            Xlsx.Cell.Number(lines.sumOf { it.kroner }, decimals = 2),
+        )
+        rows.row()
+
+        rows.row(Xlsx.Cell.Text("KONTROLTAL", bold = true))
+        rows.row(
+            Xlsx.Cell.Text("Beløb der bør stå i rubrik 51 (hele kr.)", bold = true),
+            Xlsx.Cell.Whole(result.totalKronerRounded),
+        )
+        rows.row(
+            Xlsx.Cell.Text("Antal dage med fradrag i alt"),
+            Xlsx.Cell.Whole(result.qualifyingDays.toLong()),
+        )
+        rows.row(
+            Xlsx.Cell.Text("Samlet km bopæl-arbejde"),
+            Xlsx.Cell.Number(result.totalCommuteKm),
+        )
+        rows.row(
+            Xlsx.Cell.Text("Heraf fradragsberettigede km (efter bundgrænsen)"),
+            Xlsx.Cell.Number(result.totalDeductibleKm),
+        )
+        rows.row()
+
+        rows.row(Xlsx.Cell.Text("FORUDSÆTNINGER", bold = true))
+        rows.row(
+            Xlsx.Cell.Text("Bundgrænse"),
+            Xlsx.Cell.Text("${result.rates.noDeductionUpToKm.toInt()} km pr. dag giver intet fradrag"),
+        )
+        rows.row(
+            Xlsx.Cell.Text("Sats ${result.rates.noDeductionUpToKm.toInt()}-${result.rates.upperTierStartsAtKm.toInt()} km"),
+            Xlsx.Cell.Text("${result.rates.lowerBandRate} kr/km"),
+        )
+        rows.row(
+            Xlsx.Cell.Text("Sats over ${result.rates.upperTierStartsAtKm.toInt()} km"),
+            Xlsx.Cell.Text("${result.rates.upperBandRate} kr/km"),
+        )
+        if (result.rates.usePeripheralRate && result.rates.peripheralRate != null) {
+            rows.row(
+                Xlsx.Cell.Text("Udkantssats (hele strækningen)"),
+                Xlsx.Cell.Text("${result.rates.peripheralRate} kr/km"),
+            )
+        }
+        rows.row(
+            Xlsx.Cell.Text("Dage markeret uden kørsel (ferie, sygdom, hjemmearbejde)"),
+            Xlsx.Cell.Whole(result.excludedDays.toLong()),
+        )
+        rows.row(
+            Xlsx.Cell.Text("Dage under bundgrænsen (giver intet fradrag)"),
+            Xlsx.Cell.Whole(result.daysBelowThreshold.toLong()),
+        )
+        rows.row()
+
+        if (result.rates.needsVerification) {
+            rows.row(
+                Xlsx.Cell.Text(
+                    "ADVARSEL: satserne for $year er ikke bekræftet mod skat.dk. " +
+                        "Kontrollér dem i appen under Indstillinger, før du indberetter.",
+                    bold = true,
+                )
+            )
+            rows.row()
+        }
+
+        rows.row(
+            Xlsx.Cell.Text(
+                "Erhvervskørsel indgår ikke i rubrik 51 og står ikke i denne fane. " +
+                    "Se fanen \"Ture\" for kørselsregnskabet."
+            )
+        )
+        rows.row(
+            Xlsx.Cell.Text(
+                "Afstandene er målt med GPS i lige linjer mellem punkter og kan " +
+                    "ligge lidt under den faktiske vejlængde. Retter TastSelv " +
+                    "afstanden ud fra adresserne, er det normalt TastSelvs tal, " +
+                    "der skal bruges."
+            )
+        )
+
+        return Xlsx.Sheet("Rubrik 51", rows)
+    }
 
     // ---- sheet 1: months -------------------------------------------------
 
