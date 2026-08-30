@@ -42,6 +42,27 @@ npx expo start --dev-client
 Herefter kan al JavaScript ændres uden at bygge igen — kun nye native pakker
 kræver en ny `eas build`.
 
+### Byg en færdig APK
+
+En APK, du bare kan installere og bruge — uden dev-server:
+
+```bash
+eas build --profile preview --platform android
+```
+
+EAS bygger i skyen og giver dig et link til `.apk`-filen, når den er klar.
+
+Vil du bygge lokalt i stedet — uden EAS-konto — kræver det Android SDK
+(Android Studio) og JDK 17+ på maskinen:
+
+```bash
+npx expo prebuild --platform android   # laver ./android
+cd android && ./gradlew assembleRelease
+```
+
+APK'en lander i `android/app/build/outputs/apk/release/`.
+Mappen `android/` er med i `.gitignore` — den genskabes af `prebuild`.
+
 ### Se det på computeren
 
 ```bash
