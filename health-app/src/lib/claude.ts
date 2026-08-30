@@ -214,6 +214,94 @@ export async function readCatalog(
   return res.parsed_output;
 }
 
+const CATALOG_WEB_SYSTEM = `Du finder og læser danske supermarkeders tilbudsaviser på internettet med web_search og web_fetch.
+
+Sådan gør du:
+1. Søg efter den aktuelt gældende tilbudsavis for den navngivne butik — brug helst søgninger som "<butik> tilbudsavis denne uge" eller "<butik> tilbudsavis pdf".
+2. Foretræk butikkens egen hjemmeside frem for tredjeparts-sider, hvis den ligger i søgeresultaterne.
+3. Hent siden eller PDF'en med web_fetch, og læs varenavne, priser og mængder direkte af det hentede indhold.
+4. Skriv kun tilbud, du faktisk kan læse i det hentede indhold. Find ikke på varer eller priser, og gæt ikke på en avis, du ikke har åbnet.
+5. "pris_dkk" er tilbudsprisen i kroner som tal. Kan prisen ikke læses, sæt null.
+6. "maengde" er den mængde, prisen gælder for, som den står i avisen (fx "500 g", "2 stk.", "1 kg").
+7. "kategori" er én af: kød, fisk, mejeri, grønt, frugt, kolonial, brød, frost, drikkevarer, snacks, andet.
+8. Kan du ikke finde eller hente en gyldig, aktuel avis, så svar alligevel med det skema, der er beskrevet nedenfor — med en tom "tilbud"-liste, "butik" sat til navnet du fik, og "uge" og "gyldig_til" sat til null.
+
+Når du er færdig, svar udelukkende med ét JSON-objekt i en \`\`\`json-kodeblok og intet andet tekst udenfor den, i præcis denne form:
+{
+  "butik": string,
+  "uge": string eller null,
+  "gyldig_til": string eller null (ISO-dato, fx "2026-09-05"),
+  "tilbud": [
+    { "navn": string, "pris_dkk": number eller null, "maengde": string eller null, "enhed": string eller null, "kategori": string }
+  ]
+}`;
+
+function extractJsonBlock(text: string): unknown {
+  const fenced = text.match(/```json\s*([\s\S]*?)```/i) ?? text.match(/```\s*([\s\S]*?)```/);
+  const raw = (fenced ? fenced[1] : text).trim();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error('Svaret indeholdt ikke et gyldigt JSON-skema.');
+  }
+}
+
+/**
+ * Beder Claude selv søge avisen op og hente den — ingen billeder nødvendige.
+ * web_search/web_fetch kører server-side, men et langt hente-forløb kan
+ * stoppe med stop_reason "pause_turn"; det genoptages ved at sende det
+ * pausede svar tilbage, op til nogle få gange.
+ */
+export async function fetchCatalogFromWeb(store: string): Promise<CatalogRead> {
+  const c = await client();
+  const messages: Anthropic.MessageParam[] = [
+    {
+      role: 'user',
+      content: `Find og læs den aktuelt gældende tilbudsavis for "${store}".`,
+    },
+  ];
+
+  let res = await c.messages.create({
+    model: await getModel(),
+    max_tokens: 16000,
+    system: CATALOG_WEB_SYSTEM,
+    tools: [
+      { type: 'web_search_20260209', name: 'web_search', max_uses: 5 },
+      { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 5 },
+    ],
+    messages,
+  });
+
+  for (let i = 0; i < 4 && res.stop_reason === 'pause_turn'; i++) {
+    messages.push({ role: 'assistant', content: res.content });
+    res = await c.messages.create({
+      model: await getModel(),
+      max_tokens: 16000,
+      system: CATALOG_WEB_SYSTEM,
+      tools: [
+        { type: 'web_search_20260209', name: 'web_search', max_uses: 5 },
+        { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 5 },
+      ],
+      messages,
+    });
+  }
+
+  if (res.stop_reason === 'refusal') {
+    throw new Error('Claude kunne ikke gennemføre søgningen. Prøv evt. igen om lidt.');
+  }
+
+  const text = res.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n')
+    .trim();
+  if (!text) throw new Error('Der kom intet svar tilbage fra søgningen.');
+
+  const parsed = CatalogReadSchema.safeParse(extractJsonBlock(text));
+  if (!parsed.success) throw new Error('Svaret kunne ikke tolkes som en tilbudsavis.');
+  return parsed.data;
+}
+
 const PLAN_SYSTEM = `Du laver ugentlige madplaner for én dansk voksen, der er i gang med et vægttab.
 
 Sådan gør du:

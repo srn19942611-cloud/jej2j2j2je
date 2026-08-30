@@ -18,7 +18,12 @@ import { Button, Chip, EmptyState, Note } from '../src/components/ui';
 import { colors, motion, radius, spacing } from '../src/theme';
 import { fmt } from '../src/lib/format';
 import { pickImages, prepareForApi } from '../src/lib/images';
-import { describeError, readCatalog, type CatalogRead } from '../src/lib/claude';
+import {
+  describeError,
+  fetchCatalogFromWeb,
+  readCatalog,
+  type CatalogRead,
+} from '../src/lib/claude';
 import {
   deleteCatalog,
   insertCatalog,
@@ -33,6 +38,7 @@ export default function CatalogScreen() {
   const [store, setStore] = useState<string>('365discount');
   const [images, setImages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [webBusy, setWebBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CatalogRead | null>(null);
 
@@ -69,6 +75,24 @@ export default function CatalogScreen() {
       setError(describeError(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const fetchFromWeb = async () => {
+    setWebBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const found = await fetchCatalogFromWeb(store);
+      if (found.tilbud.length === 0) {
+        setError(`Fandt ingen aktuel tilbudsavis for ${store} lige nu. Prøv at fotografere den i stedet.`);
+      } else {
+        setResult(found);
+      }
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setWebBusy(false);
     }
   };
 
@@ -118,8 +142,8 @@ export default function CatalogScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Card
-        title="Scan en tilbudsavis"
-        subtitle="Fotografér siderne, eller vælg dem fra galleriet. Claude læser varenavne og priser ud."
+        title="Hent en tilbudsavis"
+        subtitle="Lad Claude finde og læse den aktuelle avis fra nettet — eller fotografér siderne selv."
         index={0}
       >
         <Text style={styles.label}>Butik</Text>
@@ -127,6 +151,31 @@ export default function CatalogScreen() {
           {STORES.map((s) => (
             <Chip key={s} label={s} active={store === s} onPress={() => setStore(s)} />
           ))}
+        </View>
+
+        <View style={{ marginTop: spacing.md }}>
+          <Button
+            title={webBusy ? 'Søger og læser avisen…' : `Hent ${store}s tilbudsavis fra nettet`}
+            loading={webBusy}
+            disabled={busy}
+            icon={<Ionicons name="globe-outline" size={18} color="#fff" />}
+            onPress={() => void fetchFromWeb()}
+          />
+        </View>
+
+        {webBusy ? (
+          <View style={styles.busy}>
+            <ActivityIndicator color={colors.accent} />
+            <Text style={styles.busyText}>
+              Claude søger avisen op og læser den — det kan tage et minuts tid.
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>eller upload selv</Text>
+          <View style={styles.dividerLine} />
         </View>
 
         {images.length > 0 ? (
@@ -149,6 +198,7 @@ export default function CatalogScreen() {
           <Button
             title="Fotografér"
             variant="secondary"
+            disabled={webBusy}
             icon={<Ionicons name="camera-outline" size={18} color={colors.text} />}
             onPress={() => void pick('kamera')}
             style={{ flex: 1 }}
@@ -156,6 +206,7 @@ export default function CatalogScreen() {
           <Button
             title="Fra galleri"
             variant="secondary"
+            disabled={webBusy}
             icon={<Ionicons name="images-outline" size={18} color={colors.text} />}
             onPress={() => void pick('galleri')}
             style={{ flex: 1 }}
@@ -167,6 +218,7 @@ export default function CatalogScreen() {
             <Button
               title={busy ? 'Læser avisen…' : `Læs ${images.length} side${images.length === 1 ? '' : 'r'}`}
               loading={busy}
+              disabled={webBusy}
               onPress={() => void analyse()}
             />
           </View>
@@ -296,7 +348,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   busy: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
-  busyText: { fontSize: 13, color: colors.textMuted },
+  busyText: { fontSize: 13, color: colors.textMuted, flex: 1 },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xs,
+  },
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  dividerText: { fontSize: 11, color: colors.textFaint, fontWeight: '600' },
   sectionTitle: {
     fontSize: 12,
     fontWeight: '700',

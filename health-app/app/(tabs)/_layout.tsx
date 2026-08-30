@@ -7,7 +7,12 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../../src/theme';
+
+/** Faneikon + label i sig selv. En fast `height` i tabBarStyle overstyrer
+ * navigationens egen insets-udregning, så gestus-margen skal lægges oveni her. */
+const TAB_BAR_CONTENT_HEIGHT = 56;
 
 /** Ikonet hopper en anelse, når fanen bliver valgt. */
 function TabIcon({
@@ -34,6 +39,7 @@ function TabIcon({
 }
 
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
@@ -47,8 +53,9 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: colors.card,
           borderTopColor: colors.border,
-          height: 62,
+          height: TAB_BAR_CONTENT_HEIGHT + insets.bottom,
           paddingTop: 6,
+          paddingBottom: insets.bottom,
         },
       }}
     >
