@@ -8,6 +8,7 @@ import dk.korselslog.data.DayMarkerEntity
 import dk.korselslog.data.KoerselslogRepository
 import dk.korselslog.data.PlaceEntity
 import dk.korselslog.data.TripEntity
+import dk.korselslog.data.TripStopEntity
 import dk.korselslog.data.toDomain
 import dk.korselslog.domain.Box51Result
 import dk.korselslog.domain.Classification
@@ -88,6 +89,17 @@ class TripsViewModel(app: Application) : RepositoryViewModel(app) {
     val trips: StateFlow<List<TripEntity>> = _filter
         .flatMapLatest { repository.observeTrips(it.from, it.to, it.classification) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _stops = MutableStateFlow<Map<Long, List<TripStopEntity>>>(emptyMap())
+
+    /** Intermediate stops for the trips on screen, so the route is readable. */
+    val stops: StateFlow<Map<Long, List<TripStopEntity>>> = _stops
+
+    init {
+        viewModelScope.launch {
+            trips.collect { _stops.value = repository.stopsByTrip(_filter.value.from, _filter.value.to) }
+        }
+    }
 
     fun setClassificationFilter(classification: Classification?) {
         _filter.value = _filter.value.copy(classification = classification)

@@ -4,6 +4,7 @@ import android.util.Log
 import dk.korselslog.data.KoerselslogRepository
 import dk.korselslog.data.TripEntity
 import dk.korselslog.data.TripPointEntity
+import dk.korselslog.data.TripStopEntity
 import dk.korselslog.domain.GpsPoint
 import dk.korselslog.domain.TrackingConfig
 import dk.korselslog.domain.TripClassifier
@@ -107,6 +108,32 @@ class TripRecorder(
         val known = repository.knownPlaces()
         val suggestion = TripClassifier.classify(
             previous.startLat, previous.startLng, last.latitude, last.longitude, known,
+        )
+
+        // The join is exactly the intermediate stop the user wants to see: the
+        // merge is about to erase the boundary between two legs, so record
+        // where the car actually stood still before it disappears.
+        val dwellMillis = (points.first().timestampMs - previous.endTimeMs).coerceAtLeast(0)
+        val stopPlace = known.firstOrNull {
+            dk.korselslog.domain.Geo.withinRadius(
+                it.latitude, it.longitude,
+                previous.endLat, previous.endLng,
+                it.radiusMeters,
+            )
+        }
+        repository.addStop(
+            TripStopEntity(
+                tripId = previous.id,
+                timestampMs = previous.endTimeMs,
+                dwellMillis = dwellMillis,
+                latitude = previous.endLat,
+                longitude = previous.endLng,
+                address = previous.endAddress.ifBlank {
+                    stopPlace?.name
+                        ?: geocoder?.resolve(previous.endLat, previous.endLng).orEmpty()
+                },
+                placeId = stopPlace?.id,
+            )
         )
 
         repository.updateTripRaw(

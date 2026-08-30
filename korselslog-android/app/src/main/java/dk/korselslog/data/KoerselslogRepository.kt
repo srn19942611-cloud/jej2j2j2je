@@ -50,10 +50,26 @@ class KoerselslogRepository(context: Context) {
 
     suspend fun savePoints(points: List<TripPointEntity>) = trips.insertPoints(points)
 
+    // ---- intermediate stops ----------------------------------------------
+
+    suspend fun addStop(stop: TripStopEntity): Long = trips.insertStop(stop)
+
+    suspend fun stopsFor(tripId: Long): List<TripStopEntity> = trips.stopsFor(tripId)
+
+    suspend fun stopsBetween(from: LocalDate, to: LocalDate): List<TripStopEntity> =
+        trips.stopsBetween(from.toEpochDay(), to.toEpochDay())
+
+    suspend fun deleteStop(id: Long) = trips.deleteStop(id)
+
+    /** Stops for a set of trips, keyed by trip, for list and export rendering. */
+    suspend fun stopsByTrip(from: LocalDate, to: LocalDate): Map<Long, List<TripStopEntity>> =
+        stopsBetween(from, to).groupBy { it.tripId }
+
     suspend fun updateTrip(trip: TripEntity) = trips.update(trip.copy(manuallyEdited = true, needsReview = false))
 
     suspend fun deleteTrip(id: Long) {
         trips.deletePointsFor(id)
+        trips.deleteStopsFor(id)
         trips.deleteById(id)
     }
 
@@ -129,6 +145,7 @@ class KoerselslogRepository(context: Context) {
             )
         )
         trips.repointPoints(sourceId = second.id, targetId = first.id)
+        trips.repointStops(sourceId = second.id, targetId = first.id)
         trips.deleteById(second.id)
         return true
     }

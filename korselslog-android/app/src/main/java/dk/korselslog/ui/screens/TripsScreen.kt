@@ -18,12 +18,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dk.korselslog.data.TripEntity
+import dk.korselslog.data.TripStopEntity
 import dk.korselslog.domain.Classification
 import dk.korselslog.ui.TripsViewModel
 import dk.korselslog.ui.asTime
@@ -40,6 +42,9 @@ fun TripsScreen(
 ) {
     val trips by viewModel.trips.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
+    val stops by viewModel.stops.collectAsStateWithLifecycle()
+    val places by viewModel.places.collectAsStateWithLifecycle()
+    val placeNames = remember(places) { places.associate { it.id to it.name } }
 
     Column(modifier.fillMaxSize()) {
         Row(
@@ -99,14 +104,24 @@ fun TripsScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(trips, key = { it.id }) { trip ->
-                TripRow(trip, onClick = { onOpenTrip(trip.id) })
+                TripRow(
+                    trip = trip,
+                    stops = stops[trip.id].orEmpty(),
+                    placeNames = placeNames,
+                    onClick = { onOpenTrip(trip.id) },
+                )
             }
         }
     }
 }
 
 @Composable
-private fun TripRow(trip: TripEntity, onClick: () -> Unit) {
+private fun TripRow(
+    trip: TripEntity,
+    stops: List<TripStopEntity>,
+    placeNames: Map<Long, String>,
+    onClick: () -> Unit,
+) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(Modifier.padding(12.dp)) {
             Row(
@@ -130,6 +145,17 @@ private fun TripRow(trip: TripEntity, onClick: () -> Unit) {
                 trip.startAddress.ifBlank { "Ukendt startadresse" },
                 style = MaterialTheme.typography.bodySmall,
             )
+            // The chain of stops is the whole point of recording them: without
+            // it a multi-stop day reads as one anonymous blob of kilometres.
+            stops.sortedBy { it.timestampMs }.forEach { stop ->
+                val name = placeNames[stop.placeId] ?: stop.address.ifBlank { "Stop" }
+                val minutes = stop.dwellMillis / 60_000
+                Text(
+                    "→ $name" + if (minutes > 0) " ($minutes min)" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             Text(
                 "→ " + trip.endAddress.ifBlank { "Ukendt slutadresse" },
                 style = MaterialTheme.typography.bodySmall,

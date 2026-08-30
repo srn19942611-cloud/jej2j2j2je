@@ -11,6 +11,7 @@ import dk.korselslog.data.PlaceEntity
 import dk.korselslog.data.TaxYearRatesEntity
 import dk.korselslog.data.TripEntity
 import dk.korselslog.data.TripPointEntity
+import dk.korselslog.data.TripStopEntity
 import dk.korselslog.domain.Classification
 import kotlinx.coroutines.flow.Flow
 
@@ -78,6 +79,36 @@ interface TripDao {
 
     @Query("SELECT * FROM trip_points WHERE tripId = :tripId ORDER BY timestampMs")
     suspend fun pointsFor(tripId: Long): List<TripPointEntity>
+
+    // ---- intermediate stops ----
+
+    @Insert
+    suspend fun insertStop(stop: TripStopEntity): Long
+
+    @Query("SELECT * FROM trip_stops WHERE tripId = :tripId ORDER BY timestampMs")
+    suspend fun stopsFor(tripId: Long): List<TripStopEntity>
+
+    @Query(
+        """
+        SELECT s.* FROM trip_stops s
+        INNER JOIN trips t ON t.id = s.tripId
+        WHERE t.dateEpochDay BETWEEN :fromEpochDay AND :toEpochDay
+        ORDER BY s.timestampMs
+        """
+    )
+    suspend fun stopsBetween(fromEpochDay: Long, toEpochDay: Long): List<TripStopEntity>
+
+    @Query("SELECT * FROM trip_stops WHERE tripId = :tripId ORDER BY timestampMs")
+    fun observeStopsFor(tripId: Long): Flow<List<TripStopEntity>>
+
+    @Query("DELETE FROM trip_stops WHERE id = :id")
+    suspend fun deleteStop(id: Long)
+
+    @Query("DELETE FROM trip_stops WHERE tripId = :tripId")
+    suspend fun deleteStopsFor(tripId: Long)
+
+    @Query("UPDATE trip_stops SET tripId = :targetId WHERE tripId = :sourceId")
+    suspend fun repointStops(sourceId: Long, targetId: Long)
 
     @Query("DELETE FROM trip_points WHERE tripId = :tripId")
     suspend fun deletePointsFor(tripId: Long)

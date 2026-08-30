@@ -42,6 +42,12 @@ import dk.korselslog.tracking.ActivityRecognitionManager
 import dk.korselslog.tracking.BatteryOptimisation
 import dk.korselslog.tracking.CarBluetooth
 import dk.korselslog.tracking.TrackingStatus
+import dk.korselslog.sync.SpreadsheetDestination
+import dk.korselslog.sync.SpreadsheetSync
+import dk.korselslog.sync.SpreadsheetSyncWorker
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 import dk.korselslog.tracking.PairedDevice
 import dk.korselslog.tracking.TrackingPrefs
 import dk.korselslog.tracking.TripTrackingService
@@ -73,6 +79,23 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var prefs: TrackingPrefs
     private lateinit var recognition: ActivityRecognitionManager
+    private lateinit var spreadsheet: SpreadsheetDestination
+
+    /** Bumped whenever the destination changes, to re-read it in Compose. */
+    private val spreadsheetRevision = androidx.compose.runtime.mutableIntStateOf(0)
+
+    private val chooseSpreadsheet = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { activityResult ->
+        val picked = activityResult.data?.data ?: return@registerForActivityResult
+        val name = queryDisplayName(picked)
+            ?: SpreadsheetDestination.suggestedFileName(java.time.LocalDate.now().year)
+        if (spreadsheet.remember(picked, name)) {
+            SpreadsheetSyncWorker.schedulePeriodic(this)
+            SpreadsheetSyncWorker.syncNow(this)
+        }
+        spreadsheetRevision.intValue++
+    }
 
     private val foregroundLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -94,6 +117,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         prefs = TrackingPrefs(this)
         recognition = ActivityRecognitionManager(this)
+        spreadsheet = SpreadsheetDestination(this)
+        if (spreadsheet.isConfigured) SpreadsheetSyncWorker.schedulePeriodic(this)
 
         // A service the system killed while the app was closed comes back the
         // next time the user opens the app, rather than staying silently dead.
@@ -116,6 +141,28 @@ class MainActivity : ComponentActivity() {
                     },
                     trackingEnabled = prefs.autoTrackingEnabled,
                     prefs = prefs,
+                    spreadsheetRevision = spreadsheetRevision.intValue,
+                    spreadsheet = spreadsheet,
+                    onChooseSpreadsheet = {
+                        runCatching {
+                            chooseSpreadsheet.launch(
+                                SpreadsheetDestination.createDocumentIntent(
+                                    java.time.LocalDate.now().year,
+                                )
+                            )
+                        }
+                    },
+                    onSyncSpreadsheetNow = {
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            SpreadsheetSync(applicationContext).sync()
+                            spreadsheetRevision.intValue++
+                        }
+                    },
+                    onForgetSpreadsheet = {
+                        spreadsheet.forget()
+                        SpreadsheetSyncWorker.cancelPeriodic(this)
+                        spreadsheetRevision.intValue++
+                    },
                     onRequestBatteryExemption = {
                         try {
                             startActivity(BatteryOptimisation.requestExemption(this))
@@ -128,6 +175,15 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    /** The user-visible file name behind a SAF document URI. */
+    private fun queryDisplayName(uri: android.net.Uri): String? =
+        runCatching {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+        }.getOrNull()
 
     private fun requestPermissions() {
         if (!Permissions.hasForeground(this)) {
@@ -179,6 +235,11 @@ private fun KoerselslogRoot(
     trackingEnabled: Boolean,
     prefs: TrackingPrefs,
     onRequestBatteryExemption: () -> Unit,
+    spreadsheetRevision: Int,
+    spreadsheet: SpreadsheetDestination,
+    onChooseSpreadsheet: () -> Unit,
+    onSyncSpreadsheetNow: () -> Unit,
+    onForgetSpreadsheet: () -> Unit,
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
@@ -286,6 +347,12 @@ private fun KoerselslogRoot(
                     trackingSnapshot = trackingSnapshot,
                     batteryExempt = batteryExempt,
                     onRequestBatteryExemption = onRequestBatteryExemption,
+                    spreadsheetName = remember(spreadsheetRevision) { spreadsheet.displayName },
+                    spreadsheetLastSyncMs = remember(spreadsheetRevision) { spreadsheet.lastSyncMs },
+                    spreadsheetError = remember(spreadsheetRevision) { spreadsheet.lastError },
+                    onChooseSpreadsheet = onChooseSpreadsheet,
+                    onSyncSpreadsheetNow = onSyncSpreadsheetNow,
+                    onForgetSpreadsheet = onForgetSpreadsheet,
                 )
             }
         }

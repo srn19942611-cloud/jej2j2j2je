@@ -149,7 +149,11 @@ it, trips will go missing.
   starts the clock, never an immediate stop. Traffic lights, level crossings and
   drive-throughs therefore never split a trip.
 - **Merge** — if a new trip starts within 6 minutes and 300 m of where the last one
-  ended, they are glued back together.
+  ended, they are glued back together, **and a stop is recorded at the join**.
+  That last part matters: merging is right for the distance but would otherwise
+  erase where you actually went, turning a `home → store A → store B → home` day
+  into one anonymous blob. The stop keeps the route readable, with how long you
+  stood still, in the trip list and in the spreadsheet.
 - **Discard** — anything under 0,5 km or 90 seconds is dropped as noise.
 
 Every one of those thresholds is a field on `TrackingConfig`.
@@ -218,6 +222,48 @@ separate React kørselsregnskab tool. Field names are English camelCase
 map them to whatever that tool expects.
 
 ---
+
+## The spreadsheet that updates itself
+
+Settings → *Regneark der opdateres automatisk*. Pick a destination once in the
+system file picker — Google Drive, OneDrive, Dropbox, or local storage — and the
+app takes a persistent write grant on that one document. After every trip the
+workbook is regenerated and the **same file is overwritten**, so a link to it
+keeps working instead of turning into a folder of dated copies.
+
+Two sheets:
+
+| Sheet | Contents |
+|---|---|
+| **Måneder** | Each month split into private, business and commuting kilometres, with qualifying days and the rubrik 51 deduction that commuting earns. Totals row, the rubrik 51 figure in whole kroner, and the rates used. |
+| **Ture** | Every trip with its intermediate stops (`Butik Aarhus (25 min)`), distance, classification and notes, then total distance driven, the commute/business split, and the year's deduction. |
+
+Befordringsfradrag is a **daily** figure — the 24 km floor and the rate bands
+apply to a whole day's home-work distance — so a trip's share of it is not a
+real number. The Ture sheet puts the deduction on the day's first row and leaves
+it blank on the rest rather than inventing a split that would not add up.
+
+The file is rewritten in full each time rather than appended to. A year of trips
+is a few hundred rows, and rewriting means the file always matches the database,
+including trips that were later corrected or deleted.
+
+Writing is done by WorkManager, so a failure (offline, provider busy) is retried
+rather than lost, with a 6-hourly sweep as a safety net for edits the per-trip
+trigger did not see.
+
+### On Google Drive specifically
+
+This uses Android's Storage Access Framework, not the Drive API. That means no
+Google Cloud project, no OAuth client, no API key — but it also means the app
+can only write where the picker lets it. Drive's behaviour as a SAF provider has
+varied across versions; if Drive does not appear as a writable destination on
+your phone, save to a local folder or another provider instead. A true Drive API
+integration is possible but needs an OAuth client tied to the app's signing key,
+which has to be created under your own Google account.
+
+The workbook format itself is written by hand (`export/XlsxWriter.kt`) — an xlsx
+is a zip of XML parts, so emitting one directly avoids pulling several megabytes
+of Apache POI into an Android app just to write two tables.
 
 ## Architecture
 

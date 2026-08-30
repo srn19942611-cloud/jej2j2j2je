@@ -28,6 +28,7 @@ import dk.korselslog.data.KoerselslogRepository
 import dk.korselslog.domain.GpsPoint
 import dk.korselslog.domain.TrackingConfig
 import dk.korselslog.domain.TripSegmenter
+import dk.korselslog.sync.SpreadsheetSyncWorker
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.launch
 
@@ -219,6 +220,8 @@ class TripTrackingService : LifecycleService() {
             } finally {
                 savingTrip = false
                 TrackingStatus.tripFinished(km)
+                // The workbook is now out of date; WorkManager owns the retry.
+                SpreadsheetSyncWorker.syncNow(applicationContext)
                 // Back to armed, not stopped: the next drive must be caught too.
                 promote()
             }

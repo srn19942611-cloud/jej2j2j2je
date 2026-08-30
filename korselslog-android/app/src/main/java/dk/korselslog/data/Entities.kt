@@ -55,6 +55,34 @@ data class TripPointEntity(
     val speedMps: Float,
 )
 
+/**
+ * An intermediate stop inside a trip.
+ *
+ * Without these, a day of "home -> store A -> store B -> home" collapses into
+ * an unreadable blob: the merge rules deliberately glue legs back together when
+ * the pause between them is short, which is right for the distance but loses
+ * where you actually went. A stop is recorded at each join, and whenever the
+ * car's Bluetooth disconnects, so the route stays legible.
+ */
+@Entity(
+    tableName = "trip_stops",
+    indices = [Index("tripId"), Index("timestampMs")],
+)
+data class TripStopEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val tripId: Long,
+    /** When the vehicle arrived at this stop. */
+    val timestampMs: Long,
+    /** How long it stood still here before moving on. */
+    val dwellMillis: Long,
+    val latitude: Double,
+    val longitude: Double,
+    val address: String = "",
+    /** Matched saved place, when the stop was at a known location. */
+    val placeId: Long? = null,
+    val note: String = "",
+)
+
 @Entity(tableName = "places")
 data class PlaceEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

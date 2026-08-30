@@ -61,6 +61,12 @@ fun SettingsScreen(
     trackingSnapshot: TrackingSnapshot,
     batteryExempt: Boolean,
     onRequestBatteryExemption: () -> Unit,
+    spreadsheetName: String,
+    spreadsheetLastSyncMs: Long,
+    spreadsheetError: String,
+    onChooseSpreadsheet: () -> Unit,
+    onSyncSpreadsheetNow: () -> Unit,
+    onForgetSpreadsheet: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -233,6 +239,66 @@ fun SettingsScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            SectionCard("Regneark der opdateres automatisk") {
+                Text(
+                    "Vælg én gang hvor regnearket skal ligge - Google Drev, " +
+                        "OneDrive, Dropbox eller telefonen. Derefter overskrives " +
+                        "den samme fil efter hver tur, så linket bliver ved med " +
+                        "at virke.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+                Text(
+                    "Fanen \"Måneder\" viser privat, erhverv og pendling pr. " +
+                        "måned med fradraget efter rubrik 51. Fanen \"Ture\" " +
+                        "viser alle ture med mellemstop og samlet distance.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+
+                if (spreadsheetName.isBlank()) {
+                    Button(
+                        onClick = onChooseSpreadsheet,
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    ) { Text("Vælg placering for regnearket") }
+                } else {
+                    LabelValueRow("Fil", spreadsheetName)
+                    LabelValueRow(
+                        "Sidst opdateret",
+                        if (spreadsheetLastSyncMs > 0L) {
+                            java.text.SimpleDateFormat("dd-MM-yyyy HH:mm", java.util.Locale("da", "DK"))
+                                .format(java.util.Date(spreadsheetLastSyncMs))
+                        } else {
+                            "Ikke endnu"
+                        },
+                    )
+                    if (spreadsheetError.isNotBlank()) {
+                        Text(
+                            spreadsheetError,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(onClick = onSyncSpreadsheetNow, modifier = Modifier.weight(1f)) {
+                            Text("Opdatér nu")
+                        }
+                        OutlinedButton(onClick = onChooseSpreadsheet, modifier = Modifier.weight(1f)) {
+                            Text("Skift fil")
+                        }
+                    }
+                    TextButton(
+                        onClick = onForgetSpreadsheet,
+                        modifier = Modifier.padding(top = 4.dp),
+                    ) { Text("Slå automatisk opdatering fra") }
                 }
             }
         }
