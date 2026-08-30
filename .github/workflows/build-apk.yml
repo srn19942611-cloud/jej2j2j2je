@@ -1,0 +1,94 @@
+name: Byg APK
+
+# Bygger en installerbar APK på GitHubs runnere, som har hele Android SDK'et.
+# Resultatet lægges som en fil på repoets Releases-side.
+on:
+  push:
+    branches: [claude/android-health-tracking-app-kwf0to]
+    paths:
+      - 'health-app/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: health-app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: health-app/package-lock.json
+
+      # React Native 0.86 / AGP 8 bygger på JDK 17.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Installér afhængigheder
+        run: npm ci
+
+        # android/ ligger ikke i git — den genskabes her ud fra app.json.
+      - name: Generér native Android-projekt
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Byg release-APK
+        working-directory: health-app/android
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Navngiv APK'en
+        id: apk
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          SRC=android/app/build/outputs/apk/release/app-release.apk
+          NAME="sundhed-${VERSION}-build${{ github.run_number }}.apk"
+          mkdir -p out && cp "$SRC" "out/$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "path=health-app/out/$NAME" >> "$GITHUB_OUTPUT"
+          echo "tag=apk-v${VERSION}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          ls -lh "out/$NAME"
+
+      # Gemmes også som artifact, så den kan hentes selv hvis release-trinnet fejler.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+
+      - name: Udgiv APK'en som release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > notes.md <<'NOTES'
+          Installerbar APK bygget fra denne commit.
+
+          **Sådan installerer du den:** hent `.apk`-filen nedenfor ned på telefonen,
+          åbn den, og tillad installation fra ukendte kilder, hvis Android spørger.
+
+          Appen kræver Android 8.0 (API 26) eller nyere. Health Connect skal være
+          installeret, for at trin, puls og træning kan synkroniseres.
+          NOTES
+          gh release create "${{ steps.apk.outputs.tag }}" \
+            "out/${{ steps.apk.outputs.name }}" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Sundhed — ${{ steps.apk.outputs.name }}" \
+            --notes-file notes.md
