@@ -235,9 +235,18 @@ Two sheets:
 
 | Sheet | Contents |
 |---|---|
-| **Rubrik 51** | Ready to type into TastSelv: one row per entry line, in the order the fields appear there — period, both addresses, day count, km per day — plus a control figure to check TastSelv's own result against, and the assumptions behind it. |
+| **Rubrik 51** | Ready to type into TastSelv, in the order its calculator asks: home address, workplace address, period, day count, distance per day. Plus a control figure to check TastSelv's own result against, and the assumptions behind it. |
 | **Måneder** | Each month split into private, business and commuting kilometres, with qualifying days and the rubrik 51 deduction that commuting earns. Totals row, the rubrik 51 figure in whole kroner, and the rates used. |
 | **Ture** | Every trip with its intermediate stops (`Butik Aarhus (25 min)`), distance, classification and notes, then total distance driven, the commute/business split, and the year's deduction. |
+
+**There is no paste.** TastSelv's rubrik 51 opens a calculator that is filled in
+one field at a time and then transferred to the årsopgørelse; it has no import
+and no bulk entry. So the sheet is built to be *read while typing* rather than
+pasted: the columns sit in the calculator's own field order, and the distance
+column is named after its field (`Afstand pr. dag`) so it can be matched by
+sight. The sheet says this outright at the top, so the limitation is not a
+surprise halfway through. The only value that genuinely copies across is the
+control total, in its own cell as a bare number.
 
 The Rubrik 51 sheet gets one detail deliberately right: the km column carries
 the **whole daily round trip**, not the deductible remainder. TastSelv applies

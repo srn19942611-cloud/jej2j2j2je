@@ -57,14 +57,20 @@ object DrivingWorkbook {
     // ---- sheet 0: ready to type into TastSelv ---------------------------
 
     /**
-     * The rubrik 51 entry sheet: one row per line to type into TastSelv's
-     * befordringsfradrag calculator, in the order the fields appear there.
+     * The rubrik 51 entry sheet.
      *
-     * The critical detail is which distance goes in. TastSelv asks for the
-     * *whole* daily round trip and applies the 24 km floor itself, so entering
-     * the already-reduced deductible distance would quietly under-claim by
-     * 24 km every single day. The column is labelled accordingly and the
-     * instructions say so outright.
+     * TastSelv has no import or paste for this: rubrik 51 opens a calculator
+     * that is filled in one field at a time - home address, workplace address,
+     * period, number of days, then distance per day - and transferred to the
+     * årsopgørelse at the end. So the columns are ordered to match that form
+     * exactly, and the distance column is named after its field, so a row can
+     * be read left to right while tabbing through the page.
+     *
+     * The critical detail is which distance goes in. TastSelv works out the
+     * distance from the two addresses and applies the 24 km floor itself; the
+     * field only accepts the *whole* daily round trip. Entering the
+     * already-reduced deductible distance would quietly under-claim by 24 km
+     * every single commuting day.
      *
      * Days are grouped into as few lines as the form will accept - by workplace
      * and by daily distance rounded to whole kilometres - because TastSelv
@@ -83,27 +89,44 @@ object DrivingWorkbook {
         rows.row()
 
         rows.row(Xlsx.Cell.Text("Sådan indtaster du det i TastSelv", bold = true))
+        rows.row(
+            Xlsx.Cell.Text(
+                "BEMÆRK: rubrik 51 kan ikke indsættes med copy-paste. TastSelv " +
+                    "åbner en beregner, hvor felterne udfyldes ét ad gangen. " +
+                    "Kolonnerne nedenfor står i samme rækkefølge som felterne " +
+                    "i beregneren, så du kan læse rækken fra venstre mod højre " +
+                    "mens du tabber igennem.",
+                bold = true,
+            )
+        )
         listOf(
-            "1. Log ind på skat.dk og vælg Årsopgørelsen for $year.",
-            "2. Vælg \"Ret årsopgørelsen\" (eller oplysningsskemaet).",
-            "3. Find rubrik 51, Befordringsfradrag, og åbn beregneren.",
-            "4. Indtast én linje pr. række i tabellen nedenfor.",
-            "5. VIGTIGT: i feltet for antal km skal du skrive dagens SAMLEDE " +
-                "km tur/retur. TastSelv trækker selv de første " +
+            "1. Log ind på skat.dk og åbn Årsopgørelsen for $year.",
+            "2. Vælg \"Ret årsopgørelsen\".",
+            "3. Klik på lommeregner-ikonet ud for rubrik 51, Befordringsfradrag.",
+            "4. Udfyld én linje pr. række nedenfor: bopæl, arbejdsadresse, " +
+                "periode, antal dage.",
+            "5. TastSelv beregner selv afstanden ud fra adresserne. Passer den " +
+                "ikke, kan du rette feltet \"Afstand pr. dag\" til tallet i " +
+                "kolonnen af samme navn.",
+            "6. VIGTIGT: afstandsfeltet skal indeholde dagens SAMLEDE km " +
+                "tur/retur. TastSelv trækker selv de første " +
                 "${result.rates.noDeductionUpToKm.toInt()} km fra - " +
                 "gør du det selv, får du for lidt i fradrag.",
-            "6. Sammenlign til sidst TastSelvs resultat med kontroltallet nederst.",
+            "7. Har du flere strækninger, tilføjer du en linje pr. række i tabellen.",
+            "8. Klik \"Overfør til årsopgørelsen\", og sammenlign resultatet " +
+                "med kontroltallet nedenfor.",
         ).forEach { rows.row(Xlsx.Cell.Text(it)) }
         rows.row()
 
+        // Column order mirrors the TastSelv calculator's own field order.
         rows.row(
             Xlsx.Cell.Text("Linje", bold = true),
-            Xlsx.Cell.Text("Periode fra", bold = true),
-            Xlsx.Cell.Text("Periode til", bold = true),
             Xlsx.Cell.Text("Bopælsadresse", bold = true),
             Xlsx.Cell.Text("Arbejdsadresse", bold = true),
+            Xlsx.Cell.Text("Periode fra", bold = true),
+            Xlsx.Cell.Text("Periode til", bold = true),
             Xlsx.Cell.Text("Antal dage", bold = true),
-            Xlsx.Cell.Text("Km pr. dag (tur/retur)", bold = true),
+            Xlsx.Cell.Text("Afstand pr. dag (km, tur/retur)", bold = true),
             Xlsx.Cell.Text("Forventet fradrag kr.", bold = true),
             Xlsx.Cell.Text("Bemærk", bold = true),
         )
@@ -111,10 +134,10 @@ object DrivingWorkbook {
         lines.forEachIndexed { index, line ->
             rows.row(
                 Xlsx.Cell.Whole((index + 1).toLong()),
-                Xlsx.Cell.Text(line.fromDate.format(DATE)),
-                Xlsx.Cell.Text(line.toDate.format(DATE)),
                 Xlsx.Cell.Text(line.homeAddress.ifBlank { "(sæt din bopæl i appen)" }),
                 Xlsx.Cell.Text(line.workplace),
+                Xlsx.Cell.Text(line.fromDate.format(DATE)),
+                Xlsx.Cell.Text(line.toDate.format(DATE)),
                 Xlsx.Cell.Whole(line.days.toLong()),
                 Xlsx.Cell.Number(line.kmPerDay, decimals = 0),
                 Xlsx.Cell.Number(line.kroner, decimals = 2),
@@ -149,6 +172,9 @@ object DrivingWorkbook {
         rows.row(Xlsx.Cell.Text("KONTROLTAL", bold = true))
         rows.row(
             Xlsx.Cell.Text("Beløb der bør stå i rubrik 51 (hele kr.)", bold = true),
+            // A bare number in its own cell: the one value that genuinely can be
+            // copied straight across, when the amount is entered by hand rather
+            // than through the calculator.
             Xlsx.Cell.Whole(result.totalKronerRounded),
         )
         rows.row(

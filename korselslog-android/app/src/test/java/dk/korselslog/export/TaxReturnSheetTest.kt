@@ -118,16 +118,52 @@ class TaxReturnSheetTest {
         assertEquals(1, rows.size)
         val row = rows.single()
         assertEquals(1L, (row[0] as Xlsx.Cell.Whole).value)
-        assertEquals("02-03-2026", text(row[1]))
-        assertEquals("06-03-2026", text(row[2]))
+        assertEquals("02-03-2026", text(row[3]))
+        assertEquals("06-03-2026", text(row[4]))
         assertEquals(5L, (row[5] as Xlsx.Cell.Whole).value)
     }
 
     @Test
     fun `both addresses are filled in, since TastSelv asks for them`() {
         val row = entryRows(sheet()).single()
-        assertEquals(myHome.address, text(row[3]))
-        assertEquals(storeA.address, text(row[4]))
+        assertEquals(myHome.address, text(row[1]))
+        assertEquals(storeA.address, text(row[2]))
+    }
+
+    @Test
+    fun `columns follow the order of the fields in the TastSelv calculator`() {
+        // The sheet is read left to right while tabbing through the form, so
+        // the order is load-bearing, not cosmetic.
+        val header = sheet().rows.first { text(it.firstOrNull()) == "Linje" }
+        assertEquals(
+            listOf(
+                "Linje",
+                "Bopælsadresse",
+                "Arbejdsadresse",
+                "Periode fra",
+                "Periode til",
+                "Antal dage",
+                "Afstand pr. dag (km, tur/retur)",
+                "Forventet fradrag kr.",
+                "Bemærk",
+            ),
+            header.map { text(it) },
+        )
+    }
+
+    @Test
+    fun `the distance column is named after the field it goes into`() {
+        // TastSelv calls it "Afstand pr. dag"; matching the label is the
+        // difference between finding the field and guessing at it.
+        val header = sheet().rows.first { text(it.firstOrNull()) == "Linje" }
+        assertTrue(text(header[6])!!.startsWith("Afstand pr. dag"))
+    }
+
+    @Test
+    fun `the sheet says plainly that pasting is not possible`() {
+        val body = allText(sheet())
+        assertTrue(body, body.contains("kan ikke indsættes med copy-paste"))
+        assertTrue(body, body.contains("Overfør til årsopgørelsen"))
     }
 
     @Test
@@ -141,7 +177,7 @@ class TaxReturnSheetTest {
         )
         val rows = entryRows(DrivingWorkbook.taxReturnSheet(2026, moreResult, moreTrips, allPlaces))
         assertEquals(2, rows.size)
-        assertTrue(rows.any { text(it[4])?.contains("Odense") == true })
+        assertTrue(rows.any { text(it[2])?.contains("Odense") == true })
     }
 
     @Test
@@ -224,6 +260,6 @@ class TaxReturnSheetTest {
         val row = entryRows(
             DrivingWorkbook.taxReturnSheet(2026, result, trips, withoutHome)
         ).single()
-        assertTrue(text(row[3])!!.contains("sæt din bopæl"))
+        assertTrue(text(row[1])!!.contains("sæt din bopæl"))
     }
 }
