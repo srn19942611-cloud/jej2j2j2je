@@ -1,0 +1,4 @@
+# Gemte sager og lokale bekræftelser hører til den enkelte installation
+data/sager/
+node_modules/
+.env

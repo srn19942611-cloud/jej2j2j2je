@@ -1,0 +1,137 @@
+:root{
+  color-scheme: light;
+  --bg:#f6f3ec; --flade:#ffffff; --flade2:#efebe1;
+  --linje:#dcd6c6; --ink:#1b2130; --muted:#5c6577;
+  --blaa:#1d3f6e; --blaa-lys:#e6eef7;
+  --god:#1e6f47; --god-bg:#e6f2ea;
+  --advarsel:#8a5a00; --advarsel-bg:#fbf0dc;
+  --kritisk:#9c2d22; --kritisk-bg:#fbe8e5;
+  --skygge:0 1px 2px rgba(27,33,48,.05), 0 8px 20px -14px rgba(27,33,48,.25);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#12161d; --flade:#1a1f28; --flade2:#222833;
+    --linje:#2f3846; --ink:#e8ebf1; --muted:#98a1b2;
+    --blaa:#6ea3d8; --blaa-lys:#1d2a3a;
+    --god:#69c396; --god-bg:#163024;
+    --advarsel:#e0a844; --advarsel-bg:#332612;
+    --kritisk:#ef8878; --kritisk-bg:#331b18;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.5}
+h1{font-size:22px;margin:0}
+h2{font-size:15px;margin:26px 0 10px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);border-bottom:1px solid var(--linje);padding-bottom:6px}
+h3{font-size:15px;margin:18px 0 6px}
+h4{font-size:13px;margin:12px 0 4px;color:var(--muted)}
+p{margin:.4em 0}
+code{background:var(--flade2);padding:1px 5px;border-radius:3px;font-size:12px}
+
+.top{background:var(--flade);border-bottom:1px solid var(--linje)}
+.top-inner{max-width:1080px;margin:0 auto;padding:16px 20px;display:flex;
+  justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}
+.under{color:var(--muted);font-size:13px;margin:2px 0 0}
+.baand{background:var(--kritisk-bg);color:var(--kritisk);border-top:1px solid var(--kritisk);
+  padding:9px 20px;font-size:12.5px;text-align:center}
+.kilder{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.kilde{font-size:11px;padding:3px 8px;border-radius:12px;border:1px solid var(--linje);
+  background:var(--flade2);white-space:nowrap;cursor:help}
+.kilde.til{background:var(--god-bg);color:var(--god);border-color:var(--god)}
+.kilde.fra{background:var(--advarsel-bg);color:var(--advarsel);border-color:var(--advarsel)}
+
+main{max-width:1080px;margin:0 auto;padding:22px 20px 80px}
+.kort{background:var(--flade);border:1px solid var(--linje);border-radius:10px;
+  padding:20px 22px;margin-bottom:18px;box-shadow:var(--skygge)}
+
+.raekke{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+.felt{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;position:relative}
+.felt.bred{grid-column:1/-1}
+label{font-size:12px;font-weight:600;color:var(--muted)}
+input,select,textarea{font:inherit;font-size:14px;padding:8px 10px;border:1px solid var(--linje);
+  border-radius:6px;background:var(--bg);color:var(--ink);width:100%}
+textarea{font-family:ui-monospace,Menlo,monospace;font-size:12px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--blaa);outline-offset:-1px}
+.hjaelp{font-size:11.5px;color:var(--muted);margin:2px 0 0;line-height:1.4}
+.hjaelp.advarsel{color:var(--advarsel)}
+.flaskehals{background:var(--advarsel-bg);color:var(--advarsel);font-size:10px;
+  padding:2px 7px;border-radius:10px;letter-spacing:.04em;margin-left:8px}
+
+.forslag{position:absolute;top:100%;left:0;right:0;z-index:20;background:var(--flade);
+  border:1px solid var(--linje);border-radius:0 0 6px 6px;list-style:none;margin:0;padding:0;
+  max-height:230px;overflow:auto;box-shadow:var(--skygge)}
+.forslag li{padding:8px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--linje)}
+.forslag li:hover,.forslag li[aria-selected="true"]{background:var(--blaa-lys)}
+.forslag li.fejl{color:var(--advarsel);cursor:default}
+
+button{font:inherit;font-size:14px;padding:9px 16px;border-radius:6px;cursor:pointer;border:1px solid transparent}
+.primaer{background:var(--blaa);color:#fff;font-weight:600}
+.primaer:hover{filter:brightness(1.1)}
+.primaer:disabled{opacity:.55;cursor:progress}
+.sekundaer{background:var(--flade2);color:var(--ink);border-color:var(--linje)}
+.link{background:none;border:none;color:var(--blaa);text-decoration:underline;padding:0;font-size:11.5px}
+.handling{display:flex;gap:12px;align-items:center;margin-top:18px;flex-wrap:wrap}
+.status{font-size:13px;color:var(--muted)}
+
+.arkivboks{background:var(--flade2);border:1px solid var(--linje);border-radius:8px;padding:14px 16px;margin-bottom:12px}
+.arkivboks a{color:var(--blaa);font-weight:600}
+.arkivboks ol{padding-left:20px;font-size:13px;margin:8px 0}
+.arkivboks li{margin:3px 0}
+
+.dok{background:var(--flade2);border:1px solid var(--linje);border-radius:8px;padding:14px;margin-bottom:10px}
+.dok .raekke{gap:10px}
+.afkryds{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;margin:5px 0}
+.afkryds input{width:auto;margin-top:2px}
+.dok .fjern{float:right}
+
+/* Resultat */
+.noegletal{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0}
+.tal-kort{background:var(--flade2);border:1px solid var(--linje);border-radius:8px;padding:12px 14px}
+.tal-kort .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15}
+.tal-kort .n{font-size:11.5px;color:var(--muted);margin-top:3px}
+.tal-kort .e{font-size:13px;font-weight:400;color:var(--muted)}
+
+.maerke{display:inline-block;font-size:10px;padding:1px 6px;border-radius:3px;font-weight:600;white-space:nowrap}
+.maerke.hentet{background:var(--blaa-lys);color:var(--blaa)}
+.maerke.brugerbekraeftet{background:var(--god-bg);color:var(--god)}
+.maerke.beregnet{background:var(--flade2);color:var(--muted);border:1px solid var(--linje)}
+.maerke.antagelse{background:var(--advarsel-bg);color:var(--advarsel)}
+.maerke.mangler{background:var(--kritisk-bg);color:var(--kritisk)}
+
+.konklusion{padding:14px 18px;border-radius:8px;border-left:5px solid;margin:12px 0}
+.konklusion.god{background:var(--god-bg);border-color:var(--god)}
+.konklusion.advarsel{background:var(--advarsel-bg);border-color:var(--advarsel)}
+.konklusion.kritisk{background:var(--kritisk-bg);border-color:var(--kritisk)}
+.konklusion h3{margin-top:0}
+
+.advarselsliste{list-style:none;padding:0;margin:10px 0}
+.advarselsliste li{background:var(--advarsel-bg);border-left:3px solid var(--advarsel);
+  padding:8px 12px;margin:5px 0;font-size:12.5px;border-radius:0 4px 4px 0}
+.advarselsliste li.blokerende{background:var(--kritisk-bg);border-color:var(--kritisk)}
+.modulnavn{display:inline-block;background:rgba(0,0,0,.07);font-size:10px;padding:1px 6px;
+  border-radius:3px;margin-right:6px;font-weight:600}
+
+table.data{border-collapse:collapse;width:100%;font-size:12.5px;margin:8px 0}
+table.data th,table.data td{border-bottom:1px solid var(--linje);padding:6px 8px;text-align:left;vertical-align:top}
+table.data tbody th{width:38%;font-weight:600;color:var(--muted)}
+td.tal{font-variant-numeric:tabular-nums;white-space:nowrap}
+.lille{font-size:11px;color:var(--muted)}
+
+details.modul{border:1px solid var(--linje);border-radius:8px;margin:8px 0;background:var(--flade2)}
+details.modul>summary{padding:11px 14px;cursor:pointer;font-weight:600;font-size:13.5px;
+  display:flex;justify-content:space-between;align-items:center;gap:10px}
+details.modul>summary::marker{color:var(--muted)}
+details.modul[open]>summary{border-bottom:1px solid var(--linje)}
+.modulindhold{padding:4px 14px 14px}
+.statusprik{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
+.statusprik.ok{background:var(--god-bg);color:var(--god)}
+.statusprik.delvis,.statusprik.kraever-bekraeftelse{background:var(--advarsel-bg);color:var(--advarsel)}
+.statusprik.kraever-brugerhandling,.statusprik.kraever-justering,
+.statusprik.ufuldstaendig,.statusprik\.uden-resultat{background:var(--kritisk-bg);color:var(--kritisk)}
+
+.tegning{background:#fff;border:1px solid var(--linje);border-radius:8px;overflow:auto}
+.tegning svg{display:block;max-width:100%;height:auto}
+.forloeb{font-size:12.5px;margin:10px 0}
+.forloeb td,.forloeb th{padding:4px 10px 4px 0;text-align:left}

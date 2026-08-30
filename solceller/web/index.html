@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solceller – dimensionering og byggetilladelse</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div>
+      <h1>Solceller</h1>
+      <p class="under">Dimensionering og underlag til byggetilladelse</p>
+    </div>
+    <div class="kilder" id="kildestatus" aria-live="polite"></div>
+  </div>
+  <div class="baand">
+    <strong>Udkast – kræver godkendelse af certificeret statiker.</strong>
+    Værktøjet leverer et fagligt underlag, ikke en juridisk gyldig statisk
+    dokumentation. Ingen bæreevne-, nettilslutnings- eller økonomivurdering
+    er endelig eller bindende.
+  </div>
+</header>
+
+<main>
+  <!-- ---------------- Indtastning ---------------- -->
+  <section class="kort" id="indtastning">
+    <h2>1 · Ejendom</h2>
+
+    <div class="felt bred">
+      <label for="adresse">Adresse</label>
+      <input type="text" id="adresse" autocomplete="off" placeholder="Søg adresse, fx Butiksvej 12, 8000 Aarhus C">
+      <ul class="forslag" id="adresseforslag" hidden></ul>
+      <p class="hjaelp">Adressevælgeren (SDFI). DAWA bruges ikke – tjenesten lukker 1. oktober 2026.</p>
+    </div>
+
+    <div class="raekke">
+      <div class="felt">
+        <label for="lat">Breddegrad</label>
+        <input type="number" id="lat" step="0.00001" placeholder="56.15000">
+      </div>
+      <div class="felt">
+        <label for="lon">Længdegrad</label>
+        <input type="number" id="lon" step="0.00001" placeholder="10.21000">
+      </div>
+      <div class="felt">
+        <label for="kommunekode">Kommune</label>
+        <select id="kommunekode"><option value="">Vælg…</option></select>
+      </div>
+    </div>
+
+    <h2>2 · Tagflade</h2>
+    <div class="raekke">
+      <div class="felt">
+        <label for="tagtype">Tagtype</label>
+        <select id="tagtype">
+          <option value="fladt">Fladt tag</option>
+          <option value="skraat">Skråt tag</option>
+        </select>
+      </div>
+      <div class="felt" id="haeldningFelt" hidden>
+        <label for="taghaeldning">Taghældning (grader)</label>
+        <input type="number" id="taghaeldning" value="25" min="0" max="60">
+      </div>
+      <div class="felt" id="azimutFelt" hidden>
+        <label for="tagazimut">Tagets orientering (0 = syd)</label>
+        <input type="number" id="tagazimut" value="0" min="-180" max="180">
+      </div>
+      <div class="felt">
+        <label for="bygningshoejde">Bygningshøjde (m)</label>
+        <input type="number" id="bygningshoejde" value="8" min="1" step="0.5">
+        <p class="hjaelp">Styrer vindlasten og dermed ballasten.</p>
+      </div>
+    </div>
+
+    <div class="felt bred">
+      <label for="tagpolygon">Tagpolygon</label>
+      <textarea id="tagpolygon" rows="3" placeholder='[[10.2100,56.1500],[10.2108,56.1500],[10.2108,56.1504],[10.2100,56.1504]]'></textarea>
+      <p class="hjaelp">
+        Hjørner som [længdegrad, breddegrad]. Hentes automatisk fra GeoDanmark,
+        når Datafordeleren er konfigureret – ellers indtegnes eller indtastes den her.
+        <button type="button" class="link" id="eksempelknap">Indsæt eksempeltag (50 × 44 m)</button>
+      </p>
+    </div>
+
+    <div class="felt bred">
+      <label for="forhindringer">Tagopbygninger</label>
+      <textarea id="forhindringer" rows="3" placeholder='[{"type":"ovenlys","hoejdeM":0.6,"polygonMeter":[{"x":-5,"y":-5},{"x":5,"y":-5},{"x":5,"y":5},{"x":-5,"y":5}]}]'></textarea>
+      <p class="hjaelp advarsel">
+        Ovenlys, ventilation, skorstene og teknikrum findes ikke i et åbent register.
+        En tom liste betyder ikke at taget er frit – kontrollér på tegning eller ved besigtigelse.
+        Typer der udløser brandkrav: <code>ovenlys</code>, <code>brandventilation</code>, <code>tagopgang</code>.
+      </p>
+    </div>
+
+    <h2>3 · Anlæg</h2>
+    <div class="raekke">
+      <div class="felt">
+        <label for="paneltype">Paneltype</label>
+        <select id="paneltype"></select>
+      </div>
+      <div class="felt">
+        <label for="montagesystem">Montagesystem</label>
+        <select id="montagesystem"></select>
+      </div>
+      <div class="felt">
+        <label for="orientering">Orientering</label>
+        <select id="orientering">
+          <option value="">Automatisk</option>
+          <option value="syd">Syd</option>
+          <option value="oest-vest">Øst/vest</option>
+        </select>
+      </div>
+    </div>
+
+    <h2>4 · Forbrug og el</h2>
+    <div class="raekke">
+      <div class="felt">
+        <label for="aarsforbrug">Årsforbrug (kWh)</label>
+        <input type="number" id="aarsforbrug" value="350000" min="0" step="1000">
+        <p class="hjaelp">Bruges kun hvis Eloverblik ikke er tilsluttet.</p>
+      </div>
+      <div class="felt">
+        <label for="maalepunkt">Målepunkts-ID (Eloverblik)</label>
+        <input type="text" id="maalepunkt" placeholder="571313…">
+      </div>
+      <div class="felt">
+        <label for="hovedsikring">Hovedsikring (A)</label>
+        <input type="number" id="hovedsikring" value="250" min="0">
+      </div>
+    </div>
+
+    <h2>5 · Statisk dokumentation <span class="flaskehals">flaskehals</span></h2>
+    <div id="arkivboks" class="arkivboks">
+      <p class="hjaelp">Vælg kommune ovenfor for at få det rigtige byggesagsarkiv.</p>
+    </div>
+
+    <div id="dokumenter"></div>
+    <button type="button" class="sekundaer" id="tilfoejdok">+ Tilføj fundet dokument</button>
+
+    <div class="handling">
+      <button type="button" id="koerknap" class="primaer">Kør analyse</button>
+      <span class="status" id="koerstatus"></span>
+    </div>
+  </section>
+
+  <!-- ---------------- Resultat ---------------- -->
+  <section id="resultat" hidden>
+    <div class="kort" id="opsummering"></div>
+    <div class="kort" id="tegningkort"></div>
+    <div class="kort" id="modulkort"></div>
+    <div class="handling">
+      <button type="button" id="rapportknap" class="primaer">Åbn rapport (udskriv til PDF)</button>
+      <button type="button" id="jsonknap" class="sekundaer">Hent data som JSON</button>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
