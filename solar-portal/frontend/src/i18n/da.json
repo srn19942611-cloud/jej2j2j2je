@@ -1,0 +1,98 @@
+{
+  "app": {
+    "title": "Solcelleportal",
+    "tagline": "Overblik over anlæg, produktion og alarmer"
+  },
+  "nav": {
+    "overview": "Overblik",
+    "alerts": "Alarmer",
+    "feedHealth": "Datafeeds"
+  },
+  "status": {
+    "normal": "Normal drift",
+    "underperforming": "Underperformerende",
+    "offline": "Offline / ingen data"
+  },
+  "severity": {
+    "info": "Info",
+    "warning": "Advarsel",
+    "critical": "Kritisk"
+  },
+  "alertStatus": {
+    "open": "Åben",
+    "acknowledged": "Kvitteret",
+    "resolved": "Løst"
+  },
+  "category": {
+    "string_underperformance": "Streng underperformerer",
+    "zero_production": "Ingen produktion",
+    "clipping": "Clipping (inverterbegrænsning)",
+    "stale_feed": "Forsinket datafeed",
+    "degradation": "Degradering",
+    "other": "Andet"
+  },
+  "fleet": {
+    "title": "Samlet overblik",
+    "subtitle": "Alle anlæg på ét skærmbillede",
+    "productionToday": "Produktion i dag",
+    "expectedToday": "Forventet i dag",
+    "currentPr": "Ydelsesforhold (PR)",
+    "lastUpdate": "Sidst opdateret",
+    "openAlerts": "Åbne alarmer",
+    "noSites": "Ingen anlæg fundet endnu",
+    "loading": "Henter flådeoverblik ..."
+  },
+  "site": {
+    "backToOverview": "Tilbage til overblik",
+    "plantDetails": "Anlægsdata",
+    "capacity": "Nominel effekt",
+    "tilt": "Hældning",
+    "azimuth": "Orientering (azimut)",
+    "inverterRating": "Inverter AC-kapacitet",
+    "strings": "Strenge",
+    "productionChart": "Produktion vs. forventet",
+    "prTrend": "Ydelsesforhold (PR) over tid",
+    "weatherOverlay": "Vejrdata",
+    "stringBreakdown": "Strengfordeling",
+    "alertsLog": "Alarmlog for anlægget",
+    "noAlerts": "Ingen alarmer registreret for dette anlæg",
+    "period": {
+      "daily": "Dagligt",
+      "weekly": "Ugentligt",
+      "monthly": "Månedligt"
+    },
+    "actual": "Faktisk",
+    "expected": "Forventet",
+    "ghi": "Globalstråling (GHI)",
+    "temperature": "Lufttemperatur"
+  },
+  "alertsFeed": {
+    "title": "Alarmer",
+    "subtitle": "Kronologisk liste over alle alarmer på tværs af anlæg",
+    "filterSeverity": "Filtrér efter alvorlighed",
+    "filterStatus": "Filtrér efter status",
+    "all": "Alle",
+    "suggestedCause": "Sandsynlig årsag",
+    "acknowledge": "Kvittér",
+    "resolve": "Markér som løst",
+    "noAlerts": "Ingen alarmer matcher filteret"
+  },
+  "feedHealth": {
+    "title": "Datafeed-status",
+    "subtitle": "Overvågningsplatformens forbindelse - adskilt fra selve anlæggets ydeevne",
+    "platform": "Platform",
+    "lastSuccess": "Sidste succesfulde hentning",
+    "lastAttempt": "Seneste forsøg",
+    "failures": "Sammenhængende fejl"
+  },
+  "export": {
+    "productionCsv": "Eksportér produktion (CSV)",
+    "alertsCsv": "Eksportér alarmer (CSV)"
+  },
+  "common": {
+    "kwh": "kWh",
+    "kw": "kW",
+    "error": "Der opstod en fejl. Prøv igen.",
+    "retry": "Prøv igen"
+  }
+}

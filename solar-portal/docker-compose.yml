@@ -1,0 +1,68 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: solarportal-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-solarportal}
+      POSTGRES_USER: ${POSTGRES_USER:-solarportal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-solarportal}
+    ports:
+      - "5433:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-solarportal}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: solarportal-backend
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-solarportal}:${POSTGRES_PASSWORD:-solarportal}@timescaledb:5432/${POSTGRES_DB:-solarportal}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+
+  scheduler:
+    build: ./backend
+    container_name: solarportal-scheduler
+    restart: unless-stopped
+    command: python -m app.scheduler.runner
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-solarportal}:${POSTGRES_PASSWORD:-solarportal}@timescaledb:5432/${POSTGRES_DB:-solarportal}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    container_name: solarportal-frontend
+    restart: unless-stopped
+    command: npm run dev -- --host 0.0.0.0
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  timescale_data:
