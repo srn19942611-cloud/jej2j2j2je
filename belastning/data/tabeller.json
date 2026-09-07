@@ -1,0 +1,413 @@
+{
+  "mcbRaekke": [
+    6,
+    10,
+    13,
+    16,
+    20,
+    25,
+    32,
+    40,
+    50,
+    63,
+    80,
+    100,
+    125
+  ],
+  "hovedafbryderRaekke": [
+    63,
+    80,
+    100,
+    125,
+    160,
+    200,
+    250,
+    315,
+    400,
+    500,
+    630,
+    800
+  ],
+  "kabelTabel": [
+    {
+      "mm2": 1.5,
+      "A1": 13,
+      "A3": 12,
+      "B1": 17,
+      "B3": 15,
+      "C1": 20,
+      "C3": 17.5
+    },
+    {
+      "mm2": 2.5,
+      "A1": 17.5,
+      "A3": 16,
+      "B1": 23,
+      "B3": 20,
+      "C1": 27,
+      "C3": 24
+    },
+    {
+      "mm2": 4,
+      "A1": 23,
+      "A3": 21,
+      "B1": 31,
+      "B3": 27,
+      "C1": 36,
+      "C3": 32
+    },
+    {
+      "mm2": 6,
+      "A1": 29,
+      "A3": 27,
+      "B1": 40,
+      "B3": 34,
+      "C1": 46,
+      "C3": 41
+    },
+    {
+      "mm2": 10,
+      "A1": 39,
+      "A3": 36,
+      "B1": 54,
+      "B3": 46,
+      "C1": 63,
+      "C3": 57
+    },
+    {
+      "mm2": 16,
+      "A1": 52,
+      "A3": 48,
+      "B1": 73,
+      "B3": 62,
+      "C1": 85,
+      "C3": 76
+    },
+    {
+      "mm2": 25,
+      "A1": 68,
+      "A3": 62,
+      "B1": 95,
+      "B3": 80,
+      "C1": 112,
+      "C3": 96
+    },
+    {
+      "mm2": 35,
+      "A1": 83,
+      "A3": 77,
+      "B1": 117,
+      "B3": 99,
+      "C1": 138,
+      "C3": 119
+    },
+    {
+      "mm2": 50,
+      "A1": 99,
+      "A3": 92,
+      "B1": 141,
+      "B3": 118,
+      "C1": 168,
+      "C3": 144
+    },
+    {
+      "mm2": 70,
+      "A1": 125,
+      "A3": 116,
+      "B1": 179,
+      "B3": 149,
+      "C1": 213,
+      "C3": 184
+    },
+    {
+      "mm2": 95,
+      "A1": 150,
+      "A3": 139,
+      "B1": 216,
+      "B3": 179,
+      "C1": 258,
+      "C3": 223
+    },
+    {
+      "mm2": 120,
+      "A1": 172,
+      "A3": 160,
+      "B1": 249,
+      "B3": 206,
+      "C1": 299,
+      "C3": 259
+    },
+    {
+      "mm2": 150,
+      "A1": 196,
+      "A3": 182,
+      "B1": 285,
+      "B3": 236,
+      "C1": 344,
+      "C3": 299
+    },
+    {
+      "mm2": 185,
+      "A1": 223,
+      "A3": 208,
+      "B1": 324,
+      "B3": 268,
+      "C1": 392,
+      "C3": 341
+    },
+    {
+      "mm2": 240,
+      "A1": 261,
+      "A3": 244,
+      "B1": 380,
+      "B3": 315,
+      "C1": 461,
+      "C3": 403
+    }
+  ],
+  "installationsmetoder": [
+    {
+      "id": "A",
+      "navn": "A – skjult i væg/rør (worst case)"
+    },
+    {
+      "id": "B",
+      "navn": "B – i rør/kanal på væg"
+    },
+    {
+      "id": "C",
+      "navn": "C – frit på væg, bakke eller stige"
+    }
+  ],
+  "samtidighedsfaktorer": [
+    {
+      "kategori": "Central kølekompressor (CO₂/HFO)",
+      "interval": "0,85 – 0,95",
+      "note": "Kører nær konstant; brug 0,90 til dimensionering."
+    },
+    {
+      "kategori": "Frost-/kølerum kompressor",
+      "interval": "0,80 – 0,90",
+      "note": "Cyklisk drift, termostatstyret."
+    },
+    {
+      "kategori": "Plug-in kølemøbler (impuls, deli)",
+      "interval": "0,80 – 0,90",
+      "note": "Kompressor arbejder 60–80 % af tiden."
+    },
+    {
+      "kategori": "Ventilation AHU (VAV)",
+      "interval": "0,80 – 0,90",
+      "note": "Fuld drift i åbningstid, natsænkning via CTS."
+    },
+    {
+      "kategori": "Varmepumpe (køl+varme, R32)",
+      "interval": "0,70 – 0,85",
+      "note": "Maks. 0,85 ved samtidig køl/varme, typisk 0,75."
+    },
+    {
+      "kategori": "Luftgardin (Frico AGS)",
+      "interval": "0,40 – 0,60",
+      "note": "Kun aktiv ved åben dør; vinter høj, sommer lav."
+    },
+    {
+      "kategori": "Belysning salgsareal (LED)",
+      "interval": "0,95 – 1,00",
+      "note": "Tændt i hele åbningstiden."
+    },
+    {
+      "kategori": "Belysning personale/lager",
+      "interval": "0,70 – 0,90",
+      "note": "PIR-styret."
+    },
+    {
+      "kategori": "Bake-off ovne",
+      "interval": "0,55 – 0,70",
+      "note": "Toppe morgen/formiddag; brug 0,65."
+    },
+    {
+      "kategori": "Kaffe/varmedisk",
+      "interval": "0,50 – 0,65",
+      "note": "Opvarmning er cyklisk."
+    },
+    {
+      "kategori": "POS-kasser + SCO + IT-rack",
+      "interval": "0,90 – 1,00",
+      "note": "Konstant i drift, UPS-belastning."
+    },
+    {
+      "kategori": "Slagter (hakker, ovn, opvask)",
+      "interval": "0,30 – 0,55",
+      "note": "Kortvarig, ikke-samtidig drift."
+    },
+    {
+      "kategori": "Dispositionsstik salg/lager",
+      "interval": "0,15 – 0,30",
+      "note": "Sporadisk brug, ofte 0,20."
+    },
+    {
+      "kategori": "Pap-/plastpresser",
+      "interval": "0,20 – 0,40",
+      "note": "Kører få gange dagligt, kort tid."
+    },
+    {
+      "kategori": "Flaskeautomat",
+      "interval": "0,40 – 0,60",
+      "note": "Type B RCD pga. DC-lækstrøm."
+    },
+    {
+      "kategori": "Elevator (vareelevator)",
+      "interval": "0,20 – 0,40",
+      "note": "Få cyklusser/time, startspids 5–6 × I_n."
+    },
+    {
+      "kategori": "ABA/ABDL/AIA/video",
+      "interval": "1,00",
+      "note": "Kontinuerlig standby-effekt."
+    },
+    {
+      "kategori": "Nødlys, central batteri",
+      "interval": "1,00",
+      "note": "Konstant ladestrøm."
+    },
+    {
+      "kategori": "Sprinklerpumpe (test)",
+      "interval": "0,05",
+      "note": "Kun ved månedstest."
+    },
+    {
+      "kategori": "TOTAL – butik 500–900 m²",
+      "interval": "0,55 – 0,65",
+      "note": "Ref. Rask Mølle: målt 110–130 A over 15 min ≈ 76–90 kW ved cos φ 0,90."
+    },
+    {
+      "kategori": "TOTAL – butik 1000+ m²",
+      "interval": "0,60 – 0,70",
+      "note": "SuperBrugsen/Kvickly."
+    }
+  ],
+  "byggeprogramkrav": [
+    {
+      "omraade": "System",
+      "krav": "Netform",
+      "vaerdi": "TN-S 3F+N+PE, 400/230 V, 50 Hz"
+    },
+    {
+      "omraade": "Hovedkabel",
+      "krav": "Maks. belastning af hovedforsyningskabel",
+      "vaerdi": "70 %"
+    },
+    {
+      "omraade": "Tavle",
+      "krav": "Min. disponibel reserveplads",
+      "vaerdi": "30 % (min. 4 stk. 4-polede moduler)"
+    },
+    {
+      "omraade": "Tavle",
+      "krav": "Tavleform",
+      "vaerdi": "Form 2B ≤ 63 A · Form 4A > 63 A"
+    },
+    {
+      "omraade": "Tavle",
+      "krav": "Fabrikat/komponenter",
+      "vaerdi": "CUBIC/Tabula m. Schneider (Pro-Automatic)"
+    },
+    {
+      "omraade": "Måling",
+      "krav": "Multi-instrument i hovedtavle",
+      "vaerdi": "Schneider PM8000 m. M-Bus"
+    },
+    {
+      "omraade": "Måling",
+      "krav": "Bimåler på alle afgange > 63 A",
+      "vaerdi": "ABB B23 m. M-Bus"
+    },
+    {
+      "omraade": "Overspænding",
+      "krav": "SPD type 1 i hovedtavle m. melding + lampe",
+      "vaerdi": "Type 1 (HT) + type 2 (UT)"
+    },
+    {
+      "omraade": "Elkvalitet",
+      "krav": "Aktivt harmonisk filter – disponibel afgang reserveret",
+      "vaerdi": "100 A afgang, ca. 60 A filter"
+    },
+    {
+      "omraade": "Nødforsyning",
+      "krav": "Manuel omskifter + CEE-indtag i HT-front",
+      "vaerdi": "125 A CEE + bryder 1-0-2"
+    },
+    {
+      "omraade": "Fejlbeskyttelse",
+      "krav": "Maks. forsikring foran RCD/RCBO",
+      "vaerdi": "100 A (jf. producent)"
+    },
+    {
+      "omraade": "Fejlbeskyttelse",
+      "krav": "Type B RCD på DC-lækkende laster",
+      "vaerdi": "VP, køl m. frekvensomformer, flaskeautomat, PV, ladestander"
+    },
+    {
+      "omraade": "Fejlbeskyttelse",
+      "krav": "RCD-kvalitet på lys + kritisk",
+      "vaerdi": "Super-immun \"SI\"/AP-R"
+    },
+    {
+      "omraade": "Kritiske grupper",
+      "krav": "Køl og IT må ikke dele RCD med komfortlast",
+      "vaerdi": "–"
+    },
+    {
+      "omraade": "Kabelfelter",
+      "krav": "Min. 2 kabelfelter à ca. 600 mm",
+      "vaerdi": "Klemmer på alle afgange ≤ 63 A"
+    },
+    {
+      "omraade": "IP-klasse",
+      "krav": "Tavlen tætnes efter kabelinføring",
+      "vaerdi": "≥ IP 44"
+    },
+    {
+      "omraade": "Mærkning",
+      "krav": "Sporbar mærkning HT01-Fxx / UT01-Fxx",
+      "vaerdi": "Mærkebjælke + dymo + Dalux"
+    },
+    {
+      "omraade": "Dokumentation",
+      "krav": "Leveres komplet + 1 × as-built",
+      "vaerdi": "Enstregsdiagram, gruppeskema, komponentliste, målerskema"
+    },
+    {
+      "omraade": "Solceller",
+      "krav": "PSO-målerfelt eller tomt tavlejern reserveret",
+      "vaerdi": "Egen bimåler hvis intet PSO-krav"
+    },
+    {
+      "omraade": "Placering",
+      "krav": "Sokkel/afskærmning foran tavle + 1 m friplads",
+      "vaerdi": "–"
+    }
+  ],
+  "varmeafgivelsePrKategori": {
+    "koel": 0.6,
+    "lys": 0.9,
+    "it": 0.9,
+    "maskine": 0.4,
+    "stik": 0.5,
+    "hvac": 0.1,
+    "pv": 0
+  },
+  "konstanter": {
+    "rhoCu": 0.0225,
+    "cMin": 0.95,
+    "udloesningsfaktor": {
+      "B": 5,
+      "C": 10,
+      "D": 20
+    },
+    "maksSpaendingsfaldPct": 4,
+    "maksHovedkabelBelastningPct": 70,
+    "motorfaktorMcb": 1.25,
+    "stikPrGruppe": 6
+  }
+}

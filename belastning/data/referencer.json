@@ -1,0 +1,38 @@
+{
+  "maalinger": [
+    {
+      "navn": "SuperBrugsen Dragør (1013)",
+      "m2": 1000,
+      "peakA": 130
+    },
+    {
+      "navn": "Brugsen Søby, Ærø",
+      "m2": 600,
+      "peakA": 110
+    },
+    {
+      "navn": "Dagli’Brugsen Rask Mølle (projekt)",
+      "m2": 688,
+      "peakA": 120
+    }
+  ],
+  "sager": [
+    {
+      "navn": "Dagli’Brugsen Rask Mølle",
+      "kilde": "Effektoversigt_Brugsen_20260708.xlsx + plantegning 2251110-7",
+      "salgsAreal": 688,
+      "lagerAreal": 97,
+      "ovrigtAreal": 60,
+      "kasser": 2,
+      "sco": 1,
+      "installeretKw": 223.6,
+      "samtidigKw": 132.9,
+      "beregnetA": 213,
+      "maaltPeakA": "110–130 A (15 min., sammenlignelige butikker)",
+      "valgtHovedsikring": 200,
+      "hovedkabelDimensioneretTil": 250,
+      "hovedtavleDimensioneretTil": 250,
+      "note": "Beregningen gav 205–213 A, men målinger i sammenlignelige butikker gav 110–130 A. Der blev valgt 200 A ampererettighed og 250 A kabel/tavle som kompromis."
+    }
+  ]
+}
