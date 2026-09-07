@@ -5,8 +5,10 @@ plantegning og et par stamdata: udstyrskatalog med el-data, beregningskerne, ord
 tegningstekst til udstyr, databaseskema og en beskrivelse af, hvordan delene spiller
 sammen. Alt på dansk, alt med kildeangivelse.
 
-Pakken er lavet, så den kan fodres direkte ind i Lovable (se `LOVABLE-PROMPT.md`), men
-den er uafhængig af værktøj — motoren er ren TypeScript uden afhængigheder.
+Skal det bygges i Lovable, så start i **`lovable/START-HER.md`** — den mappe indeholder
+en færdig pakke med motoren, migrationerne og fem prompts, der køres én ad gangen.
+`LOVABLE-PROMPT.md` er den korte étprompts-udgave. Pakken er ellers uafhængig af værktøj
+— motoren er ren TypeScript uden afhængigheder.
 
 ## Indhold
 
@@ -17,6 +19,8 @@ data/        katalog.json (79 udstyrsposter) · butikstyper.json · tabeller.jso
 engine/      typer.ts · beregning.ts · tegning.ts · geometri.ts · indlaesning.ts
              laering.ts · eksport.ts · data.ts (genereret) · xlsx.mjs
 eksempel/    Effektoversigt genereret fra referencesagen (10 ark)
+lovable/     færdig pakke til Lovable: motoren med Vite-imports, migrationer,
+             projektviden og fem etapevise prompts + en zip med det hele
 supabase/    skema.sql · seed-katalog.sql · skema-laering.sql
 docs/        01 datamodel · 02 beregningsregler · 03 plantegning → forbrugerliste
              04 excel-eksport · 05 kvalitetstjek · 06 filaflæsning

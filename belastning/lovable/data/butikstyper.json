@@ -1,0 +1,108 @@
+{
+  "butikstyper": [
+    {
+      "navn": "Dagli’Brugsen",
+      "salgsAreal": 690,
+      "lagerAreal": 100,
+      "ovrigtAreal": 60,
+      "kasser": 2,
+      "sco": 1,
+      "tilvalg": [
+        "deli",
+        "bakeoff",
+        "centralkoel",
+        "varmepumpe",
+        "flaskeautomat"
+      ]
+    },
+    {
+      "navn": "SuperBrugsen",
+      "salgsAreal": 1100,
+      "lagerAreal": 200,
+      "ovrigtAreal": 120,
+      "kasser": 4,
+      "sco": 2,
+      "tilvalg": [
+        "deli",
+        "bakeoff",
+        "slagter",
+        "centralkoel",
+        "varmepumpe",
+        "flaskeautomat"
+      ]
+    },
+    {
+      "navn": "Kvickly",
+      "salgsAreal": 2200,
+      "lagerAreal": 400,
+      "ovrigtAreal": 220,
+      "kasser": 6,
+      "sco": 4,
+      "tilvalg": [
+        "deli",
+        "bakeoff",
+        "slagter",
+        "centralkoel",
+        "varmepumpe",
+        "flaskeautomat",
+        "elevator"
+      ]
+    },
+    {
+      "navn": "365discount",
+      "salgsAreal": 600,
+      "lagerAreal": 90,
+      "ovrigtAreal": 50,
+      "kasser": 2,
+      "sco": 1,
+      "tilvalg": [
+        "bakeoff",
+        "centralkoel",
+        "varmepumpe",
+        "flaskeautomat"
+      ]
+    }
+  ],
+  "tilvalg": [
+    {
+      "id": "deli",
+      "navn": "Delikatesse"
+    },
+    {
+      "id": "bakeoff",
+      "navn": "Brød & bake-off"
+    },
+    {
+      "id": "slagter",
+      "navn": "Slagterafdeling"
+    },
+    {
+      "id": "centralkoel",
+      "navn": "Central køl (CO₂)"
+    },
+    {
+      "id": "varmepumpe",
+      "navn": "Varmepumper/komfortkøl"
+    },
+    {
+      "id": "flaskeautomat",
+      "navn": "Flaskeautomat"
+    },
+    {
+      "id": "elevator",
+      "navn": "Vareelevator"
+    },
+    {
+      "id": "ladestander",
+      "navn": "Ladestandere el-bil"
+    },
+    {
+      "id": "sprinkler",
+      "navn": "Sprinkleranlæg"
+    },
+    {
+      "id": "pv",
+      "navn": "Solceller"
+    }
+  ]
+}

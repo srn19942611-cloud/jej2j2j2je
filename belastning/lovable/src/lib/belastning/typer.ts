@@ -1,0 +1,367 @@
+/* Domænetyper for belastningsoversigten. */
+
+export type Kategori = 'koel' | 'lys' | 'it' | 'maskine' | 'stik' | 'hvac' | 'pv';
+export type Rum = 'salg' | 'slagter' | 'lager' | 'personale' | 'teknik' | 'udv' | 'tag';
+export type Karakteristik = 'B' | 'C' | 'D';
+export type Metode = 'A' | 'B' | 'C';
+export type Kilde = 'Tegning' | 'Datablad' | 'Maskinliste' | 'Byggeprogram' | 'Referencetavle' | 'Skaleret erfaring' | 'Manuel';
+
+export interface Skalering {
+  /** fast | m2salg | m2lager | kasser | sco | wm2salg | wm2lager | kwm2salg | ladestander | pv */
+  type: string;
+  vaerdi: number | null;
+  forklaring?: string;
+}
+
+export interface KatalogPost {
+  id: string;
+  navn: string;
+  afdeling: string;
+  rum: Rum;
+  kategori: Kategori;
+  kw: number;
+  spaending: 230 | 400;
+  cosphi: number;
+  df: number;
+  karakteristik: Karakteristik;
+  rcd: string;
+  noedforsyning: boolean;
+  bimaaler: boolean;
+  varmeAfgivelse: number;
+  tavle: string;
+  tilvalg: string | null;
+  skalering: Skalering;
+  ampDatablad?: number | null;
+  leverandoer?: string | null;
+  plankoder?: string[];
+  kilde: string;
+  note?: string;
+}
+
+export interface Stamdata {
+  butiksType: string;
+  butiksNavn?: string;
+  adresse?: string;
+  sagsnr?: string;
+  salgsAreal: number;
+  lagerAreal: number;
+  ovrigtAreal: number;
+  kasser: number;
+  sco: number;
+  ladestandere?: number;
+  pvKwp?: number;
+  tilvalg: string[];
+  /** Tekniske forudsætninger */
+  metode?: Metode;              // referenceinstallationsmetode for kabler
+  motorFaktor?: number;         // gangefaktor på I_b ved valg af MCB for motor-/varmelast
+  maxFaldPct?: number;          // maks. spændingsfald i %
+  ikHoved?: number;             // kortslutningsstrøm ved hovedtavle i kA
+  bufferPct?: number;           // buffer oven på maks. fasestrøm ved valg af hovedsikring
+  tavleReservePct?: number;     // krævet reserveplads i tavlen
+  valgtHoved?: number | null;   // brugerens valgte hovedsikring
+  /** Komfortkøl */
+  ventilationKoelKw?: number;
+  m2PrPerson?: number;
+  wPrPerson?: number;
+  solWm2?: number;
+  copKoel?: number;
+}
+
+export interface Forbruger {
+  raekkeId: string;
+  katalogId: string | null;
+  aktiv: boolean;
+  tavle: string;
+  afdeling: string;
+  rum: Rum;
+  gruppe: string;
+  navn: string;
+  antal: number;
+  kw: number;
+  spaending: 230 | 400;
+  cosphi: number;
+  df: number;
+  karakteristik: Karakteristik;
+  rcd: string;
+  noedforsyning: boolean;
+  bimaaler: boolean;
+  varmeAfgivelse: number;
+  kategori: Kategori;
+  laengde: number;
+  grupper: number | null;   // null = beregnes automatisk
+  mcb: number | null;       // null = beregnes automatisk
+  mm2: number | null;       // null = beregnes automatisk
+  kilde: string;
+  note: string;
+}
+
+export interface BeregnetForbruger extends Forbruger {
+  treFaset: boolean;
+  instKw: number;
+  belKw: number;
+  antalGrupper: number;
+  kwPrGruppe: number;
+  ibGruppe: number;
+  ibRaekke: number;
+  valgtMcb: number;
+  autoMcb: number;
+  valgtMm2: number;
+  iz: number;
+  faldPct: number;
+  ik3: number;
+  ik1: number;
+  ikMin: number;
+  ia: number;
+  kabel: string;
+  udnyttelse: number;
+  okKabel: boolean;
+  okFald: boolean;
+  okUdloesning: boolean;
+  moduler: number;
+}
+
+export interface Fasebalance {
+  faseKva: number[];
+  faseA: number[];
+  maxA: number;
+  gnsA: number;
+  skaevhedPct: number;
+}
+
+export interface Komfortkoel {
+  udstyr: number; lys: number; personer: number; sol: number; total: number;
+  ventKoel: number; underskud: number; anbefalet: number; tommelfinger: number;
+  enheder: number; installeretKoelKw: number; daekning: number;
+}
+
+export type Niveau = 'krav' | 'advarsel' | 'info';
+export interface Tjek { ok: boolean; niveau: Niveau; krav: string; faktisk: string; note: string }
+
+/** Valg af ampererettighed: beregningen mod målte referencebutikker. */
+export interface Anbefaling {
+  beregnetA: number;              // maks. fasestrøm af beregningen
+  beregnetHovedsikring: number;   // beregning + buffer, rundet op til standardstørrelse
+  referenceA: [number, number];   // interval fra målte butikker, skaleret på salgsareal
+  referenceHovedsikring: number;
+  afvigelse: number;              // beregnet / reference-max
+  foreslaaetRettighed: number;    // det, der bestilles hos netselskabet
+  dimensionerKabelOgTavleTil: number;
+  begrundelse: string;
+}
+
+export interface Resultat {
+  raekker: BeregnetForbruger[];
+  forbrug: BeregnetForbruger[];
+  instKw: number;
+  belKw: number;
+  kva: number;
+  cosphiSamlet: number;
+  balance: Fasebalance;
+  bufferPct: number;
+  dimA: number;
+  anbefaletHovedsikring: number;
+  valgtHovedsikring: number;
+  hovedkabelKravA: number;
+  hovedkabelMm2: number;
+  antalGrupper: number;
+  moduler: number;
+  modulerMedReserve: number;
+  noedKw: number;
+  noedA: number;
+  komfortkoel: Komfortkoel;
+  noegletal: { wPrM2Inst: number; wPrM2Bel: number; aPrM2: number; samletDf: number; referenceA: [number, number] };
+  tjek: Tjek[];
+  anbefaling: Anbefaling;
+  pvKw: number;
+}
+
+/* ---------------- Indlæsning af filer ---------------- */
+
+export type Filtype = 'maskinliste' | 'effektoversigt' | 'gruppeskema' | 'datablad' | 'plantegning' | 'byggeprogram' | 'ukendt';
+
+/** Én række som den blev læst af et ark, før den bindes til katalogets poster. */
+export interface RaaPost {
+  raekke: number;
+  gruppe?: string;
+  navn: string;
+  leverandoer?: string;
+  model?: string;
+  antal?: number;
+  volt?: number;
+  faser?: number;
+  kw?: number;
+  ampere?: number;
+  cosphi?: number;
+  df?: number;
+  mcb?: number;
+  kabel?: string;
+  rcd?: string;
+  tavle?: string;
+  afdeling?: string;
+  note?: string;
+  fodnote?: string;
+  grupperFraSkema?: { faser: number; karakteristik: Karakteristik; mcb: number; antal: number }[];
+  tillid: number;
+  advarsler: string[];
+}
+
+export interface Kolonnemapping {
+  /** felt → kolonneindeks */
+  felter: Record<string, number>;
+  gruppekolonner: { indeks: number; faser: number; karakteristik: Karakteristik; mcb: number }[];
+  uafklarede: string[];
+  overskriftsraekke: number;
+}
+
+export interface Binding {
+  raa: RaaPost;
+  katalogId: string | null;
+  score: number;
+  begrundelse: string;
+  forbruger: Forbruger | null;
+}
+
+export interface Konflikt {
+  katalogId: string;
+  felt: string;
+  nuvaerende: unknown;
+  foreslaaet: unknown;
+  kilde: string;
+  afvigelsePct: number | null;
+}
+
+export interface Indlaesningsresultat {
+  filtype: Filtype;
+  mapping: Kolonnemapping;
+  bindinger: Binding[];
+  ubundne: RaaPost[];
+  konflikter: Konflikt[];
+  advarsler: string[];
+}
+
+/* ---------------- Læring ---------------- */
+
+export type Aarsag = 'datablad' | 'tegning' | 'maskinliste' | 'erfaring' | 'fejl_i_katalog' | 'projektspecifikt' | 'ukendt';
+
+/** En rettelse, brugeren har lavet oven på det, modellen foreslog. */
+export interface Rettelse {
+  id?: string;
+  projektId: string;
+  katalogId: string;
+  butikstype: string;
+  salgsAreal: number;
+  felt: string;
+  foer: number | string | boolean | null;
+  efter: number | string | boolean | null;
+  aarsag: Aarsag;
+  /** true = gælder kun denne sag, tælles ikke med i læringen */
+  kunDenneSag: boolean;
+  tidspunkt?: string;
+}
+
+export interface Forslag {
+  katalogId: string;
+  felt: string;
+  nuvaerende: number | string | null;
+  foreslaaet: number | string;
+  observationer: number;
+  projekter: number;
+  spredningPct: number | null;
+  afvigelsePct: number | null;
+  aarsager: Record<string, number>;
+  anbefaling: 'godkend' | 'undersøg' | 'afvent';
+  begrundelse: string;
+}
+
+export interface Kalibreringspunkt {
+  projekt: string;
+  butikstype: string;
+  salgsAreal: number;
+  beregnetA: number;
+  maaltPeakA: number;
+  dato?: string;
+}
+
+export interface Kalibrering {
+  antal: number;
+  faktor: number | null;              // målt / beregnet, median
+  aPrM2: { min: number; median: number; max: number } | null;
+  prButikstype: Record<string, { antal: number; faktor: number; aPrM2Median: number }>;
+  anbefaling: string;
+}
+
+export interface Udtraeksstatistik {
+  kode: string;
+  forekomster: number;
+  gennemsnitligAfvigelse: number;   // (bekræftet − læst) / læst
+  raetForstePutte: number;          // andel hvor brugeren ikke rettede
+  faldgrube: string | null;
+}
+
+/* ---------------- Geometri fra indretningstegning ---------------- */
+
+/** Ét tekstelement som det kommer fra PDF-laget (pdfjs: getTextContent). */
+export interface TekstElement { tekst: string; x: number; y: number; bredde: number; hoejde: number; lodret?: boolean }
+/** En streg fra tegningen (pdfjs: getOperatorList → paths). */
+export interface Streg { x1: number; y1: number; x2: number; y2: number }
+export interface PdfSide { nr: number; bredde: number; hoejde: number; tekster: TekstElement[]; streger: Streg[] }
+
+export interface Skala {
+  mmPrEnhed: number;
+  metode: 'målkæde' | 'målestok' | 'rumareal' | 'ukendt';
+  tillid: number;
+  kontrol: { metode: string; mmPrEnhed: number; afvigelsePct: number }[];
+  forklaring: string;
+}
+
+export interface RumFundet {
+  navn: string;
+  rumtype: string;
+  arealM2: number | null;
+  kilde: 'etiket' | 'geometri';
+  tillid: number;
+  x: number; y: number;
+}
+
+export interface Loeb {
+  kode: string;
+  familie: string;
+  modulbreddeM: number | null;
+  laengdeM: number;
+  antal: number;
+  antalFraEtiketter: number;
+  antalFraTal: number | null;
+  antalFraGeometri: number | null;
+  koeletype: 'koel' | 'frost' | null;
+  rum: string | null;
+  tillid: number;
+  forklaring: string;
+}
+
+export interface Kalkulationslinje {
+  gruppe: string;
+  beskrivelse: string;
+  grundlag: 'løbende meter' | 'areal' | 'stk' | 'rum';
+  maal: string;          // fx "14 moduler à 0,60 m = 8,40 m"
+  noegletal: string;     // fx "0,64 kW/m"
+  kw: number;
+  antal: number | null;
+  kwPrEnhed: number | null;
+  fallback: boolean;
+  katalogId: string | null;
+  tillid: number;
+  kilde: string;
+  forklaring: string;
+}
+
+export interface Tegningskalkule {
+  skala: Skala;
+  rum: RumFundet[];
+  loeb: Loeb[];
+  linjer: Kalkulationslinje[];
+  samletKw: number;
+  samletKwUdenFallback: number;
+  gennemsnitligTillid: number;
+  advarsler: string[];
+  stamdataForslag: Partial<Stamdata>;
+}

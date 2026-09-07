@@ -1,0 +1,64 @@
+{
+  "version": "2026-09-07",
+  "formaal": "Ordbog der oversætter tekst og møbelkoder på en Coop-plantegning til poster i katalog.json. Bruges af tegningsudtrækket (vision-kald) og af den manuelle optællings-UI.",
+  "tillidsniveauer": {
+    "sikker": "Mapping er verificeret mod maskinliste eller byggeprogram. Kan bruges direkte.",
+    "forslag": "Sandsynlig mapping udledt af referencesagen Rask Mølle. SKAL bekræftes af bruger første gang koden ses i et projekt.",
+    "ukendt": "Koden er ikke i ordbogen. Vises til bruger, der vælger katalogpost eller markerer 'ingen el'."
+  },
+  "rumetiketter": [
+    { "regex": "SALGSLOKALE\\s+([\\d.,]+)\\s*M2", "felt": "salgsAreal", "rum": "salg", "eksempel": "SALGSLOKALE 688 M2", "tillid": "sikker" },
+    { "regex": "LAGER\\s+([\\d.,]+)\\s*M2", "felt": "lagerAreal", "rum": "lager", "eksempel": "LAGER 97 M2", "tillid": "sikker" },
+    { "regex": "DELI\\s+([\\d.,]+)\\s*M2", "felt": "deliAreal", "rum": "salg", "aktiverTilvalg": "deli", "eksempel": "DELI 45 M2", "tillid": "sikker" },
+    { "regex": "SLAGTER\\s+([\\d.,]+)\\s*M2", "felt": "slagterAreal", "rum": "slagter", "aktiverTilvalg": "slagter", "tillid": "sikker" },
+    { "regex": "FROST\\s+([\\d.,]+)\\s*M2", "felt": "frostrumAreal", "rum": "teknik", "katalogId": "K4", "antalPrForekomst": 1, "eksempel": "FROST 16 M2", "tillid": "sikker" },
+    { "regex": "KØL\\s+([\\d.,]+)\\s*M2", "felt": "koelerumAreal", "rum": "teknik", "katalogId": "K5", "antalPrForekomst": 1, "eksempel": "KØL 16 M2 / KØL 8 M2", "tillid": "sikker" },
+    { "regex": "MEJERIKØL\\s+([\\d.,]+)\\s*M2", "felt": "mejerikoelAreal", "rum": "salg", "katalogId": "K5", "antalPrForekomst": 1, "eksempel": "MEJERIKØL 13 M2", "tillid": "sikker" },
+    { "regex": "TEKNIK\\s+([\\d.,]+)\\s*M2", "felt": "teknikAreal", "rum": "teknik", "eksempel": "TEKNIK 19 M2", "tillid": "sikker" },
+    { "regex": "PERSONALERUM\\s+([\\d.,]+)\\s*M2", "felt": "personaleAreal", "rum": "personale", "katalogId": "LA13", "antalPrForekomst": 1, "eksempel": "PERSONALERUM 15 M2", "tillid": "sikker" },
+    { "regex": "KONTOR\\s+([\\d.,]+)\\s*M2", "felt": "kontorAreal", "rum": "personale", "eksempel": "KONTOR 13 M2", "tillid": "sikker" },
+    { "regex": "FLASKERUM\\s+([\\d.,]+)\\s*M2", "felt": "flaskerumAreal", "rum": "lager", "aktiverTilvalg": "flaskeautomat", "eksempel": "FLASKERUM 43 M2", "tillid": "sikker" },
+    { "regex": "FLASKE-?\\s*INDLEV\\.?\\s+([\\d.,]+)\\s*M2", "felt": "flaskeindlevAreal", "rum": "lager", "eksempel": "FLASKEINDLEV. 5 M2", "tillid": "sikker" },
+    { "regex": "DEPOT\\s+([\\d.,]+)\\s*M2", "felt": "depotAreal", "rum": "lager", "tillid": "sikker" },
+    { "regex": "VINDFANG\\s+([\\d.,]+)\\s*M2", "felt": "vindfangAreal", "rum": "salg", "katalogId": "BU33", "antalPrForekomst": 1, "note": "Vindfang ⇒ automatiske skydedøre + luftgardin", "tillid": "sikker" },
+    { "regex": "(WC|WC/BAD|FORRUM)\\s+([\\d.,]+)\\s*M2", "felt": "ovrigtAreal", "rum": "personale", "tillid": "sikker" }
+  ],
+  "moebelkoder": [
+    { "kode": "EGM", "monster": "EGM\\s*\\d{3}\\s*x\\s*\\d{3,4}", "betydning": "Gondol-/vægreol (EGM-modul). Typisk uden el ud over inventarlys.", "katalogId": "BU3", "antalPrForekomst": 0.25, "enhed": "reolmodul", "tillid": "forslag", "note": "Sæt antalPrForekomst = 0 hvis reolerne er uden lys. 4 moduler pr. lysgruppe i referencesagen." },
+    { "kode": "LDF", "monster": "LDF\\s*[\\d,\\.]+\\s*\\d{3,4}x\\d{3,4}", "betydning": "Frostmøbel, plug-in (låg/ø).", "katalogId": "BU5", "antalPrForekomst": 1, "enhed": "møbel", "tillid": "forslag" },
+    { "kode": "CLS", "monster": "CLS\\s*\\d{3,4}", "betydning": "Køle-/frostskab med glaslåge (skabsrække).", "katalogId": "BU5", "antalPrForekomst": 1, "enhed": "skab", "tillid": "forslag" },
+    { "kode": "IMPULS", "monster": "impuls(køler)?", "betydning": "Impulskøler ved kasselinje.", "katalogId": "BU5", "antalPrForekomst": 1, "enhed": "møbel", "tillid": "sikker" },
+    { "kode": "KASSELINJE", "monster": "kasse(linje|bånd)?|check\\s*out", "betydning": "Kasselinje/POS-plads.", "katalogId": "BU15", "antalPrForekomst": 1, "enhed": "kasse", "tillid": "sikker" },
+    { "kode": "SCO", "monster": "SCO|selvbetjening|scan\\s*&?\\s*betal", "betydning": "Selvbetjeningskasse.", "katalogId": "BU15", "antalPrForekomst": 1, "enhed": "kasse", "tillid": "sikker" },
+    { "kode": "TOBAK", "monster": "tobak|rygeartik", "betydning": "Tobaksskab bag kasselinje.", "katalogId": "BU11", "antalPrForekomst": 1, "enhed": "skab", "tillid": "sikker" },
+    { "kode": "F&G_BORD", "monster": "F&G\\s*bord", "betydning": "Frugt & grønt-bord (vægt/el i bord).", "katalogId": "BU2", "antalPrForekomst": 0, "enhed": "bord", "tillid": "forslag", "note": "Kun grøntvægten trækker el; sæt 1 på ét af bordene." },
+    { "kode": "GRØNTVÆGT", "monster": "grøntvægt|vægt\\s*F&G", "betydning": "Grøntvægt.", "katalogId": "BU2", "antalPrForekomst": 1, "enhed": "stk", "tillid": "sikker" },
+    { "kode": "BETJENT_DISK", "monster": "betjent\\s*disk|køledisk\\s*betjent", "betydning": "Betjent køledisk i deli.", "katalogId": "BC4", "antalPrForekomst": 1, "enhed": "disk", "tillid": "sikker" },
+    { "kode": "SELVBETJENT_DISK", "monster": "selvbetjent\\s*disk", "betydning": "Selvbetjent køledisk.", "katalogId": "BC5", "antalPrForekomst": 1, "enhed": "disk", "tillid": "sikker" },
+    { "kode": "DELIKØL", "monster": "delikøl", "betydning": "Delikøl.", "katalogId": "BC19", "antalPrForekomst": 1, "enhed": "møbel", "tillid": "sikker" },
+    { "kode": "BAGEROVN", "monster": "bake[- ]?off|bagerovn|ovn\\s*i\\s*rack", "betydning": "Bake-off ovn.", "katalogId": "BC7", "antalPrForekomst": 1, "enhed": "ovn", "tillid": "sikker" },
+    { "kode": "MERRYCHEF", "monster": "merrychef|speed[- ]?oven", "betydning": "Merrychef speed-oven.", "katalogId": "MC1", "antalPrForekomst": 1, "enhed": "ovn", "tillid": "sikker" },
+    { "kode": "KAFFEMASKINE", "monster": "kaffemaskine", "betydning": "Kaffemaskine.", "katalogId": "BC15", "antalPrForekomst": 1, "enhed": "stk", "tillid": "sikker" },
+    { "kode": "KAFFEMØLLE", "monster": "kaffemølle", "betydning": "Kaffemølle 400 V.", "katalogId": "BU9", "antalPrForekomst": 1, "enhed": "stk", "tillid": "sikker" },
+    { "kode": "FLASKEAUTOMAT", "monster": "flaskeautomat|ATV|pantautomat", "betydning": "Flaskeautomat (type B RCD).", "katalogId": "LA7", "antalPrForekomst": 1, "enhed": "stk", "tillid": "sikker" },
+    { "kode": "PAPPRESSER", "monster": "pappresse[r]?", "betydning": "Pappresser 32 A CEE.", "katalogId": "LA1", "antalPrForekomst": 1, "enhed": "stk", "tillid": "sikker" },
+    { "kode": "PLASTPRESSER", "monster": "plastpresse[r]?", "betydning": "Plastpresser.", "katalogId": "LA2", "antalPrForekomst": 1, "enhed": "stk", "tillid": "sikker" },
+    { "kode": "HURTIGPORT", "monster": "hurtigport", "betydning": "Hurtigport mellem lager og butik.", "katalogId": "BU32", "antalPrForekomst": 1, "enhed": "port", "tillid": "sikker" },
+    { "kode": "SKYDEDØR", "monster": "skydedør|automatisk\\s*dør", "betydning": "Automatisk skydedør.", "katalogId": "BU33", "antalPrForekomst": 1, "enhed": "dør", "tillid": "sikker" },
+    { "kode": "SIKRINGSSKAB", "monster": "sikringsskab\\s*(\\d+)\\s*fags", "betydning": "Varesikringsgates ved udgang.", "katalogId": "S7", "antalPrForekomst": 1, "enhed": "skab", "tillid": "forslag" },
+    { "kode": "HÅNDVASK", "monster": "håndvask\\s*aut\\.?\\s*armatur", "betydning": "Håndvask med 230 V sensorarmatur.", "katalogId": null, "antalPrForekomst": 0, "enhed": "stk", "tillid": "sikker", "note": "Kun 230 V til armatur — indgår i dispositionsstik." },
+    { "kode": "STIKVOGN", "monster": "stikvogn|fletkurv|systemvogn|krydderivogn", "betydning": "Inventar uden el.", "katalogId": null, "antalPrForekomst": 0, "enhed": "stk", "tillid": "sikker" }
+  ],
+  "maskinnumre": [
+    { "praefiks": "SL", "kilde": "Slagter maskinliste (FDB, maj 2018, rev. jan 2025)", "beskrivelse": "Tegningen er mærket med maskinlistens numre, fx SL11, SL12, SL21, SL23a. Slå direkte op i katalog.json på id.", "tillid": "sikker" },
+    { "praefiks": "BC", "kilde": "Brødcooperativ/bageri-maskinliste", "beskrivelse": "BC1–BC20 i deli/bake-off.", "tillid": "sikker" },
+    { "praefiks": "BU", "kilde": "Butiksinventar (Marianne, effektoversigt SuperBrugsen)", "beskrivelse": "BU2–BU22 i salgslokalet.", "tillid": "sikker" },
+    { "praefiks": "LA", "kilde": "Lager/varemodtagelse", "beskrivelse": "LA1–LA16.", "tillid": "sikker" },
+    { "praefiks": "K", "kilde": "Køleleverandør", "beskrivelse": "K3–K7, central køl og rum.", "tillid": "sikker" }
+  ],
+  "kasselinjeTaelling": {
+    "beskrivelse": "Tallene i kasselinjen på tegningen (fx 2, 5, 22, 6) er hyldelængder/moduler, ikke antal kasser. Antal kasser tælles på kasseborde/scannerpladser.",
+    "advarsel": true
+  },
+  "ignorer": ["FLUGTVEJ", "BIB", "MÅL", "SNIT", "REV.", "MÅLESTOK", "TEGN.NR", "DATO"]
+}
