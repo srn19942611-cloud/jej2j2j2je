@@ -5,8 +5,17 @@ vant til at få. Layoutet nedenfor følger de to eksisterende ark
 (`Effektoversigt_Brugsen_20260708.xlsx` og Mariannes SB-effektoversigt), så modtageren
 ikke skal lære et nyt format.
 
-I Lovable: brug `exceljs` + `file-saver`. Vil man undgå afhængigheder, ligger der en
-komplet, testet skriver i `engine/xlsx.js` (ca. 150 linjer, ingen dependencies).
+Eksporten er **implementeret** i `engine/eksport.ts` og skriver filen med `engine/xlsx.mjs`
+(ca. 150 linjer, ingen afhængigheder — hverken exceljs eller file-saver er nødvendige):
+
+```ts
+import { byggExcel, filnavn } from './engine/eksport.ts';
+const bytes = byggExcel(stamdata, resultat, tegningskalkule);   // Uint8Array
+saveAs(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filnavn(stamdata));
+```
+
+Et færdigt eksempel ligger i `eksempel/` — genereret fra referencesagen med
+`node --experimental-strip-types belastning/scripts-eksempel-eksport.mjs`.
 
 ## Ark 1 – Forside
 

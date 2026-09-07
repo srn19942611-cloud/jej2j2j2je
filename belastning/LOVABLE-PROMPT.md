@@ -23,8 +23,9 @@ auth. Excel-eksport med `exceljs` + `file-saver`. Dansk brugerflade, dansk talfo
   færdigt: `katalog`, `butikstyper`, `referencemaalinger`, `projekter`, `forbrugere`,
   `tegninger`, `kode_mapping`, `revisioner`, med RLS.
 - `engine/beregning.ts`, `engine/tegning.ts`, `engine/geometri.ts`, `engine/indlaesning.ts`,
-  `engine/laering.ts`, `engine/typer.ts`, `engine/data.ts` — beregningskerne, tegningsflow,
-  opmåling af indretnings-PDF, filindlæsning og feedbackloop. Alt er testet mod rigtige sager og filer; **kopiér modulerne ind som de er**
+  `engine/laering.ts`, `engine/eksport.ts`, `engine/xlsx.mjs`, `engine/typer.ts`,
+  `engine/data.ts` — beregningskerne, tegningsflow, opmåling af indretnings-PDF,
+  filindlæsning, feedbackloop og Excel-eksport. Alt er testet mod rigtige sager og filer; **kopiér modulerne ind som de er**
   og byg UI ovenpå. Lav ikke dine egne formler eller parsere.
 - `data/*.json` — kilden bag `engine/data.ts` og seed-filen.
 - `docs/` — datamodel, beregningsregler, tegningsflow, eksportlayout, kvalitetstjek.
@@ -84,8 +85,11 @@ auth. Excel-eksport med `exceljs` + `file-saver`. Dansk brugerflade, dansk talfo
    *brug i denne sag*, *brug og foreslå ændring i kataloget*, *afvis*. Ubundne rækker
    (stålborde, stikvogne) markeres "ingen el". Se `docs/06-filaflaesning.md`.
 
-8. **Eksport** — Excel med de ni ark, der er beskrevet i `docs/04-excel-eksport.md`,
-   samt gem revision (snapshot i `revisioner`) og PDF-print af hovedtavlesiden.
+8. **Eksport** — Excel-eksporten er **færdig**: kald `byggExcel(stamdata, resultat, kalkule)`
+   fra `engine/eksport.ts`, som returnerer en `Uint8Array`, og gem den med
+   `saveAs(new Blob([bytes]), filnavn(stamdata))`. Ti ark, ingen afhængigheder — brug
+   hverken exceljs eller file-saver. Se `eksempel/`-filen for, hvordan resultatet ser ud.
+   Dertil: gem revision (snapshot i `revisioner`) og PDF-print af hovedtavlesiden.
 
 9. **Læring** (admin) — forslag til nye katalogværdier fra `aggregerRettelser()` og
    `skaleringsforslag()` med observationer, spredning, årsager og begrundelse, hver med

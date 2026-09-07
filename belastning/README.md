@@ -15,7 +15,8 @@ data/        katalog.json (79 udstyrsposter) · butikstyper.json · tabeller.jso
              plansymboler.json · kolonneordbog.json · nogletal.json
              referencer.json · tegningsudtraek-prompt.md
 engine/      typer.ts · beregning.ts · tegning.ts · geometri.ts · indlaesning.ts
-             laering.ts · data.ts (genereret) · xlsx.js
+             laering.ts · eksport.ts · data.ts (genereret) · xlsx.mjs
+eksempel/    Effektoversigt genereret fra referencesagen (10 ark)
 supabase/    skema.sql · seed-katalog.sql · skema-laering.sql
 docs/        01 datamodel · 02 beregningsregler · 03 plantegning → forbrugerliste
              04 excel-eksport · 05 kvalitetstjek · 06 filaflæsning
@@ -29,7 +30,8 @@ test/        test-beregning.mjs · test-indlaesning.mjs · test-geometri.mjs
 node --experimental-strip-types belastning/test/test-beregning.mjs    # beregning og tegningsflow
 node --experimental-strip-types belastning/test/test-indlaesning.mjs  # filindlæsning og feedbackloop
 node --experimental-strip-types belastning/test/test-geometri.mjs     # PDF-geometri og kalkuleret ark
-node belastning/scripts-generer-data.mjs                            # genskab engine/data.ts efter ændringer i data/
+node belastning/scripts-generer-data.mjs                              # genskab engine/data.ts efter ændringer i data/
+node --experimental-strip-types belastning/scripts-eksempel-eksport.mjs  # byg eksempel-Excel fra referencesagen
 ```
 
 Den første test kører referencesagen igennem: skabelon for en Dagli'Brugsen på 688 m²,
@@ -69,7 +71,10 @@ hele feedbackloopet: rettelser → forslag → godkendelse → kalibrering.
    rumareal, der krydstjekker hinanden. Møbelløb tælles både på tallene på tegningen og
    på den målte længde ÷ modulbredde. Ud kommer et kalkuleret ark, hvor hver linje viser
    mål, nøgletal, kW og tillid. Se `docs/08`.
-9. **Modellen lærer af rettelser.** Ændrer man et tal, fanges det. Når flere sager peger
+9. **Excel-arket er færdigt, ikke bare beskrevet.** Ti ark inkl. gruppeskema i Mariannes
+   format, mærkatliste, fasebalance, byggeprogram-tjek og en tavlebestilling, der kan
+   sendes direkte til tavlebyggeren. Ingen afhængigheder.
+10. **Modellen lærer af rettelser.** Ændrer man et tal, fanges det. Når flere sager peger
    samme vej, foreslås en ny standardværdi til godkendelse. Målt forbrug fra idriftsatte
    butikker kalibrerer forholdet mellem beregning og virkelighed. Se `docs/07`.
 

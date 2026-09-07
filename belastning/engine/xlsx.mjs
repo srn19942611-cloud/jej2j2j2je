@@ -1,13 +1,13 @@
-/* Minimal XLSX-skriver uden afhængigheder. Bygger et gyldigt .xlsx (zip, store)
+/* Minimal XLSX-skriver uden afhængigheder (ESM). Bygger et gyldigt .xlsx (zip, store)
    med flere ark, inline strings, kolonnebredder og et lille sæt formater. */
 
-const XLSX_STIL = { TEKST: 0, FED: 1, TAL1: 2, TAL0: 3, OVERSKRIFT: 4, PCT: 5, TAL2: 6, TITEL: 7 };
+export const XLSX_STIL = { TEKST: 0, FED: 1, TAL1: 2, TAL0: 3, OVERSKRIFT: 4, PCT: 5, TAL2: 6, TITEL: 7 };
 
 function xmlEsc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 }
 
-function kolonneNavn(n) {
+export function kolonneNavn(n) {
   let s = '';
   n += 1;
   while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
@@ -57,7 +57,7 @@ function stylesXml() {
 </styleSheet>`;
 }
 
-function byggeXlsx(ark) {
+export function byggeXlsx(ark) {
   const filer = [];
   const sheetEntries = ark.map((a, i) => ({ navn: a.navn.slice(0, 31), id: i + 1 }));
   filer.push(['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -87,8 +87,7 @@ function crc32(buf) {
 }
 
 function tekstTilBytes(s) {
-  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(s);
-  return new Uint8Array(Buffer.from(s, 'utf8'));
+  return new TextEncoder().encode(s);
 }
 
 function zip(filer) {
@@ -126,5 +125,3 @@ function zip(filer) {
   dele.forEach((d) => { ud.set(d, p); p += d.length; });
   return ud;
 }
-
-if (typeof module !== 'undefined') module.exports = { byggeXlsx, XLSX_STIL, kolonneNavn };
