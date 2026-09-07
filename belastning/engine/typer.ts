@@ -297,3 +297,71 @@ export interface Udtraeksstatistik {
   raetForstePutte: number;          // andel hvor brugeren ikke rettede
   faldgrube: string | null;
 }
+
+/* ---------------- Geometri fra indretningstegning ---------------- */
+
+/** Ét tekstelement som det kommer fra PDF-laget (pdfjs: getTextContent). */
+export interface TekstElement { tekst: string; x: number; y: number; bredde: number; hoejde: number; lodret?: boolean }
+/** En streg fra tegningen (pdfjs: getOperatorList → paths). */
+export interface Streg { x1: number; y1: number; x2: number; y2: number }
+export interface PdfSide { nr: number; bredde: number; hoejde: number; tekster: TekstElement[]; streger: Streg[] }
+
+export interface Skala {
+  mmPrEnhed: number;
+  metode: 'målkæde' | 'målestok' | 'rumareal' | 'ukendt';
+  tillid: number;
+  kontrol: { metode: string; mmPrEnhed: number; afvigelsePct: number }[];
+  forklaring: string;
+}
+
+export interface RumFundet {
+  navn: string;
+  rumtype: string;
+  arealM2: number | null;
+  kilde: 'etiket' | 'geometri';
+  tillid: number;
+  x: number; y: number;
+}
+
+export interface Loeb {
+  kode: string;
+  familie: string;
+  modulbreddeM: number | null;
+  laengdeM: number;
+  antal: number;
+  antalFraEtiketter: number;
+  antalFraTal: number | null;
+  antalFraGeometri: number | null;
+  koeletype: 'koel' | 'frost' | null;
+  rum: string | null;
+  tillid: number;
+  forklaring: string;
+}
+
+export interface Kalkulationslinje {
+  gruppe: string;
+  beskrivelse: string;
+  grundlag: 'løbende meter' | 'areal' | 'stk' | 'rum';
+  maal: string;          // fx "14 moduler à 0,60 m = 8,40 m"
+  noegletal: string;     // fx "0,64 kW/m"
+  kw: number;
+  antal: number | null;
+  kwPrEnhed: number | null;
+  fallback: boolean;
+  katalogId: string | null;
+  tillid: number;
+  kilde: string;
+  forklaring: string;
+}
+
+export interface Tegningskalkule {
+  skala: Skala;
+  rum: RumFundet[];
+  loeb: Loeb[];
+  linjer: Kalkulationslinje[];
+  samletKw: number;
+  samletKwUdenFallback: number;
+  gennemsnitligTillid: number;
+  advarsler: string[];
+  stamdataForslag: Partial<Stamdata>;
+}

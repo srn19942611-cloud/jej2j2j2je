@@ -9,6 +9,7 @@ const butikstyper = laes('butikstyper.json');
 const referencer = laes('referencer.json');
 const plansymboler = laes('plansymboler.json');
 const kolonneordbog = laes('kolonneordbog.json');
+const nogletal = laes('nogletal.json');
 
 const aPrM2 = referencer.maalinger.map((m) => m.peakA / m.m2);
 const ref = { min: Math.min(...aPrM2), max: Math.max(...aPrM2) };
@@ -33,6 +34,7 @@ export const BUTIKSTYPER = ${JSON.stringify(butikstyper.butikstyper, null, 2)};
 export const TILVALG = ${JSON.stringify(butikstyper.tilvalg, null, 2)};
 export const PLANSYMBOLER = ${JSON.stringify(plansymboler, null, 2)};
 export const KOLONNEORDBOG = ${JSON.stringify(kolonneordbog, null, 2)};
+export const NOEGLETAL = ${JSON.stringify(nogletal, null, 2)};
 export const KATALOG: KatalogPost[] = ${JSON.stringify(katalog, null, 2)};
 `;
 writeFileSync(new URL('./engine/data.ts', import.meta.url), ud);

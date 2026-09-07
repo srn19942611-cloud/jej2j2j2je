@@ -135,14 +135,20 @@ export function optaellingTilForbrugere(
 
 /** Tegningen vinder på antal; skabelonen udfylder alt det, tegningen ikke viser
     (køl, ventilation, IT, sikring, belysning). Kilde bevares pr. række. */
-export function fletMedSkabelon(fraTegning: Forbruger[], stam: Stamdata, katalog: KatalogPost[]): Forbruger[] {
+export function fletMedSkabelon(
+  fraTegning: Forbruger[], stam: Stamdata, katalog: KatalogPost[],
+  valg: { overtagKw?: boolean } = {},
+): Forbruger[] {
   const skabelon = genererForbrugerliste(stam, katalog);
   const fraTegningPrId = new Map(fraTegning.map((f) => [f.katalogId, f]));
   const resultat = skabelon.map((s) => {
     const t = fraTegningPrId.get(s.katalogId);
     if (!t) return s;
     fraTegningPrId.delete(s.katalogId);
-    return { ...s, antal: t.antal, kilde: 'Tegning' };
+    return {
+      ...s, antal: t.antal, kilde: 'Tegning',
+      ...(valg.overtagKw ? { kw: t.kw, note: [s.note, t.note].filter(Boolean).join(' ').trim() } : {}),
+    };
   });
   fraTegningPrId.forEach((t) => resultat.push(t));
   return resultat;

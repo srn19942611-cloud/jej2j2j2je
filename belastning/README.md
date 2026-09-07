@@ -12,15 +12,15 @@ den er uafhængig af værktøj — motoren er ren TypeScript uden afhængigheder
 
 ```
 data/        katalog.json (79 udstyrsposter) · butikstyper.json · tabeller.json
-             plansymboler.json · kolonneordbog.json · referencer.json
-             tegningsudtraek-prompt.md
-engine/      typer.ts · beregning.ts · tegning.ts · indlaesning.ts · laering.ts
-             data.ts (genereret) · xlsx.js
+             plansymboler.json · kolonneordbog.json · nogletal.json
+             referencer.json · tegningsudtraek-prompt.md
+engine/      typer.ts · beregning.ts · tegning.ts · geometri.ts · indlaesning.ts
+             laering.ts · data.ts (genereret) · xlsx.js
 supabase/    skema.sql · seed-katalog.sql · skema-laering.sql
 docs/        01 datamodel · 02 beregningsregler · 03 plantegning → forbrugerliste
              04 excel-eksport · 05 kvalitetstjek · 06 filaflæsning
-             07 feedback og læring
-test/        test-beregning.mjs · test-indlaesning.mjs
+             07 feedback og læring · 08 PDF og geometri
+test/        test-beregning.mjs · test-indlaesning.mjs · test-geometri.mjs
 ```
 
 ## Kom i gang
@@ -28,6 +28,7 @@ test/        test-beregning.mjs · test-indlaesning.mjs
 ```bash
 node --experimental-strip-types belastning/test/test-beregning.mjs    # beregning og tegningsflow
 node --experimental-strip-types belastning/test/test-indlaesning.mjs  # filindlæsning og feedbackloop
+node --experimental-strip-types belastning/test/test-geometri.mjs     # PDF-geometri og kalkuleret ark
 node belastning/scripts-generer-data.mjs                            # genskab engine/data.ts efter ændringer i data/
 ```
 
@@ -64,7 +65,11 @@ hele feedbackloopet: rettelser → forslag → godkendelse → kalibrering.
 7. **Filer læses, i stedet for at blive tastet af.** Maskinlister, gruppeskemaer og
    datablade bindes til kataloget på maskinnummer eller navn — dansk talformat,
    "3 x 400" og fodnoter som "1**" håndteres. Se `docs/06`.
-8. **Modellen lærer af rettelser.** Ændrer man et tal, fanges det. Når flere sager peger
+8. **Indretnings-PDF'en måles op.** Skalaen findes ved målkæder, målestok og kendt
+   rumareal, der krydstjekker hinanden. Møbelløb tælles både på tallene på tegningen og
+   på den målte længde ÷ modulbredde. Ud kommer et kalkuleret ark, hvor hver linje viser
+   mål, nøgletal, kW og tillid. Se `docs/08`.
+9. **Modellen lærer af rettelser.** Ændrer man et tal, fanges det. Når flere sager peger
    samme vej, foreslås en ny standardværdi til godkendelse. Målt forbrug fra idriftsatte
    butikker kalibrerer forholdet mellem beregning og virkelighed. Se `docs/07`.
 

@@ -1203,6 +1203,395 @@ export const KOLONNEORDBOG = {
     }
   ]
 };
+export const NOEGLETAL = {
+  "version": "2026-09-07",
+  "formaal": "Oversætter det, der kan måles på en indretningstegning — løbende meter møbel og kvadratmeter rum — til effekt i kW. Bruges når tegningen viser et møbel, men intet datablad findes.",
+  "tillidsforklaring": "0,9 = fra byggeprogram eller datablad · 0,6–0,8 = udledt af referencesagen Rask Mølle · 0,3–0,5 = erfaringstal der bør bekræftes med et datablad, før det bruges til bestilling.",
+  "modulfamilier": [
+    {
+      "kode": "EGM",
+      "navn": "Reolmodul (gondol/væg)",
+      "bredde_mm": 600,
+      "dybde_mm": 1200,
+      "koelet": false,
+      "note": "Målene står typisk i selve koden: 'EGM 600x1200'. Læs dem derfra, når de er der."
+    },
+    {
+      "kode": "LDF",
+      "navn": "Frostmøbel, plug-in (låg/ø)",
+      "bredde_mm": 1020,
+      "dybde_mm": 845,
+      "koelet": true,
+      "koeletype": "frost"
+    },
+    {
+      "kode": "CLS",
+      "navn": "Køle-/frostskabsrække med glaslåger",
+      "bredde_mm": null,
+      "dybde_mm": 800,
+      "koelet": true,
+      "koeletype": "koel",
+      "note": "Tallet i koden (fx CLS3760) er som regel rækkens samlede længde i mm — bekræftes mod den målte bredde."
+    },
+    {
+      "kode": "IMPULS",
+      "navn": "Impulskøler ved kasselinje",
+      "bredde_mm": 600,
+      "dybde_mm": 700,
+      "koelet": true,
+      "koeletype": "koel"
+    },
+    {
+      "kode": "MEJERI",
+      "navn": "Mejerikøl, gennemgangsmøbel",
+      "bredde_mm": 1250,
+      "dybde_mm": 900,
+      "koelet": true,
+      "koeletype": "koel"
+    },
+    {
+      "kode": "F&G",
+      "navn": "Frugt & grønt-bord",
+      "bredde_mm": 1267,
+      "dybde_mm": 900,
+      "koelet": false
+    }
+  ],
+  "dimensionIKode": {
+    "regex": "(\\d{3,4})\\s*[x×]\\s*(\\d{3,4})",
+    "forklaring": "To tal adskilt af x læses som bredde × dybde i mm.",
+    "enkelttalRegex": "^[A-ZÆØÅ]{2,4}\\s*(\\d{4})$",
+    "enkelttalForklaring": "Ét firecifret tal efter en modulkode læses som rækkens samlede længde i mm og markeres til bekræftelse."
+  },
+  "prMeter": [
+    {
+      "id": "plugin_koel",
+      "navn": "Plug-in kølemøbel (multideck/impuls)",
+      "kwPrM": 0.64,
+      "katalogId": "BU5",
+      "gaelderKoder": [
+        "IMPULS",
+        "EGM_KOELET"
+      ],
+      "kilde": "El-effektoversigt Rask Mølle: 0,385 kW pr. 600 mm møbel",
+      "tillid": 0.7,
+      "koeletype": "koel"
+    },
+    {
+      "id": "plugin_frost",
+      "navn": "Plug-in frostmøbel (ø/låg)",
+      "kwPrM": 1,
+      "katalogId": "BU5",
+      "gaelderKoder": [
+        "LDF"
+      ],
+      "kilde": "Erfaringstal, ca. 1 kW pr. 1020 mm møbel",
+      "tillid": 0.5,
+      "koeletype": "frost"
+    },
+    {
+      "id": "central_koel_moebel",
+      "navn": "Centraltilsluttet kølemøbel — lys, blæser, afrimning",
+      "kwPrM": 0.15,
+      "katalogId": "BU3",
+      "gaelderKoder": [
+        "CLS",
+        "MEJERI"
+      ],
+      "kilde": "Erfaringstal. Selve køleeffekten ligger på centralanlægget, ikke på møblet",
+      "tillid": 0.5,
+      "koeletype": null
+    },
+    {
+      "id": "central_koel_kompressor",
+      "navn": "Centralanlæg, kompressoreffekt pr. m kølemøbel",
+      "kwPrM": 0.25,
+      "katalogId": "K3",
+      "gaelderKoder": [
+        "CLS",
+        "MEJERI"
+      ],
+      "kilde": "Erfaringstal, køl. Kontrollér mod køleleverandørens beregning",
+      "tillid": 0.4,
+      "koeletype": "koel"
+    },
+    {
+      "id": "central_frost_kompressor",
+      "navn": "Centralanlæg, kompressoreffekt pr. m frostmøbel",
+      "kwPrM": 0.45,
+      "katalogId": "K4",
+      "gaelderKoder": [
+        "CLS_FROST"
+      ],
+      "kilde": "Erfaringstal, frost",
+      "tillid": 0.4,
+      "koeletype": "frost"
+    },
+    {
+      "id": "betjent_disk",
+      "navn": "Betjent køledisk",
+      "kwPrM": 0.96,
+      "katalogId": "BC4",
+      "gaelderKoder": [
+        "BETJENT_DISK"
+      ],
+      "kilde": "1,2 kW pr. 1,25 m disk, El-effektoversigt",
+      "tillid": 0.7,
+      "koeletype": "koel"
+    },
+    {
+      "id": "selvbetjent_disk",
+      "navn": "Selvbetjent køledisk/delikøl",
+      "kwPrM": 0.85,
+      "katalogId": "BC19",
+      "gaelderKoder": [
+        "SELVBETJENT_DISK",
+        "DELIKØL"
+      ],
+      "kilde": "1,03–1,1 kW pr. 1,25 m, maskinliste POS",
+      "tillid": 0.7,
+      "koeletype": "koel"
+    },
+    {
+      "id": "inventarlys",
+      "navn": "Inventarlys på tørvarereoler",
+      "kwPrM": 0.025,
+      "katalogId": "BU3",
+      "gaelderKoder": [
+        "EGM"
+      ],
+      "kilde": "Erfaringstal, 25 W pr. m reol, CTS-styret",
+      "tillid": 0.5,
+      "koeletype": null
+    }
+  ],
+  "prM2Rum": [
+    {
+      "id": "lys_salg",
+      "navn": "Belysning salgsareal 3500 K",
+      "wPrM2": 9,
+      "rum": [
+        "salgslokale"
+      ],
+      "katalogId": "L1",
+      "kilde": "Byggeprogram §3.2",
+      "tillid": 0.9,
+      "fallback": false
+    },
+    {
+      "id": "lys_lager",
+      "navn": "Belysning lager/personale 4000 K",
+      "wPrM2": 8,
+      "rum": [
+        "lager",
+        "depot",
+        "personalerum",
+        "kontor",
+        "flaskerum",
+        "teknik"
+      ],
+      "katalogId": "L2",
+      "kilde": "Byggeprogram §3.2",
+      "tillid": 0.8,
+      "fallback": false
+    },
+    {
+      "id": "ventilation",
+      "navn": "Ventilation AHU",
+      "wPrM2": 12.9,
+      "rum": [
+        "salgslokale"
+      ],
+      "katalogId": "V1",
+      "kilde": "Unic-Air, 9 kW ved 700 m² salgsareal",
+      "tillid": 0.7,
+      "fallback": false
+    },
+    {
+      "id": "komfortkoel",
+      "navn": "Varmepumper/komfortkøl, eleffekt",
+      "wPrM2": 17,
+      "rum": [
+        "salgslokale"
+      ],
+      "katalogId": "V2",
+      "kilde": "2 × 6 kW ved 688 m², Rask Mølle",
+      "tillid": 0.6,
+      "fallback": false
+    },
+    {
+      "id": "koelerum",
+      "navn": "Kølerum, kompressor",
+      "wPrM2": 190,
+      "rum": [
+        "køl",
+        "mejerikøl"
+      ],
+      "katalogId": "K5",
+      "kilde": "3 kW ved 16 m² rum",
+      "tillid": 0.6,
+      "fallback": false
+    },
+    {
+      "id": "frostrum",
+      "navn": "Frostrum, kompressor",
+      "wPrM2": 250,
+      "rum": [
+        "frost"
+      ],
+      "katalogId": "K4",
+      "kilde": "4 kW ved 16 m² rum",
+      "tillid": 0.6,
+      "fallback": false
+    },
+    {
+      "id": "deli_udstyr",
+      "navn": "Deli- og bake-off-udstyr",
+      "wPrM2": 450,
+      "rum": [
+        "deli"
+      ],
+      "katalogId": null,
+      "kilde": "Sum af BC-poster ved 45 m² deli, Rask Mølle. Kun fallback — brug maskinlisten når den findes",
+      "tillid": 0.4,
+      "fallback": true
+    },
+    {
+      "id": "slagter_udstyr",
+      "navn": "Slagterudstyr",
+      "wPrM2": 900,
+      "rum": [
+        "slagter"
+      ],
+      "katalogId": null,
+      "kilde": "Sum af SL-poster i slagter-maskinlisten. Kun fallback",
+      "tillid": 0.3,
+      "fallback": true
+    },
+    {
+      "id": "disp_stik_salg",
+      "navn": "Dispositionsstik salgsareal",
+      "wPrM2": 5.7,
+      "rum": [
+        "salgslokale"
+      ],
+      "katalogId": "BU14",
+      "kilde": "Ét stik pr. 35 m² à 0,2 kW",
+      "tillid": 0.6,
+      "fallback": false
+    }
+  ],
+  "prEnhed": [
+    {
+      "id": "kasse",
+      "navn": "Kasse/POS-plads",
+      "kw": 0.5,
+      "katalogId": "BU15",
+      "kilde": "Maskinliste POS",
+      "tillid": 0.8
+    },
+    {
+      "id": "sco",
+      "navn": "Selvbetjeningskasse",
+      "kw": 0.5,
+      "katalogId": "BU15",
+      "kilde": "Maskinliste POS",
+      "tillid": 0.8
+    },
+    {
+      "id": "skydedoer",
+      "navn": "Automatisk skydedør",
+      "kw": 0.5,
+      "katalogId": "BU33",
+      "kilde": "Byggeprogram",
+      "tillid": 0.7
+    },
+    {
+      "id": "luftgardin",
+      "navn": "Luftgardin ved indgang",
+      "kw": 6,
+      "katalogId": "BU30",
+      "kilde": "Frico AGS, byggeprogram §11.4",
+      "tillid": 0.7
+    },
+    {
+      "id": "hurtigport",
+      "navn": "Hurtigport",
+      "kw": 1.5,
+      "katalogId": "BU32",
+      "kilde": "El-effektoversigt",
+      "tillid": 0.7
+    },
+    {
+      "id": "flaskeautomat",
+      "navn": "Flaskeautomat",
+      "kw": 3.5,
+      "katalogId": "LA7",
+      "kilde": "Byggeprogram §4.4.2.9",
+      "tillid": 0.8
+    }
+  ],
+  "rumtypeordbog": [
+    {
+      "monster": "salgslokale|butik",
+      "rumtype": "salgslokale"
+    },
+    {
+      "monster": "^lager",
+      "rumtype": "lager"
+    },
+    {
+      "monster": "^deli",
+      "rumtype": "deli"
+    },
+    {
+      "monster": "slagter|kogerum",
+      "rumtype": "slagter"
+    },
+    {
+      "monster": "^frost",
+      "rumtype": "frost"
+    },
+    {
+      "monster": "mejerikøl",
+      "rumtype": "mejerikøl"
+    },
+    {
+      "monster": "^køl",
+      "rumtype": "køl"
+    },
+    {
+      "monster": "flaskerum|flaske-?indlev",
+      "rumtype": "flaskerum"
+    },
+    {
+      "monster": "personalerum|frokost",
+      "rumtype": "personalerum"
+    },
+    {
+      "monster": "^kontor",
+      "rumtype": "kontor"
+    },
+    {
+      "monster": "^depot",
+      "rumtype": "depot"
+    },
+    {
+      "monster": "^teknik|kompressorrum",
+      "rumtype": "teknik"
+    },
+    {
+      "monster": "vindfang",
+      "rumtype": "vindfang"
+    },
+    {
+      "monster": "wc|bad|forrum",
+      "rumtype": "ovrigt"
+    }
+  ],
+  "forklaringKoeletype": "prMeter-poster med koeletype 'koel' eller 'frost' bruges kun på løb af den type. Et CLS-løb ved et frostrum regnes som frost, ikke begge dele.",
+  "forklaringFallback": "prM2Rum-poster med fallback=true er grove afdelingsnøgletal. De vises i kalkulen, men indgår ikke i den samlede effekt, når der findes en maskinliste for afdelingen."
+};
 export const KATALOG: KatalogPost[] = [
   {
     "id": "BU2",

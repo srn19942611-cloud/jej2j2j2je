@@ -22,9 +22,9 @@ auth. Excel-eksport med `exceljs` + `file-saver`. Dansk brugerflade, dansk talfo
   kør dem som migrationer i den rækkefølge. Skemaet er
   færdigt: `katalog`, `butikstyper`, `referencemaalinger`, `projekter`, `forbrugere`,
   `tegninger`, `kode_mapping`, `revisioner`, med RLS.
-- `engine/beregning.ts`, `engine/tegning.ts`, `engine/indlaesning.ts`, `engine/laering.ts`,
-  `engine/typer.ts`, `engine/data.ts` — beregningskerne, tegningsflow, filindlæsning og
-  feedbackloop. Alt er testet mod rigtige sager og filer; **kopiér modulerne ind som de er**
+- `engine/beregning.ts`, `engine/tegning.ts`, `engine/geometri.ts`, `engine/indlaesning.ts`,
+  `engine/laering.ts`, `engine/typer.ts`, `engine/data.ts` — beregningskerne, tegningsflow,
+  opmåling af indretnings-PDF, filindlæsning og feedbackloop. Alt er testet mod rigtige sager og filer; **kopiér modulerne ind som de er**
   og byg UI ovenpå. Lav ikke dine egne formler eller parsere.
 - `data/*.json` — kilden bag `engine/data.ts` og seed-filen.
 - `docs/` — datamodel, beregningsregler, tegningsflow, eksportlayout, kvalitetstjek.
@@ -42,8 +42,16 @@ auth. Excel-eksport med `exceljs` + `file-saver`. Dansk brugerflade, dansk talfo
    køleydelse i ventilationsaggregat, komfortkøl-faktorer. Alle med default fra
    `engine/data.ts`.
 
-3. **Plantegning** — upload PDF eller billede, render til PNG, send til vision-modellen
-   med prompten i `data/tegningsudtraek-prompt.md`, og vis resultatet i en
+3. **Plantegning** — upload af indretnings-PDF. Byg en `PdfSide` med `pdfjs-dist`
+   (tekster fra `getTextContent`, streger fra `getOperatorList` — opskrift i
+   `docs/08-pdf-og-geometri.md`) og kør `byggKalkule()` fra `engine/geometri.ts`.
+   Den finder selv skala, rum, arealer og møbelløb og returnerer et **kalkuleret ark**:
+   én linje pr. beregning med mål ("6 moduler à 1,02 m = 6,12 m"), nøgletal ("1,00 kW/m"),
+   kW, tillid og forklaring. Vis arket med skalaen og dens kontrolmålinger øverst, og
+   marker linjer med tillid under 0,5. `kalkuleTilForbrugere()` +
+   `fletMedSkabelon(..., { overtagKw: true })` sender det videre til effektlisten.
+   Er tegningen scannet uden tekstlag, renderes siden til PNG og sendes til vision-modellen
+   med prompten i `data/tegningsudtraek-prompt.md`, og resultatet vises i en
    **review-skærm med tre kolonner**: tegning · optælling (kode, læst antal, tillid,
    foreslået katalogpost, alt redigerbart) · effekt af rettelsen. Ukendte og "forslag"-koder
    skal bekræftes, og bekræftelsen gemmes i `kode_mapping`, så den genbruges næste gang.
@@ -114,5 +122,6 @@ auth. Excel-eksport med `exceljs` + `file-saver`. Dansk brugerflade, dansk talfo
 3. Excel-eksport.
 4. Dokumentupload og indlæsning af maskinlister — det er den hurtigste tidsbesparelse
    efter skabelonen.
-5. Tegningsupload, vision-udtræk og review-skærm.
+5. Indretnings-PDF: `pdfjs-dist`-laget, kalkuleret ark og review-skærm. Vision-udtrækket
+   er fallback for scannede tegninger.
 6. Feedbackloopet: rettelser, forslag, kalibrering og status-siden.

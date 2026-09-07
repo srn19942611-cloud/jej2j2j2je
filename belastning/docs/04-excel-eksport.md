@@ -73,7 +73,30 @@ og antal enheder — plus tommelfingerreglen som kontroltal.
 Kravene fra `data/tabeller.json` med automatisk status (OK / advarsel / mangler) og den
 faktiske værdi, så det kan vedlægges tavlebestillingen som dokumentation.
 
-## Ark 9 – Forudsætninger
+## Ark 9 – Tegningskalkule
+
+Kommer der en indretningstegning ind, er dette arket, der viser, hvordan tegningen blev
+til effekt. Én linje pr. beregning:
+
+`Grundlag · Beskrivelse · Mål · Nøgletal · kW · Antal · kW/enhed · Tillid · Kilde · Forklaring`
+
+Eksempler på indhold:
+
+| Grundlag | Beskrivelse | Mål | Nøgletal | kW |
+|---|---|---|---|---|
+| løbende meter | Plug-in frostmøbel — LDF 0,9 1020x845 | 6 moduler à 1,02 m = 6,12 m | 1,00 kW/m | 6,12 |
+| areal | Belysning salgsareal — SALGSLOKALE | 688 m² | 9,0 W/m² | 6,19 |
+| areal | Frostrum, kompressor — FROST | 16 m² | 250 W/m² | 4,00 |
+| stk | Flaskeautomat | 1 stk. | 3,50 kW/stk. | 3,50 |
+
+Øverst: den fundne skala med metode og kontrolmålinger, listen over rum med arealer og
+listen over møbelløb med antal fra tegning mod antal fra målt længde. Nederst: samlet
+effekt, samlet effekt uden grove afdelingstal, og vægtet tillid.
+
+Arket er dokumentationen for, hvorfor der står 6,12 kW og ikke noget andet — og det er
+det, en leverandør kan efterprøve.
+
+## Ark 10 – Forudsætninger
 
 Samtidighedsfaktorer med intervaller og noter, konstanter (ρ, c, motorfaktor, maks.
 spændingsfald), kabeltabellen og en kort metodebeskrivelse. Uden dette ark kan modtageren
