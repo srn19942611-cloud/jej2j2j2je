@@ -18,12 +18,14 @@ auth. Excel-eksport med `exceljs` + `file-saver`. Dansk brugerflade, dansk talfo
 
 ## Medfølgende filer — brug dem, opfind ikke nye tal
 
-- `supabase/skema.sql` + `supabase/seed-katalog.sql` — kør dem som migration. Skemaet er
+- `supabase/skema.sql` + `supabase/seed-katalog.sql` + `supabase/skema-laering.sql` —
+  kør dem som migrationer i den rækkefølge. Skemaet er
   færdigt: `katalog`, `butikstyper`, `referencemaalinger`, `projekter`, `forbrugere`,
   `tegninger`, `kode_mapping`, `revisioner`, med RLS.
-- `engine/beregning.ts`, `engine/tegning.ts`, `engine/typer.ts`, `engine/data.ts` —
-  beregningskernen. Den er testet mod en rigtig sag; **kopiér den ind som den er** og
-  byg UI ovenpå. Lav ikke dine egne formler.
+- `engine/beregning.ts`, `engine/tegning.ts`, `engine/indlaesning.ts`, `engine/laering.ts`,
+  `engine/typer.ts`, `engine/data.ts` — beregningskerne, tegningsflow, filindlæsning og
+  feedbackloop. Alt er testet mod rigtige sager og filer; **kopiér modulerne ind som de er**
+  og byg UI ovenpå. Lav ikke dine egne formler eller parsere.
 - `data/*.json` — kilden bag `engine/data.ts` og seed-filen.
 - `docs/` — datamodel, beregningsregler, tegningsflow, eksportlayout, kvalitetstjek.
 
@@ -66,8 +68,22 @@ auth. Excel-eksport med `exceljs` + `file-saver`. Dansk brugerflade, dansk talfo
 6. **Komfortkøl** — varmebalancen post for post, ventilationens køleydelse, underskud,
    anbefalet split-effekt og antal enheder, samt tommelfingerreglen som kontroltal.
 
-7. **Eksport** — Excel med de ni ark, der er beskrevet i `docs/04-excel-eksport.md`,
+7. **Dokumenter** — upload af maskinlister, gruppeskemaer, effektoversigter og datablade
+   (xlsx/xls/csv/pdf). Kør `indlaes()` fra `engine/indlaesning.ts` og vis en review-skærm:
+   den tolkede kolonneopsætning øverst (skal kunne rettes), derefter én række pr. post med
+   læst værdi, foreslået katalogbinding, tillid og eventuelle advarsler. Konflikter mod
+   katalogets standardværdier vises som "8,5 kW → 9,5 kW (datablad)" med tre valg:
+   *brug i denne sag*, *brug og foreslå ændring i kataloget*, *afvis*. Ubundne rækker
+   (stålborde, stikvogne) markeres "ingen el". Se `docs/06-filaflaesning.md`.
+
+8. **Eksport** — Excel med de ni ark, der er beskrevet i `docs/04-excel-eksport.md`,
    samt gem revision (snapshot i `revisioner`) og PDF-print af hovedtavlesiden.
+
+9. **Læring** (admin) — forslag til nye katalogværdier fra `aggregerRettelser()` og
+   `skaleringsforslag()` med observationer, spredning, årsager og begrundelse, hver med
+   *godkend* / *afvis* / *udskyd*. Registrering af målt 15-minutters peak pr. butik
+   (`kalibrering`), nøgletal for forholdet mellem beregnet og målt, og en status-side med
+   dækningsgrad, træfsikkerhed og antal målinger. Se `docs/07-feedback-og-laering.md`.
 
 ## Regler, der ikke må laves om
 
@@ -82,6 +98,13 @@ auth. Excel-eksport med `exceljs` + `file-saver`. Dansk brugerflade, dansk talfo
   forbrugerliste. Ingen automatisk godkendelse.
 - Solceller regnes som negativ effekt og indgår ikke i hovedsikringen.
 - Ingen sletning uden bekræftelse; projekter arkiveres i stedet.
+- **Rettelser skal fanges automatisk.** Kald `registrerRettelser()` ved hvert gem og skriv
+  til `rettelser`. Brugeren skal ikke gøre andet end eventuelt at vælge en årsag.
+- **Kataloget ændrer sig aldrig af sig selv.** Forslag skal godkendes af et menneske, og
+  ændringer logges i `katalog_historik`. Afsluttede projekter må ikke ændre sig
+  bagudrettet — de har deres egne rækker.
+- Antal, kabellængde og antal grupper er projektspecifikke og bliver aldrig til
+  katalogværdier; de føder skaleringsreglerne i stedet.
 
 ## Rækkefølge
 
@@ -89,5 +112,7 @@ auth. Excel-eksport med `exceljs` + `file-saver`. Dansk brugerflade, dansk talfo
 2. Projekter → stamdata → forbrugerliste fra skabelon → hovedtavle. Værktøjet skal være
    brugbart **uden** tegning fra dag ét.
 3. Excel-eksport.
-4. Tegningsupload, vision-udtræk og review-skærm.
-5. Revisioner og kode_mapping-læring.
+4. Dokumentupload og indlæsning af maskinlister — det er den hurtigste tidsbesparelse
+   efter skabelonen.
+5. Tegningsupload, vision-udtræk og review-skærm.
+6. Feedbackloopet: rettelser, forslag, kalibrering og status-siden.

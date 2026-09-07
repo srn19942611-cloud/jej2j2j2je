@@ -1,0 +1,71 @@
+{
+  "version": "2026-09-07",
+  "formaal": "Gør app'en i stand til at læse de regneark og lister, der rent faktisk kommer ind: maskinlister fra leverandører, effektoversigter fra rådgivere og butikkernes egne inventarlister. Ordbogen matcher kolonneoverskrifter og værdiformater, så et ark kan indlæses uden manuel opsætning.",
+  "filtyper": [
+    { "id": "maskinliste", "navn": "Maskin-/inventarliste", "endelser": [".xlsx", ".xls", ".csv"], "kendetegn": ["maskintype", "leverandør", "stk", "kardex", "io nr"], "beskrivelse": "FDB-formatet med én maskine pr. række og VVS-kolonner ved siden af el." },
+    { "id": "effektoversigt", "navn": "Effektoversigt/belastningsskema", "endelser": [".xlsx", ".xls", ".csv"], "kendetegn": ["mærkat", "cos", "df", "belast", "sikring", "gruppe"], "beskrivelse": "Et allerede udfyldt skema — indlæses som helt projekt, ikke som enkeltposter." },
+    { "id": "gruppeskema", "navn": "Gruppeskema", "endelser": [".xlsx", ".xls"], "kendetegn": ["1p+n", "3p+n", "c10", "c16"], "beskrivelse": "Mariannes format: antal grupper pr. type i kolonner." },
+    { "id": "datablad", "navn": "Datablad (PDF)", "endelser": [".pdf"], "kendetegn": ["type", "model", "nominal", "rated", "tilslutning"], "beskrivelse": "Tekstlag søges for effekt, spænding, strøm og cos φ. Scannet PDF sendes til vision." },
+    { "id": "plantegning", "navn": "Plantegning", "endelser": [".pdf", ".png", ".jpg", ".dwg"], "kendetegn": ["salgslokale", "m2", "målestok"], "beskrivelse": "Behandles af tegningsflowet, se docs/03." },
+    { "id": "byggeprogram", "navn": "Byggeprogram/kravspecifikation", "endelser": [".pdf", ".docx"], "kendetegn": ["byggeprogram", "kravspecifikation", "§"], "beskrivelse": "Udtrækkes til krav-tjeklisten, ikke til forbrugerlisten." }
+  ],
+  "kolonner": [
+    { "felt": "gruppe", "synonymer": ["nr.", "nr", "mærkat", "gr.", "gruppe", "id", "pos", "position", "kode"], "paakraevet": false },
+    { "felt": "navn", "synonymer": ["maskintype", "forbruger", "betegnelse", "udstyr", "beskrivelse", "emne", "salgslokale", "inventar", "forbruger/beskrivelse"], "paakraevet": true },
+    { "felt": "leverandoer", "synonymer": ["leverandør", "fabrikat", "producent", "brand"], "paakraevet": false },
+    { "felt": "model", "synonymer": ["model", "type", "typebetegnelse", "varenr"], "paakraevet": false },
+    { "felt": "antal", "synonymer": ["stk.", "stk", "antal", "antal tegning", "qty", "mængde"], "paakraevet": true },
+    { "felt": "spaending", "synonymer": ["spænding", "volt", "v", "forsyning", "tilslutning"], "paakraevet": false },
+    { "felt": "kw", "synonymer": ["kw", "kw/stk", "effekt", "effekt [kw]", "p", "optaget effekt", "mærkeeffekt"], "paakraevet": false },
+    { "felt": "ampere", "synonymer": ["amp", "a", "a/fase", "strøm", "mærkestrøm", "in"], "paakraevet": false },
+    { "felt": "cosphi", "synonymer": ["cos φ", "cos phi", "cosphi", "cos", "effektfaktor", "pf"], "paakraevet": false },
+    { "felt": "df", "synonymer": ["df", "samtidighed", "samtidighedsfaktor", "benyttelsesfaktor"], "paakraevet": false },
+    { "felt": "mcb", "synonymer": ["sikring", "afbryder", "gruppeafbryder", "mcb", "automat"], "paakraevet": false },
+    { "felt": "kabel", "synonymer": ["kabel", "tværsnit", "ledning", "kabeltype"], "paakraevet": false },
+    { "felt": "rcd", "synonymer": ["rcd", "hpfi", "fejlstrøm", "beskyttelse", "hfi"], "paakraevet": false },
+    { "felt": "tavle", "synonymer": ["tavle", "fordeling", "ht", "ut"], "paakraevet": false },
+    { "felt": "afdeling", "synonymer": ["afdeling", "område", "rum", "placering", "lokale"], "paakraevet": false },
+    { "felt": "note", "synonymer": ["bemærkninger", "bemærkning", "noter", "note", "kommentarer", "kommentar"], "paakraevet": false },
+    { "felt": "kilde", "synonymer": ["kilde", "reference", "grundlag"], "paakraevet": false }
+  ],
+  "ignorerKolonner": ["varmt vand", "koldt vand", "blødt vand", "afløb", "ka afløb", "aftræk", "vvs", "kardex nr.", "io nr."],
+  "vaerdimoenstre": {
+    "spaending": [
+      { "regex": "3\\s*[x×]\\s*400", "volt": 400, "faser": 3, "tillid": 1 },
+      { "regex": "400\\s*/?\\s*230|230\\s*/\\s*400", "volt": 400, "faser": 3, "tillid": 0.5, "flag": "tvetydig", "note": "Kan være 1-faset tilslutning på et 400 V-apparat — skal bekræftes." },
+      { "regex": "^\\s*400", "volt": 400, "faser": 3, "tillid": 0.9 },
+      { "regex": "3\\s*[x×]\\s*230", "volt": 230, "faser": 3, "tillid": 0.9 },
+      { "regex": "^\\s*230", "volt": 230, "faser": 1, "tillid": 1 },
+      { "regex": "^\\s*(24|12)\\s*v?", "volt": 230, "faser": 1, "tillid": 0.3, "flag": "lavspænding", "note": "Formentlig styrespænding bag transformer." }
+    ],
+    "tal": {
+      "decimalKomma": true,
+      "fjernEnheder": ["kw", "kW", "w", "a", "A", "v", "V", "ca.", "ca", "~", "stk", "stk."],
+      "tusindtalstegn": [".", " "],
+      "note": "Danske ark bruger komma som decimaltegn: 16,5 → 16.5. Værdier med både punktum og komma tolkes som 1.234,5."
+    },
+    "ja": ["ja", "j", "x", "yes", "true", "1"],
+    "nej": ["nej", "n", "-", "–", "0", "false"],
+    "ukendt": ["?", "??", "???", "tbd", "afklares", "ukendt"]
+  },
+  "gruppekolonner": {
+    "beskrivelse": "Mariannes gruppeskema har én kolonne pr. gruppetype, og celleværdien er antal grupper.",
+    "regex": "([13])\\s*P\\s*\\+?\\s*N\\s*([BCD])?\\s*(\\d+)",
+    "eksempler": [
+      { "overskrift": "1P+N C10", "faser": 1, "karakteristik": "C", "mcb": 10 },
+      { "overskrift": "3P+N C16", "faser": 3, "karakteristik": "C", "mcb": 16 },
+      { "overskrift": "3p+n c32", "faser": 3, "karakteristik": "C", "mcb": 32 }
+    ]
+  },
+  "fodnoter": {
+    "tegn": ["*", "**", "***"],
+    "betydning": "Poster med samme fodnotetegn deler gruppe. Læses som ét gruppefællesskab og markeres i noten.",
+    "eksempel": "Mariannes ark: SL21, SL23, SL25 og SL28 står alle med '1**' og noten 'Arbejdsstationer i slagter monteres samlet'."
+  },
+  "advarsler": [
+    { "id": "kw_mangler", "tekst": "Række uden kW: strømmen udledes af ampere-kolonnen, ellers bruges katalogets standardværdi og kilden sættes til 'Skaleret erfaring'." },
+    { "id": "amp_vs_kw", "tekst": "Hvis både kW og A står i arket, og de afviger mere end 20 %, vises begge, og brugeren vælger. Databladets ampere er ofte inkl. startstrøm." },
+    { "id": "antal_tegning", "tekst": "Kolonnen 'antal tegning' vinder over 'antal', når de er forskellige — den er talt på tegningen." },
+    { "id": "sum_raekker", "tekst": "Rækker uden antal, men med tekst som 'Hovedtavle', 'Terminaltavle' eller 'SUM', er overskrifter og skal springes over." }
+  ]
+}

@@ -174,3 +174,126 @@ export interface Resultat {
   anbefaling: Anbefaling;
   pvKw: number;
 }
+
+/* ---------------- Indlæsning af filer ---------------- */
+
+export type Filtype = 'maskinliste' | 'effektoversigt' | 'gruppeskema' | 'datablad' | 'plantegning' | 'byggeprogram' | 'ukendt';
+
+/** Én række som den blev læst af et ark, før den bindes til katalogets poster. */
+export interface RaaPost {
+  raekke: number;
+  gruppe?: string;
+  navn: string;
+  leverandoer?: string;
+  model?: string;
+  antal?: number;
+  volt?: number;
+  faser?: number;
+  kw?: number;
+  ampere?: number;
+  cosphi?: number;
+  df?: number;
+  mcb?: number;
+  kabel?: string;
+  rcd?: string;
+  tavle?: string;
+  afdeling?: string;
+  note?: string;
+  fodnote?: string;
+  grupperFraSkema?: { faser: number; karakteristik: Karakteristik; mcb: number; antal: number }[];
+  tillid: number;
+  advarsler: string[];
+}
+
+export interface Kolonnemapping {
+  /** felt → kolonneindeks */
+  felter: Record<string, number>;
+  gruppekolonner: { indeks: number; faser: number; karakteristik: Karakteristik; mcb: number }[];
+  uafklarede: string[];
+  overskriftsraekke: number;
+}
+
+export interface Binding {
+  raa: RaaPost;
+  katalogId: string | null;
+  score: number;
+  begrundelse: string;
+  forbruger: Forbruger | null;
+}
+
+export interface Konflikt {
+  katalogId: string;
+  felt: string;
+  nuvaerende: unknown;
+  foreslaaet: unknown;
+  kilde: string;
+  afvigelsePct: number | null;
+}
+
+export interface Indlaesningsresultat {
+  filtype: Filtype;
+  mapping: Kolonnemapping;
+  bindinger: Binding[];
+  ubundne: RaaPost[];
+  konflikter: Konflikt[];
+  advarsler: string[];
+}
+
+/* ---------------- Læring ---------------- */
+
+export type Aarsag = 'datablad' | 'tegning' | 'maskinliste' | 'erfaring' | 'fejl_i_katalog' | 'projektspecifikt' | 'ukendt';
+
+/** En rettelse, brugeren har lavet oven på det, modellen foreslog. */
+export interface Rettelse {
+  id?: string;
+  projektId: string;
+  katalogId: string;
+  butikstype: string;
+  salgsAreal: number;
+  felt: string;
+  foer: number | string | boolean | null;
+  efter: number | string | boolean | null;
+  aarsag: Aarsag;
+  /** true = gælder kun denne sag, tælles ikke med i læringen */
+  kunDenneSag: boolean;
+  tidspunkt?: string;
+}
+
+export interface Forslag {
+  katalogId: string;
+  felt: string;
+  nuvaerende: number | string | null;
+  foreslaaet: number | string;
+  observationer: number;
+  projekter: number;
+  spredningPct: number | null;
+  afvigelsePct: number | null;
+  aarsager: Record<string, number>;
+  anbefaling: 'godkend' | 'undersøg' | 'afvent';
+  begrundelse: string;
+}
+
+export interface Kalibreringspunkt {
+  projekt: string;
+  butikstype: string;
+  salgsAreal: number;
+  beregnetA: number;
+  maaltPeakA: number;
+  dato?: string;
+}
+
+export interface Kalibrering {
+  antal: number;
+  faktor: number | null;              // målt / beregnet, median
+  aPrM2: { min: number; median: number; max: number } | null;
+  prButikstype: Record<string, { antal: number; faktor: number; aPrM2Median: number }>;
+  anbefaling: string;
+}
+
+export interface Udtraeksstatistik {
+  kode: string;
+  forekomster: number;
+  gennemsnitligAfvigelse: number;   // (bekræftet − læst) / læst
+  raetForstePutte: number;          // andel hvor brugeren ikke rettede
+  faldgrube: string | null;
+}
