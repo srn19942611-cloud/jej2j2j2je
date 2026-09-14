@@ -9,6 +9,7 @@
  */
 
 import { FG, fgNavn, DETEKTORER } from './taxonomy.js';
+import { FO, HANDLINGER, vurderGentagelse } from './opgaver.js';
 
 export const FORUDSAETNINGER = {
   elpris: 0.77,      // kr/kWh
@@ -214,12 +215,72 @@ export function detektorKoeleandel(butikker, splits, { elpris } = FORUDSAETNINGE
   return ud;
 }
 
+/** D-19 · Gentagne opgaver på samme anlæg.
+ *  Én fysisk fejl, der kommer igen — ikke mange serviceopgaver. Kilden er
+ *  Dalux alene, så detektoren kan køre i dag, uden AK-centralen. */
+export function detektorGentagneAnlaeg(gentagne, butikIndexKardex) {
+  return gentagne.map((g) => ({
+    planlagtService: vurderGentagelse(g.fagomraade, g.antal).planlagtService,
+    id: nyId('SIG'), detektor: 'D-19', version: '1.0',
+    butiksnummer: g.kardex, anlaeg: g.anlaeg,
+    faggruppe: (FO[g.fagomraade] && FO[g.fagomraade].fg) || 'oevrigt',
+    fagomraade: g.fagomraade,
+    periode: g.foerste ? `${g.foerste} – ${g.seneste}` : 'seneste 12 mdr.',
+    styrke: Math.min(1, g.antal / 20),
+    symptom: `${g.antal} opgaver på samme anlæg. Fejlen kommer igen efter hver lukket opgave.`,
+    evidens: [
+      ['Anlæg', g.anlaeg],
+      ['Opgaver på anlægget', `${g.antal}`],
+      ['Fagområde', g.fagomraade],
+      ['Seneste opgave', g.seneste || '—'],
+    ],
+    datadaekning: null,
+    maaleenhed: { kwh: 0, klasse: 'blindt' },
+    gentagelser: g.antal,
+    forbehold: 'Beløbet kendes ikke: Dalux rummer forventet pris pr. opgave, men den er ikke hentet ind endnu. Sagen prioriteres derfor på gentagelser, ikke på kroner.',
+  }));
+}
+
+/** D-20 · Butik med gentagne fejl inden for samme fagområde.
+ *  Rammer opgaverne mange forskellige anlæg, er det ikke ét defekt anlæg —
+ *  det er en butik, hvis anlægsportefølje er ved at være udtjent. */
+export function detektorGentagneButik(gentagne, { minAntal = 12 } = {}) {
+  return gentagne.filter((g) => g.antal >= minAntal).map((g) => ({
+    planlagtService: vurderGentagelse(g.fagomraade, g.antal).planlagtService,
+    id: nyId('SIG'), detektor: 'D-20', version: '1.0',
+    butiksnummer: g.kardex, anlaeg: `${g.fagomraade} samlet`,
+    faggruppe: (FO[g.fagomraade] && FO[g.fagomraade].fg) || 'oevrigt',
+    fagomraade: g.fagomraade,
+    periode: `${g.foerste} – ${g.seneste}`,
+    styrke: Math.min(1, g.antal / 45),
+    symptom: `${g.antal} opgaver inden for ${g.fagomraade}`
+      + (g.anlaegAntal ? `, fordelt på ${g.anlaegAntal} forskellige anlæg.` : '.'),
+    evidens: [
+      ['Opgaver i perioden', `${g.antal}`],
+      ['Berørte anlæg', g.anlaegAntal ? `${g.anlaegAntal}` : 'ukendt'],
+      ['Første opgave', g.foerste],
+      ['Seneste opgave', g.seneste],
+      ['Tolkning', g.anlaegAntal >= 8
+        ? 'Spredt over mange anlæg — det er porteføljen i butikken, ikke ét anlæg'
+        : 'Samlet på få anlæg — se efter en systematisk fejl eller en garantisag'],
+    ],
+    datadaekning: null,
+    maaleenhed: { kwh: 0, klasse: 'blindt' },
+    gentagelser: g.antal,
+    anlaegAntal: g.anlaegAntal,
+    forbehold: 'Opgaveantal er ikke det samme som omkostning. Butikken kan være stor og have mange anlæg — '
+      + 'sammenlign med butikker af samme format, før der konkluderes.',
+  }));
+}
+
 /* ---- Lag 2 · sagsbyggeren -------------------------------------------------
  * Én fysisk fejl giver én sag. Nøglen er butik + sagstype. Signaler, der
  * matcher en åben sag, hænges på som ny evidens — de bliver ikke til en ny sag.
  */
 
 const SAGSTYPE = {
+  'D-19': { type: 'gentagne_anlaeg', navn: 'Samme anlæg melder fejl igen og igen',   fg: 'oevrigt' },
+  'D-20': { type: 'gentagne_butik',  navn: 'Butikken melder samme fagområde ind igen og igen', fg: 'oevrigt' },
   'D-01': { type: 'natlast',    navn: 'Noget kører, når butikken er lukket',           fg: 'cts' },
   'D-02': { type: 'spring',     navn: 'Ny konstant last — tændt og aldrig slukket',    fg: 'oevrigt' },
   'D-03': { type: 'restpost',   navn: 'Manglende bimåling — forbrug uden målepunkt',   fg: 'oevrigt' },
@@ -229,6 +290,17 @@ const SAGSTYPE = {
 };
 
 const HYPOTESER = {
+  gentagne_anlaeg_planlagt: 'Anlægget har mange opgaver, men fagområdet kører på serviceaftale eller lovpligtigt eftersyn, '
+    + 'så et højt antal er forventet. Sagen er derfor ikke en fejl, men et spørgsmål om antallet svarer til det aftalte — '
+    + 'og den samtale hører til hos den kontraktansvarlige, ikke hos en tekniker.',
+  gentagne_butik_planlagt: 'Butikken har mange opgaver i et fagområde, der kører på serviceaftale. Det er forventet. '
+    + 'Kontrollér frekvensen mod aftalen, før der konkluderes noget om anlæggene.',
+  gentagne_anlaeg: 'Det samme anlæg er meldt ind gentagne gange, og hver opgave er lukket uden at fejlen holdt op med at komme igen. '
+    + 'Det er kendetegnet på symptombehandling: den egentlige årsag er aldrig fundet. Sagen skal derfor ikke løses som endnu et servicebesøg, '
+    + 'men som et spørgsmål om anlægget er udtjent, forkert monteret eller dækket af en garanti.',
+  gentagne_butik: 'Butikken melder den samme slags fejl ind igen og igen på tværs af flere anlæg. Rammer det mange forskellige anlæg, '
+    + 'er det sjældent ét defekt anlæg — det er en anlægsportefølje, der er ved at være udtjent, og den samtale hører til i budgettet, '
+    + 'ikke i en serviceopgave.',
   natlast:    'Noget står og kører i lukketimerne. Mønsteret matcher en tidsplan, der ikke slår igennem, eller et anlæg sat i manuel drift. Uden CTS og ventilationens driftstilstand kan vi ikke sige hvilket — det er derfor det første, servicebesøget skal afgøre.',
   spring:     'Forbruget er flyttet til et nyt, fast niveau og er blevet der. Det ligner en installation, der er sat i drift og aldrig slukket igen, snarere end en sæsonvariation, som ville være gået tilbage.',
   restpost:   'Størstedelen af butikkens el kan ikke henføres til et anlæg. Det er ikke i sig selv et spild, men det gør butikken usynlig for alle anlægsnære detektorer — og et spild her ville ingen opdage.',
@@ -238,6 +310,18 @@ const HYPOTESER = {
 };
 
 const TJEKPUNKTER = {
+  gentagne_anlaeg: [
+    'Læs de foregående opgaver på anlægget igennem: hvad blev der fundet, og hvad blev der gjort hver gang?',
+    'Afgør om det er den samme fejl eller forskellige fejl på samme anlæg — det er to vidt forskellige sager.',
+    'Tjek anlæggets alder og garantiforhold, før der bestilles mere arbejde.',
+    'Sammenlign med samme anlægstype i andre butikker: er fejlen kun her, eller er den systematisk?',
+  ],
+  gentagne_butik: [
+    'Træk alle opgaver i fagområdet frem og grupper dem efter anlæg.',
+    'Afgør om opgaverne samler sig på få anlæg (systematisk fejl) eller spreder sig (udtjent portefølje).',
+    'Sammenlign opgavefrekvensen med butikker af samme format og størrelse.',
+    'Er det porteføljen: lav et samlet oplæg frem for endnu en enkeltopgave.',
+  ],
   natlast: [
     'Aflæs hvad der faktisk kører kl. 02–04: ventilation, belysning, køleflader, bageriudstyr.',
     'Sammenhold CTS-tidsplanen med butikkens faktiske åbningstider.',
@@ -272,6 +356,8 @@ const TJEKPUNKTER = {
 };
 
 const FORVENTET_FUND = {
+  gentagne_anlaeg: 'I de fleste tilfælde et anlæg, der er udtjent eller forkert monteret — ikke en ny, selvstændig fejl.',
+  gentagne_butik: 'Enten en systematisk fejl på få anlæg, eller en anlægsportefølje der skal budgetteres udskiftet.',
   natlast:    'Et anlæg i drift uden for åbningstid — typisk ventilation eller belysning.',
   spring:     'En installation sat i drift i perioden, som ikke er kendt i driften.',
   restpost:   'Umålte grupper i eltavlen, ikke en fejl på et anlæg.',
@@ -317,11 +403,13 @@ export function byggSager(signaler, butikIndex, forud = FORUDSAETNINGER) {
       status: 'ny', aabnet: '2026-09-14',
       signaler: sigs,
       kwhAar: kwh, krAar: kr, krKlasse: klasse,
+      gentagelser: Math.max(0, ...sigs.map((s) => s.gentagelser || 0)) || null,
+      fagomraade: sigs.find((s) => s.fagomraade)?.fagomraade || null,
       krMetode: `${fmtKwh(kwh)} kWh/år × ${forud.elpris.toFixed(2)} kr/kWh = ${fmtKr(kr)} kr/år. `
         + KLASSE_FORKLARING[klasse]
         + ' Elprisen er en forudsætning, der kan rettes under Opsætning.',
       konfidens, prioritet,
-      hypotese: HYPOTESER[type],
+      hypotese: (sigs.some((s) => s.planlagtService) && HYPOTESER[`${type}_planlagt`]) || HYPOTESER[type],
       tjekpunkter: TJEKPUNKTER[type] || [],
       forventetFund: FORVENTET_FUND[type],
       ansvarlig: FG[faggruppe] ? FG[faggruppe].rolle : 'Energiansvarlig',
@@ -336,7 +424,9 @@ export function byggSager(signaler, butikIndex, forud = FORUDSAETNINGER) {
   // sagen om, at dækningen mangler, så den slipper igennem.
   return sager
     .filter((s) => s.sagstype === 'maalerfejl' || s.datadaekning == null || s.datadaekning >= forud.daekningMinimum || s.sagstype === 'restpost')
-    .sort((a, b) => rangPrioritet(a.prioritet) - rangPrioritet(b.prioritet) || b.krAar - a.krAar);
+    .sort((a, b) => rangPrioritet(a.prioritet) - rangPrioritet(b.prioritet)
+      || (b.gentagelser || 0) - (a.gentagelser || 0)
+      || b.krAar - a.krAar);
 }
 
 /** Konfidens regnes af fire ting, og alle fire vises i sagen. */
@@ -350,10 +440,17 @@ function beregnKonfidens(sigs, daekning, type, forud) {
 
   // Historisk præcision pr. sagstype. Nulstilles først, når skyggedriften
   // har målt rigtige tal — indtil da er det et forsigtigt udgangspunkt.
-  const praecision = { maalerfejl: 0.95, restpost: 0.9, spring: 0.7, natlast: 0.6, benchmark: 0.45, koeleandel: 0.5 }[type] ?? 0.5;
+  const praecision = {
+    maalerfejl: 0.95, restpost: 0.9, spring: 0.7, natlast: 0.6, benchmark: 0.45, koeleandel: 0.5,
+    // Gentagelser er talt, ikke skønnet — mønsteret er der, uanset årsagen.
+    gentagne_anlaeg: 0.85, gentagne_butik: 0.75,
+  }[type] ?? 0.5;
 
   // Stabilitet: et mønster målt over et år vejer tungere end et døgn.
-  const stabilitet = { restpost: 1, maalerfejl: 1, benchmark: 1, koeleandel: 1, spring: 0.9, natlast: 0.7 }[type] ?? 0.6;
+  const stabilitet = {
+    restpost: 1, maalerfejl: 1, benchmark: 1, koeleandel: 1, spring: 0.9, natlast: 0.7,
+    gentagne_anlaeg: 1, gentagne_butik: 1,
+  }[type] ?? 0.6;
 
   const samlet = 0.30 * kildeScore + 0.25 * daekScore + 0.30 * praecision + 0.15 * stabilitet;
   return {
@@ -369,6 +466,21 @@ function beregnKonfidens(sigs, daekning, type, forud) {
 
 function beregnPrioritet(kr, type, sigs, klasse) {
   if (sigs.some((s) => (DETEKTORER.find((d) => d.id === s.detektor) || {}).p1)) return 'P1';
+
+  // Gentagne fejl prioriteres på gentagelser, ikke på kroner: prisen pr.
+  // opgave kender vi ikke endnu, men et anlæg der er meldt ind tyve gange
+  // er ikke en P4, uanset hvad beløbsfeltet står på.
+  const gentagelser = Math.max(0, ...sigs.map((s) => s.gentagelser || 0));
+  if (gentagelser > 0) {
+    // Planlagt service larmer kun, hvis den får lov at ligne en fejl. Et
+    // lovpligtigt eftersyn, der er kørt tyve gange, er ikke en P2 — det er
+    // en linje på en liste, der skal holdes op mod serviceaftalen.
+    if (sigs.some((s) => s.planlagtService)) return 'P4';
+    if (gentagelser >= 20) return 'P2';
+    if (gentagelser >= 8) return 'P3';
+    return 'P4';
+  }
+
   // Et blindt beløb er ikke en besparelse, og må derfor ikke skubbe en
   // dataopgave op foran en fejl, der rent faktisk koster penge hver dag.
   if (klasse === 'blindt') return 'P3';

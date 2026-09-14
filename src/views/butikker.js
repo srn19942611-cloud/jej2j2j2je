@@ -1,6 +1,7 @@
 import { h, tabel, badge, swatch, stack, legend, modal, dkTal, dkKr, pct, tom, doegnprofil, prioritetBadge } from '../ui.js';
 import { state, skriv } from '../state.js';
-import { fgNavn, fgFarve, klassificerMaaler } from '../taxonomy.js';
+import { fgNavn, fgFarve } from '../taxonomy.js';
+import { klassificerMaalepunkt } from '../anlaeg.js';
 import { hentAnlaeg, hentOpgaver } from '../dalux.js';
 import { visSag } from './sager.js';
 
@@ -167,16 +168,25 @@ function visMaalere(boks, b) {
   boks.replaceChildren(h('div', {},
     h('h3', {}, 'Målepunkter og deres klassifikation'),
     h('p', { class: 'muted', style: { fontSize: '12.5px', marginTop: 0 } },
-      'Faggruppen læses af Enitys egne tags (L0/1, L2, L3) — ikke af målernavnet. '
-      + 'Det er derfor, hubben ikke behøver at gætte på, hvad et målepunkt dækker.'),
+      'Faggruppen læses af Enitys egne tags efter opsætningen fra Coop Energi Einsight — ikke af målernavnet. '
+      + 'Det dybeste niveau vinder: L4 slår L2, som slår L0/1.'),
     tabel([
       { navn: 'Målepunkt', celle: (x) => x.name, wrap: true },
-      { navn: 'Faggruppe', celle: (x) => { const k = klassificerMaaler(x); return h('span', {}, swatch(fgFarve(k.faggruppe)), fgNavn(k.faggruppe)); } },
-      { navn: 'Rolle', celle: (x) => klassificerMaaler(x).rolle },
-      { navn: 'Kilde', celle: (x) => badge(klassificerMaaler(x).kilde) },
+      { navn: 'Faggruppe', celle: (x) => {
+          const k = klassificerMaalepunkt(x);
+          return h('span', { title: k.afventer || '' },
+            swatch(fgFarve(k.faggruppe)), fgNavn(k.faggruppe),
+            k.afventer ? h('span', { style: { color: 'var(--p2)' } }, ' ⚑') : null);
+        } },
+      { navn: 'Rolle', celle: (x) => klassificerMaalepunkt(x).rolle },
+      { navn: 'Kilde', celle: (x) => { const k = klassificerMaalepunkt(x);
+          return badge(k.kilde, k.kilde === 'mangler-underniveau' ? 'p2' : k.kilde.startsWith('tag-L4') || k.kilde.startsWith('tag-L2') ? 'ok' : ''); } },
+      { navn: 'Konfidens', r: true, celle: (x) => { const k = klassificerMaalepunkt(x); return k.konfidens ? Math.round(k.konfidens * 100) + ' %' : '—'; } },
       { navn: 'kWh/30 d', r: true, celle: (x) => (x.kwh30d === 0 ? h('span', { style: { color: 'var(--p1)' } }, '0') : dkTal(x.kwh30d)) },
     ], m),
     h('p', { class: 'muted', style: { fontSize: '11.5px' } },
       'Eksemplet er 07360 SB Aalborg. Bemærk at både hovedmåleren "El total" og bimåleren "Konsum køl" står på nul, '
-      + 'mens datahub-måleren kører — det er præcis det, detektor D-04 findes for.')));
+      + 'mens datahub-måleren kører — det er præcis det, detektor D-04 findes for. '
+      + 'Et ⚑ betyder, at målepunktet kun har et bredt L0/1-tag og mangler et L2- eller L4-niveau, '
+      + 'før faggruppen kan afgøres.')));
 }

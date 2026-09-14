@@ -29,108 +29,12 @@ export const FG = Object.fromEntries(FAGGRUPPER.map((f) => [f.key, f]));
 export const fgNavn  = (k) => (FG[k] ? FG[k].navn : k);
 export const fgFarve = (k) => (FG[k] ? FG[k].farve : '#95a5a6');
 
-/* ---- Målertag → faggruppe -------------------------------------------------
- * Nøglen er Enitys L0/1-tag. rolle fortæller, hvordan målepunktet indgår i
- * butikkens energibalance: en forsyningsmåler er totalen, en bimåler trækkes
- * fra restposten, en lejermåler trækkes helt ud, og produktion lægges ikke til.
+/* ---- Målepunkt-klassifikation --------------------------------------------
+ * Den rigtige tagmapping ligger i anlaeg.js: 61 regler over fire niveauer,
+ * hentet fra Coop Energi Einsight. Den er den eneste kilde — den tidligere
+ * håndlavede tabel her er fjernet, så der ikke er to steder at rette.
  */
-export const TAG_L01 = {
-  'HVAC':            { fg: 'ventilation',    rolle: 'bimaaler',           note: 'Brydes videre på L2: Ventilation, Klimaanlæg, Varmepumpe, Varmetæppe.' },
-  'Konsumkøl':       { fg: 'koel_frys',      rolle: 'bimaaler' },
-  'Lys':             { fg: 'lys_inde',       rolle: 'bimaaler',           note: 'L3 "Udvendigt" flytter målepunktet til Udendørsbelysning.' },
-  'Hovedmåler':      { fg: null,             rolle: 'hovedmaaler_intern' },
-  'Forsyningsmåler': { fg: null,             rolle: 'forsyning',          note: 'Datahub-måleren. Butikkens sande total.' },
-  'Lejere':          { fg: 'lejere',         rolle: 'lejer' },
-  'Overskudsvarme':  { fg: 'overskudsvarme', rolle: 'produktion' },
-  'Solceller':       { fg: 'solceller',      rolle: 'solceller' },
-  'Produktion':      { fg: 'oevrigt',        rolle: 'bimaaler',           note: 'Bageri, slagter, grill. Ikke et teknisk anlæg.' },
-  'Andet':           { fg: 'oevrigt',        rolle: 'bimaaler' },
-  'Varme VVB':       { fg: 'varme_el',       rolle: 'bimaaler' },
-  'Ukendt':          { fg: 'oevrigt',        rolle: 'bimaaler',           note: 'Skal beskrives i Enity — tæller som huller i datadækningen.' },
-};
-
-/* L2 forfiner HVAC og Lys, hvor L0/1 er for bred til at handle på. */
-export const TAG_L2 = {
-  'Ventilation':                      'ventilation',
-  'Klimaanlæg':                       'koeleflader',
-  'Integreret køl':                   'koeleflader',
-  'Lufttæpper':                       'koeleflader',
-  'Varmepumpe':                       'varme_el',
-  'Varmetæppe':                       'varme_el',
-  'Elvarme / komfortvarme':           'varme_el',
-  'Eltracing':                        'varme_el',
-  'Varme VVB':                        'varme_el',
-  'Primær køleanlæg':                 'koel_frys',
-  'Kompressorer':                     'koel_frys',
-  'Møbler':                           'koel_frys',
-  'Køle/frostrum med singlekomp.':    'koel_frys',
-  'Køle/frostmøbel med singlekomp.':  'koel_frys',
-  'Plug in møbler':                   'koel_frys',
-  'Kølecontainer selvstændig':        'koel_frys',
-  'Blandet belysning':                'lys_inde',
-  'Grundbelysning':                   'lys_inde',
-  'Særbelysning':                     'lys_inde',
-  'Solceller - Produktion':           'solceller',
-  'Solceller - Eget forbrug':         'solceller',
-  'Solceller - Videresalg':           'solceller',
-  'Overskudsvarme - Total produktion':'overskudsvarme',
-  'Overskudsvarme - Eget forbrug':    'overskudsvarme',
-  'Overskudsvarme - Videresalg':      'overskudsvarme',
-};
-
-/** Læser et Enity-målepunkts tags og returnerer faggruppe, rolle og konfidens. */
-export function klassificerMaaler(meter) {
-  const tags = (meter.tags || []).map((t) => String(t).replace(/^custom:/, '').trim());
-  const l01 = tags.find((t) => t.startsWith('L0/1 '));
-  const l2  = tags.find((t) => t.startsWith('L2 '));
-  const l3  = tags.find((t) => t.startsWith('L3 '));
-
-  let fg = null, rolle = 'bimaaler', konfidens = 0.3, kilde = 'navn';
-
-  if (l01) {
-    const nøgle = Object.keys(TAG_L01).find((k) => l01.slice(5).startsWith(k));
-    if (nøgle) {
-      fg = TAG_L01[nøgle].fg;
-      rolle = TAG_L01[nøgle].rolle;
-      konfidens = 0.85;
-      kilde = 'tag-L0/1';
-    }
-  }
-  if (l2) {
-    const v = l2.slice(3).trim();
-    const nøgle = Object.keys(TAG_L2).find((k) => v.startsWith(k));
-    if (nøgle) { fg = TAG_L2[nøgle]; konfidens = 0.95; kilde = 'tag-L2'; }
-  }
-  // Udvendig belysning er kun synlig på L3.
-  if (fg === 'lys_inde' && l3 && /Udvendig/i.test(l3)) fg = 'lys_ude';
-
-  if (!fg && rolle === 'bimaaler') {
-    const g = gætUdFraNavn(meter.name || '');
-    if (g) { fg = g; konfidens = 0.45; kilde = 'navn'; }
-  }
-  // Varme- og vandmålere hører ikke til el-balancen.
-  const et = String(meter.energyType || meter.energitype || '').toLowerCase();
-  if (et === 'heat' && rolle === 'bimaaler' && !fg) fg = 'varme_fjern';
-
-  return { faggruppe: fg || 'oevrigt', rolle, konfidens, kilde, tags };
-}
-
-const NAVNEREGLER = [
-  [/konsum ?køl|køleanl|kølekompr|køle ?møbl|kølemøbl|køletavle|frost|kompressor/i, 'koel_frys'],
-  [/køleflade|klimaanl|aircon|komfortkøl|lufttæppe/i, 'koeleflader'],
-  [/ventilation|vent\.|aggregat|ahu|udsugning/i, 'ventilation'],
-  [/udv\.? ?lys|udvendig|facade|skilt|p-plads/i, 'lys_ude'],
-  [/lys|belysning|armatur/i, 'lys_inde'],
-  [/varmepumpe|vp l-l|vp l-v|elkassette|elpatron|varmetæppe|eltracing|varmeramp/i, 'varme_el'],
-  [/fjernvarme|varme total|varmeveksler|vvb/i, 'varme_fjern'],
-  [/solcelle|pv|inverter/i, 'solceller'],
-  [/overskudsvarme|hru|genvinding/i, 'overskudsvarme'],
-  [/cts|bms|automatik|edb|terminal/i, 'cts'],
-];
-function gætUdFraNavn(navn) {
-  for (const [re, fg] of NAVNEREGLER) if (re.test(navn)) return fg;
-  return null;
-}
+export { klassificerMaalepunkt, klassificerMaalepunkt as klassificerMaaler, TAGMAPPING } from './anlaeg.js';
 
 /* ---- Detektorkatalog ------------------------------------------------------
  * En detektor finder et symptom, aldrig en diagnose. "kraever" er de kilder,
@@ -162,14 +66,25 @@ export const DETEKTORER = [
     symptom: 'Køl fylder mere af butikkens el end hos butikker med samme anlægstype.',
     kraever: ['Bimåler køl', 'Peer-gruppe'], mangler: ['AK-centralen', 'Vejrdata'],
     sagstype: 'Køleanlægget yder dårligere end porteføljen' },
-  { id: 'D-07', navn: 'Produktion mod forventet',   kilde: 'Solcelle',fg: 'solceller',  boelge: 1, status: 'skygge',
-    symptom: 'Anlægget yder under model og nabobenchmark.',
-    kraever: ['Enity produktionsmåler'], mangler: ['Indstrålingsdata', 'Inverter-API'],
+  { id: 'D-07', navn: 'Produktion mod forventet',   kilde: 'Solcelleplatform', fg: 'solceller', boelge: 1, status: 'skygge',
+    symptom: 'Anlægget yder under den model, indstrålingen tilsiger.',
+    kraever: ['Indstrålingsdata', 'Forventet produktion', 'Inverter-API'],
+    mangler: ['Kalibreret forventningsmodel — PR over 1,0 på over halvdelen af anlæggene'],
     sagstype: 'Underproduktion — årsag skal findes' },
-  { id: 'D-08', navn: 'Gradvist fald uden fejl',    kilde: 'Solcelle',fg: 'solceller',  boelge: 1, status: 'skygge',
+  { id: 'D-08', navn: 'Gradvist fald uden fejl',    kilde: 'Solcelleplatform', fg: 'solceller', boelge: 1, status: 'skygge',
     symptom: 'Produktionen falder over måneder uden fejlkoder.',
-    kraever: ['Enity produktionsmåler'], mangler: ['Nedbørsdata', 'Inverter-fejlkoder'],
+    kraever: ['Degraderingsberegning', 'Nedbørsdata'],
+    mangler: ['Statistisk sikre degraderingstal — 0 af 629 er sikre endnu'],
     sagstype: 'Nedsmudsning — planlæg rens frem for hastesag' },
+  { id: 'D-21', navn: 'Nulproduktion 24 timer',     kilde: 'Solcelleplatform', fg: 'solceller', boelge: 1, status: 'skygge',
+    symptom: 'Anlægget har ikke produceret i et helt døgn med dagslys.',
+    kraever: ['Inverter-API', 'Vejrdata'],
+    mangler: ['Adskillelse af anlægsfejl fra integrationsfejl — alle 14 åbne alarmer kommer fra samme datakilde'],
+    sagstype: 'Anlæg står stille — eller integrationen leverer ikke' },
+  { id: 'D-22', navn: 'Strengafvigelse',            kilde: 'Solcelleplatform', fg: 'solceller', boelge: 1, status: 'skygge',
+    symptom: 'Én streng eller MPPT ligger under sine søskende på samme anlæg.',
+    kraever: ['Strengniveau fra inverter'], mangler: [],
+    sagstype: 'Streng ude, defekt panel eller ny skygge' },
   { id: 'D-09', navn: 'Lukkedag mod åbningstid',    kilde: 'Enity',  fg: 'oevrigt',     boelge: 1, status: 'skygge',
     symptom: 'Forholdet mellem lukket og åben skrider.',
     kraever: ['Åbningstider i stamdata', 'Enity timeserie'], mangler: ['Bekræftede åbningstider fra Dalux'],
@@ -206,6 +121,14 @@ export const DETEKTORER = [
     symptom: 'Tryktabet over filteret passerer grænsen.',
     kraever: ['Unikair'], mangler: ['Unikair (API ukendt)'],
     sagstype: 'Filterskift når det er nødvendigt, ikke efter kalender' },
+  { id: 'D-19', navn: 'Gentagne opgaver på samme anlæg', kilde: 'Dalux FM', fg: 'oevrigt', boelge: 1, status: 'drift',
+    symptom: 'Det samme anlæg er meldt ind gentagne gange, og fejlen kommer igen efter hver lukket opgave.',
+    kraever: ['Dalux opgavehistorik', 'Fagområde-klassificering'], mangler: ['Forventet pris pr. opgave fra Dalux'],
+    sagstype: 'Symptombehandling — den egentlige fejl er aldrig fundet' },
+  { id: 'D-20', navn: 'Butik med gentagne fejl', kilde: 'Dalux FM', fg: 'oevrigt', boelge: 1, status: 'drift',
+    symptom: 'Butikken melder den samme slags fejl ind igen og igen på tværs af flere anlæg.',
+    kraever: ['Dalux opgavehistorik', 'Fagområde-klassificering'], mangler: ['Butiksformat til sammenligning'],
+    sagstype: 'Anlægsporteføljen er ved at være udtjent' },
   { id: 'D-18', navn: 'Varme afvist og købt samtidig', kilde: 'Leanheat', fg: 'overskudsvarme', boelge: 4, status: 'planlagt',
     symptom: 'Overskudsvarme dumpes, mens der købes fjernvarme.',
     kraever: ['Leanheat', 'Enity fjernvarme', 'CTS varmebehov'], mangler: ['Leanheat', 'CTS Ltech'],

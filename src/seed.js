@@ -239,3 +239,190 @@ export const MAALERE_EKSEMPEL = [
   { id: '567249', name: 'El varmeramper', energyType: 'Electricity', unit: 'Kwh', kwh30d: 0,
     tags: ['custom:L0/1 Andet', 'custom:L3 Udvendigt', 'custom:L2 Eltracing - Beton fliser'], location: 'Målertavlen' },
 ];
+
+/* ---------------------------------------------------------------------------
+ * Opgavedata fra Dalux FM, hentet fra "Remix of Shop Sentinel - DALUX API",
+ * hvor 23.040 rigtige opgaver allerede er klassificeret. Tallene herunder er
+ * det faktiske billede pr. 14. september 2026.
+ * ------------------------------------------------------------------------- */
+
+export const OPGAVER_PORTEFOLJE = {
+  opgaver: 23040,
+  anlaeg: 50000,
+  bygninger: 2599,
+  fund: 128,
+  fagomraadeAgenter: 21,
+  hentet: '2026-09-14',
+};
+
+/** Opgaver pr. fagområde: [fagområde, antal, gns. konfidens, antal butikker] */
+export const OPGAVER_FAGOMRAADE = [
+  ['Køl/Frost', 5142, 0.83, 675], ['Skadedyr', 2355, 0.98, 834],
+  ['VVS/Sanitet', 2256, 0.88, 524], ['Bygning/Tag', 2162, 0.58, 878],
+  ['Ventilation/Klima', 1844, 0.58, 579], ['Sikkerhed/Alarm', 1557, 0.77, 620],
+  ['Port/Dør', 1550, 0.89, 488], ['Lys/El', 1149, 0.73, 463],
+  ['Inventar/Vogne/Kurve', 963, 0.63, 498], ['IT/Kasse', 826, 0.64, 420],
+  ['Elevator/Rulletrappe', 813, 0.62, 113], ['Rengøring', 568, 0.77, 353],
+  ['Udenomsarealer', 545, 0.64, 292], ['Andet', 329, 0.20, 182],
+  ['Affald', 325, 0.72, 205], ['Ballepresser', 300, 0.89, 213],
+  ['Flaskeautomat', 235, 0.67, 127], ['Solceller', 53, 0.99, 46],
+  ['El tavler', 32, 0.68, 28], ['Mug/Kondens/Fugt', 26, 0.63, 24],
+  ['Benzin og diesel', 10, 0.85, 9],
+].map(([fagomraade, antal, konfidens, butikker]) => ({ fagomraade, antal, konfidens, butikker }));
+
+/** Butikker med gentagne fejl inden for ét fagområde.
+ *  [kardex, butik, fagområde, antal opgaver, antal berørte anlæg, første, seneste] */
+const G = [
+['2020',"COOP Kvickly Bruuns Galleri",'Køl/Frost',44,15,'2025-06-17','2026-07-07'],
+['1740',"COOP Kvickly Frederiksberg",'Elevator/Rulletrappe',42,7,'2025-10-29','2026-07-03'],
+['8635',"COOP Kvickly Stenløse",'Køl/Frost',42,16,'2025-11-21','2026-07-08'],
+['24419',"365discount Kbh SV, Mozartsplads",'Køl/Frost',35,6,'2024-10-12','2026-06-15'],
+['2523',"COOP Superbr Lystrup",'Køl/Frost',33,13,'2026-02-26','2026-07-07'],
+['1850',"COOP Superbr Islands Brygge",'Køl/Frost',32,10,'2025-05-26','2026-07-08'],
+['2890',"COOP Kvickly Vericentret",'Køl/Frost',29,8,'2025-09-03','2026-07-07'],
+['7510',"COOP Kvickly Års",'Køl/Frost',28,8,'2026-01-02','2026-07-03'],
+['8550',"COOP Kvickly Buddinge",'VVS/Sanitet',27,9,'2026-01-30','2026-06-30'],
+['4810',"COOP Kvickly Nykøbing F",'Køl/Frost',27,14,'2026-02-28','2026-06-30'],
+['8496',"COOP Superbr Fortunbyen",'Køl/Frost',26,10,'2025-04-15','2026-06-24'],
+['4062',"BRF Superbrugsen Dalby",'Skadedyr',26,1,'2026-04-27','2026-06-23'],
+['5020',"COOP Superbrugsen Thisted",'Køl/Frost',26,10,'2026-04-16','2026-07-08'],
+['1420',"COOP Superbr Ålekistevej",'Køl/Frost',26,12,'2025-08-17','2026-07-06'],
+['6450',"COOP Kvickly Skibhusvej",'Køl/Frost',25,12,'2025-09-05','2026-07-07'],
+['8500',"COOP Kvickly Prøvestenscentret",'VVS/Sanitet',25,8,'2025-12-09','2026-07-03'],
+['5500',"COOP Kvickly Holstebro",'Køl/Frost',25,7,'2025-12-06','2026-07-05'],
+['8017',"Coop SuperBrugsen Hørsholm Midtpunkt",'Køl/Frost',24,5,'2024-03-08','2026-07-01'],
+['4640',"COOP Kvickly Vordingborg",'VVS/Sanitet',24,8,'2026-02-05','2026-06-26'],
+['8930',"COOP Kvickly Holte",'Køl/Frost',24,5,'2025-04-15','2026-06-30'],
+['4230',"COOP Superbrugsen Ringsted",'Køl/Frost',24,11,'2026-03-16','2026-07-02'],
+['24372',"365discount Hvidovre, Gl Køge Landevej",'Køl/Frost',23,9,'2025-10-04','2026-07-09'],
+['3810',"COOP Kvickly Grindsted",'Køl/Frost',23,9,'2025-06-25','2026-07-07'],
+['5750',"COOP Kvickly Brande",'Køl/Frost',23,7,'2026-01-05','2026-07-09'],
+['6160',"COOP Kvickly Svendborg City",'VVS/Sanitet',23,12,'2025-12-10','2026-07-03'],
+];
+export const GENTAGNE_BUTIK = G.map(([kardex, butik, fagomraade, antal, anlaegAntal, foerste, seneste]) =>
+  ({ kardex, butik, fagomraade, antal, anlaegAntal, foerste, seneste }));
+
+/** Anlæg, hvor den samme fejl er meldt ind igen og igen.
+ *  [anlæg, fagområde, kardex, butik, antal, seneste] */
+const GA = [
+['Skadedyrssikring','Skadedyr','4062',"BRF Superbrugsen Dalby",23,'2026-06-23'],
+['AVS.01','Sikkerhed/Alarm','7380',"COOP Superbr Vejgård",16,'2026-07-06'],
+['AVS.01','Sikkerhed/Alarm','7800',"COOP Kvickly Nørresundby",15,'2026-07-06'],
+['Skadedyrssikring','Skadedyr','8090',"BRF Superbrugsen Ullerød",15,'2026-07-04'],
+['Skadedyrssikring','Skadedyr','24860',"365discount Viby Mega Syd",14,'2026-06-24'],
+['AVS.01','Sikkerhed/Alarm','1740',"COOP Kvickly Frederiksberg",14,'2026-07-06'],
+['AVS.01','Sikkerhed/Alarm','6550',"COOP Superbr City",13,'2026-07-06'],
+['AVS.01','Sikkerhed/Alarm','2523',"COOP Superbr Lystrup",13,'2026-07-06'],
+['Skadedyrssikring','Skadedyr','1000403300',"Brødcooperativet",13,'2026-06-30'],
+];
+export const GENTAGNE_ANLAEG = GA.map(([anlaeg, fagomraade, kardex, butik, antal, seneste]) =>
+  ({ anlaeg, fagomraade, kardex, butik, antal, seneste }));
+
+/** Fund fra fagområde-agenterne — sådan ser en færdig vurdering ud. */
+export const AGENT_FUND = [
+  { fagomraade: 'Lys/El', butik: 'COOP Kvickly Viby J', kardex: '2000', anlaeg: 'Bageri',
+    opgaver: 4, gentagelser: 3, alvor: 'high', handling: 'service_visit', udskiftning: false, status: 'godkendt',
+    resume: 'Der er gentagne problemer med bevægelige dele og funktionalitet i bageriudstyret, specifikt omkring Rheon-anlægget og ovne, der indikerer behov for en grundig gennemgang af mekaniske og styringssystemer.' },
+  { fagomraade: 'Port/Dør', butik: 'Brugsen Nr Jernløse', kardex: '4365', anlaeg: 'Port1',
+    opgaver: 3, gentagelser: 3, alvor: 'high', handling: 'warranty_claim', udskiftning: false, status: 'afventer',
+    resume: 'Cigaretskabets rørmotor og motorbeslag er svigtet gentagne gange på kort tid, hvilket indikerer en systemisk fejl — sandsynligvis en produktionsfejl eller fejlmontering.' },
+  { fagomraade: 'Lys/El', butik: 'BRF Superbrugsen Vonsild', kardex: '3745', anlaeg: 'Slagter',
+    opgaver: 3, gentagelser: 2, alvor: 'medium', handling: 'service_visit', udskiftning: false, status: 'godkendt',
+    resume: 'To ud af tre opgaver omhandler kold ventilation/blæser i slagteren, hvilket indikerer et tilbagevendende problem med temperaturstyringen eller ventilationsanlægget.' },
+  { fagomraade: 'Solceller', butik: '365discount Nyborg Vestergade', kardex: '24041', anlaeg: 'Solcelleanlæg',
+    opgaver: 3, gentagelser: 2, alvor: 'medium', handling: 'warranty_claim', udskiftning: false, status: 'afventer',
+    resume: 'To af tre opgaver indikerer systemiske problemer med komponenter af dårlig kvalitet eller defekte komponenter (stik og inverterblæser) på solcelleanlægget.' },
+  { fagomraade: 'Port/Dør', butik: 'Brugsen Sorgenfri Torv', kardex: '8035', anlaeg: 'Butik og lager',
+    opgaver: 2, gentagelser: 2, alvor: 'medium', handling: 'replace', udskiftning: true, status: 'afventer',
+    resume: 'To opgaver inden for kort tid efterspørger "tilbud på ny hurtigport", hvilket indikerer et behov for udskiftning af den eksisterende port.' },
+  { fagomraade: 'Port/Dør', butik: 'Brugsen Gedser', kardex: '4112', anlaeg: '13711-01',
+    opgaver: 2, gentagelser: 2, alvor: 'medium', handling: 'service_visit', udskiftning: false, status: 'afventer',
+    resume: 'Indgangsdøren udviser gentagne problemer med automatikken, hvilket indikerer et underliggende systemisk problem, der kræver planlagt service.' },
+];
+
+/* ---------------------------------------------------------------------------
+ * Solcelleanlæg, hentet fra Lovable-projektet "Create From Attachment".
+ * 84 anlæg, 7.111 kWp, fire dataveje: FusionSolar (Huawei), Solax, Solplanet
+ * og Enity-målere. Platformen har selv indstrålingsdata, forventet produktion,
+ * PR og degradering — det, D-07 og D-08 manglede.
+ * ------------------------------------------------------------------------- */
+
+export const SOL_PORTEFOLJE = {
+  anlaeg: 84, aktive: 84, kwp: 7111, invertere: 157,
+  performanceDage: 40642, produktionstimer: 101072,
+  alarmer: 1109, alarmerISkyggedrift: 1109, aabneKritiske: 14,
+  hentet: '2026-09-14',
+};
+
+/** Dataveje. [kilde, antal anlæg, kWp] */
+export const SOL_KILDER = [
+  { kilde: 'FusionSolar (Huawei)', anlaeg: 20, kwp: 4605 },
+  { kilde: 'Solax',                anlaeg: 17, kwp: 1686 },
+  { kilde: 'Solplanet',            anlaeg: 10, kwp: 820 },
+  { kilde: 'Enity-målere',         anlaeg: 37, kwp: 0, note: 'Kun måler — ingen anlægsdata, ingen inverterstatus' },
+];
+
+/** Ydelse pr. anlæg. [navn, kilde, kæde, kWp, dage, PR, afvigelse %, kWh, specifikt udbytte] */
+const SP = [
+['Distributionscenter Odense','fusionsolar','Lager',952,411,1.287,38.2,1316932,2.35],
+['Ferskvarecenter Brøndby','fusionsolar','Lager',936,411,1.296,42.2,1218399,2.30],
+['Hasselager 2','fusionsolar','Lager',800,257,1.728,88.4,770121,3.73],
+['R45','fusionsolar','Lager',400,30,1.397,43.8,42926,2.45],
+['Jyllandsgade 11','solax','SuperBrugsen',266,379,0.948,3.4,251737,1.52],
+['Fredensgade 1','solax','SuperBrugsen',246,379,0.193,-78.8,149490,0.31],
+['COOP Kvickly Prøvestenscenteret','fusionsolar','Kvickly',240,411,1.423,55.7,339121,2.43],
+['Vestergade 70','solax','SuperBrugsen',216,321,0.147,-83.9,162854,0.25],
+['Københavnsvej 5','solax','SuperBrugsen',182,379,0.737,-19.1,157076,1.32],
+['Kvickly Hyrdehøj','fusionsolar','Kvickly',180,411,1.555,70.4,268529,2.68],
+['COOP Kvickly Ringkøbing (5770)','solplanet','Kvickly',175,17,1.111,21.2,4727,1.53],
+['COOP Centralbageri Brøndby','fusionsolar','Lager',160,411,1.119,30.0,181707,1.97],
+['Dronningensvej 1','solax','SuperBrugsen',141,324,0.065,-92.8,108545,0.17],
+['COOP HQ','fusionsolar','Lager',140,411,1.315,42.2,182957,2.33],
+['Hjarupvej 2','solax','SuperBrugsen',134,321,0.838,-8.4,49153,1.38],
+['Hasselager','fusionsolar','Lager',100,30,1.858,74.4,13686,2.86],
+['COOP Superbr Ålekistevej (1420)','solplanet','SuperBrugsen',100,17,1.536,68.4,4606,2.63],
+['Coop SuperBrugsen Dragør (1013)','solplanet','SuperBrugsen',100,17,1.652,72.6,4854,2.80],
+['COOP365 Hjallesevej','fusionsolar','365 Discount',99,411,1.115,22.4,118300,2.07],
+['Kliplev Nygade 2','solax','Brugsen',97,169,1.081,2.3,58097,1.88],
+['SuperBrugsen Nr. Alslev','fusionsolar','SuperBrugsen',89,411,0.922,-3.7,122935,2.28],
+['COOP365 Holstebro','fusionsolar','365 Discount',84,411,1.451,57.7,111005,2.11],
+];
+export const SOL_ANLAEG = SP.map(([navn, kilde, kaede, kwp, dage, pr, afvigelse, kwh, udbytte]) =>
+  ({ navn, kilde, kaede, kwp, dage, pr, afvigelse, kwh, udbytte }));
+
+/** Alarmtyper. Alle kører i skyggedrift — ingen når endnu frem til et menneske. */
+export const SOL_ALARMER = [
+  { type: 'inverter_offline',      alvor: 'høj',      antal: 339, aabne: 0,   tabKwh: 3075,  tabDkk: 4104 },
+  { type: 'streng_afvigelse',      alvor: 'middel',   antal: 299, aabne: 0,   tabKwh: 3245,  tabDkk: 4288 },
+  { type: 'temperatur_derating',   alvor: 'middel',   antal: 234, aabne: 234, tabKwh: 529,   tabDkk: 476 },
+  { type: 'nulproduktion_24t',     alvor: 'kritisk',  antal: 180, aabne: 14,  tabKwh: 49348, tabDkk: 71295 },
+  { type: 'underpraestation',      alvor: 'høj',      antal: 34,  aabne: 0,   tabKwh: 11216, tabDkk: 13270 },
+  { type: 'nulproduktion_dagtimer',alvor: 'kritisk',  antal: 23,  aabne: 0,   tabKwh: 809,   tabDkk: 728 },
+];
+
+/** De åbne kritiske alarmer. Bemærk kilden — den er den samme hele vejen ned. */
+export const SOL_AABNE_KRITISKE = [
+  { anlaeg: 'Dronningensvej 1', kilde: 'solax', kwp: 141, dato: '2026-09-10', tabKwh: 502, tabDkk: 452 },
+  { anlaeg: 'Fredensgade 1',    kilde: 'solax', kwp: 246, dato: '2026-09-14', tabKwh: 465, tabDkk: 418 },
+  { anlaeg: 'Dronningensvej 1', kilde: 'solax', kwp: 141, dato: '2026-09-09', tabKwh: 434, tabDkk: 391 },
+  { anlaeg: 'Dronningensvej 1', kilde: 'solax', kwp: 141, dato: '2026-09-14', tabKwh: 360, tabDkk: 324 },
+  { anlaeg: 'Fredensgade 1',    kilde: 'solax', kwp: 246, dato: '2026-09-12', tabKwh: 224, tabDkk: 201 },
+  { anlaeg: 'Dronningensvej 1', kilde: 'solax', kwp: 141, dato: '2026-09-12', tabKwh: 220, tabDkk: 198 },
+  { anlaeg: 'Dronningensvej 1', kilde: 'solax', kwp: 141, dato: '2026-09-11', tabKwh: 161, tabDkk: 145 },
+  { anlaeg: 'Fredensgade 1',    kilde: 'solax', kwp: 246, dato: '2026-09-13', tabKwh: 125, tabDkk: 112 },
+  { anlaeg: 'Sønderskovvej 76', kilde: 'solax', kwp: 64,  dato: '2026-09-14', tabKwh: 119, tabDkk: 107 },
+  { anlaeg: 'Nøjsomhedsvej 45', kilde: 'solax', kwp: 69,  dato: '2026-09-14', tabKwh: 106, tabDkk: 95 },
+  { anlaeg: 'Grønnegade 12',    kilde: 'solax', kwp: 28,  dato: '2026-09-14', tabKwh: 65,  tabDkk: 59 },
+  { anlaeg: 'Grønnegade 12',    kilde: 'solax', kwp: 28,  dato: '2026-09-13', tabKwh: 65,  tabDkk: 59 },
+  { anlaeg: 'Dronningensvej 1', kilde: 'solax', kwp: 141, dato: '2026-09-08', tabKwh: 56,  tabDkk: 50 },
+  { anlaeg: 'Dronningensvej 1', kilde: 'solax', kwp: 141, dato: '2026-09-13', tabKwh: 12,  tabDkk: 11 },
+];
+
+/** Modellens kalibrering pr. datakilde. `statistiskSikker: 0` overalt. */
+export const SOL_KALIBRERING = [
+  { kilde: 'fusionsolar', anlaeg: 20, faktor: 1.04, medianAfvigelse: 19.3, statistiskSikker: 0, mistaenktFejl: 0 },
+  { kilde: 'solax',       anlaeg: 10, faktor: 1.03, medianAfvigelse: null, statistiskSikker: 0, mistaenktFejl: 0 },
+  { kilde: 'solplanet',   anlaeg: 6,  faktor: 1.07, medianAfvigelse: 22.6, statistiskSikker: 0, mistaenktFejl: 0 },
+];
+
+export const SOL_DEGRADERING = { beregninger: 629, statistiskSikre: 0 };

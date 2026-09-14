@@ -11,7 +11,8 @@ import { buildClients, DEFAULTS } from './mcp.js';
 import * as seed from './seed.js';
 import {
   detektorRestpost, detektorBenchmark, detektorSpring, detektorDoedMaaler,
-  detektorNatlast, detektorKoeleandel, byggSager, grupperSambesoeg, FORUDSAETNINGER,
+  detektorNatlast, detektorKoeleandel, detektorGentagneAnlaeg, detektorGentagneButik,
+  byggSager, grupperSambesoeg, FORUDSAETNINGER,
 } from './engine.js';
 
 const NØGLE = 'coop-driftshub-v1';
@@ -103,6 +104,16 @@ export async function indlaesData({ live = state.cfg.liveData } = {}) {
     profiler: [{ butiksnummer: '7360', ...seed.DOEGNPROFIL_EKSEMPEL }],
     spring: seed.AARSSPRING,
     maalere: seed.MAALERE_EKSEMPEL,
+    opgaver: seed.OPGAVER_PORTEFOLJE,
+    opgaveFagomraade: seed.OPGAVER_FAGOMRAADE,
+    gentagneButik: seed.GENTAGNE_BUTIK,
+    gentagneAnlaeg: seed.GENTAGNE_ANLAEG,
+    fund: seed.AGENT_FUND,
+    sol: {
+      portefolje: seed.SOL_PORTEFOLJE, kilder: seed.SOL_KILDER, anlaeg: seed.SOL_ANLAEG,
+      alarmer: seed.SOL_ALARMER, aabneKritiske: seed.SOL_AABNE_KRITISKE,
+      kalibrering: seed.SOL_KALIBRERING, degradering: seed.SOL_DEGRADERING,
+    },
   };
   koerDetektorer();
   opdater();
@@ -142,6 +153,17 @@ export function koerDetektorer() {
   const d = state.data;
   if (!d) return;
   const index = Object.fromEntries(d.butikker.map((b) => [b.butiksnummer, b]));
+  // Opgavedata er nøglet på kardex, energidata på butiksnummer. De er ofte ens,
+  // men ikke altid — butikker, der kun kendes fra Dalux, lægges ind som skygge-
+  // poster, så en sag om gentagne fejl ikke falder på gulvet.
+  for (const g of [...(d.gentagneButik || []), ...(d.gentagneAnlaeg || [])]) {
+    if (index[g.kardex]) continue;
+    index[g.kardex] = {
+      butiksnummer: g.kardex, navn: g.butik, kaede: 'Ukendt', by: '',
+      salgsareal_m2: null, kwhAar: null, daekningPct: null,
+      daluxBuildingId: null, enityBuildingId: null, kwhPrM2: null, kunDalux: true,
+    };
+  }
   const f = state.forudsaetninger;
 
   const signaler = [
@@ -151,6 +173,8 @@ export function koerDetektorer() {
     ...detektorBenchmark(d.butikker, f),
     ...detektorNatlast(d.profiler || [], index, f),
     ...detektorKoeleandel(d.butikker, d.splits || [], f),
+    ...detektorGentagneAnlaeg(d.gentagneAnlaeg || []),
+    ...detektorGentagneButik(d.gentagneButik || []),
   ].filter((s) => !erUndertrykt(s));
 
   const sager = byggSager(signaler, index, f);

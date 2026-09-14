@@ -25,7 +25,9 @@ export function detektorer() {
     4: 'Bølge 4 · tværgående',
   };
   const boelgeHvorfor = {
-    1: 'Kan bygges uden at vente på en eneste ny integration. Giver de første bekræftede kroner og lærer os mønsteret.',
+    1: 'Kan bygges uden at vente på en eneste ny integration. Giver de første bekræftede kroner og lærer os mønsteret. '
+       + 'D-19 og D-20 kører på Dalux’ egen opgavehistorik og fanger dermed "gentagen alarm"-mønsteret fra fagbogen i dag — '
+       + 'uden at vente på AK-centralen.',
     2: 'Køl er porteføljens største energipost og den eneste med fødevaresikkerhed. Højeste faglige værdi — forudsat at AK-adgangen er løst.',
     3: 'Kræver CTS og Unikair. Billige fejl at rette, når de først er fundet.',
     4: 'Størst beløb pr. sag, men kræver flest kilder på plads samtidig. Skal bygges sidst, ikke først.',

@@ -34,7 +34,20 @@ python3 -m http.server 8000      # eller: npx serve .
 (september 2025 – august 2026) og virker uden netværk. Slå live-data til under
 **Opsætning**, når den kører et sted, der kan nå de to MCP-servere.
 
-## Hvad de to kilder faktisk kan
+## Kilderne
+
+Hubben hviler på fem Lovable-projekter, som allerede indeholder det, der skal til.
+Opsætningen er hentet derfra frem for opfundet på ny.
+
+| Projekt | Hvad hubben tager med |
+|---|---|
+| **Enity Consumption MCP** | Forbrug og produktion, 13.529 målepunkter med tag-klassifikation |
+| **MCP Dalux Connect** | Bygninger, anlæg, opgaver, tjeklister — og skrivning af arbejdsordrer |
+| **Coop Energi Einsight** | Faggrupper, tagmapping (61 regler × 4 niveauer), Dalux-anlægsklassifikation, forudsætninger |
+| **Remix of Shop Sentinel · DALUX API** | Fagområde-klassificering af 23.040 opgaver, gentagne fejl, anbefalet handling |
+| **Create From Attachment** | 84 solcelleanlæg, 7.111 kWp, indstråling, forventet produktion, PR, degradering, alarmer |
+
+## Hvad de to MCP-kilder faktisk kan
 
 Begge servere taler MCP Streamable HTTP uden login. Værktøjskataloget er
 gennemgået — det er det, hubben er bygget oven på.
@@ -69,29 +82,118 @@ Fuld dækning af Dalux FM-API'et. Det, hubben bruger:
 mangler. **Alle skrivninger kræver en menneskelig godkendelse** — hubben viser
 den præcise payload, før den sendes.
 
-## Det afgørende fund i data
-
-Enitys målepunkter bærer allerede en **struktureret klassifikation** som tags:
+## Tre niveauer, der hænger sammen
 
 ```
-custom:L0/1 HVAC            ← faggruppe
+FAGGRUPPE           Køl & frys · Ventilation · Lys inde …      energiregnskabets linjer
+   └─ ANLÆGSKLASSE  Dalux-klassifikation med kode (633.021)    det fysiske anlæg
+        └─ MÅLEPUNKT  Enity-tag L0/1 → L2 → L3 → L4            det, der måles
+```
+
+Faggruppen er den, økonomien rapporteres på. Anlægsklassen er den, en tekniker
+arbejder på, og den Dalux opretter opgaver på. Målepunktet er det, detektorerne
+kigger på. Uden alle tre kan en sag hverken prissættes, forklares eller sendes
+det rigtige sted hen.
+
+### Målepunkt-tags — opsætningen fra Coop Energi Einsight
+
+Enitys målepunkter bærer en struktureret klassifikation som tags:
+
+```
+custom:L0/1 HVAC            ← faggruppe (bred)
 custom:L2  Ventilation      ← anlægstype
 custom:L3  Slagter          ← zone
 custom:L4  Køleflade        ← delkomponent
-custom:Tax meter            ← afregningsmåler
 ```
 
-Det betyder, at hubben **ikke behøver at gætte ud fra målernavne**. L0/1 findes
-på 13.529 målepunkter fordelt på 12 værdier (HVAC 4.168, Hovedmåler 2.495, Lys
-1.870, Forsyningsmåler 1.481, Konsumkøl 1.472, Lejere 690, Overskudsvarme 659,
-Solceller 183 m.fl.), og L2 forfiner dem til 52 anlægstyper. `src/taxonomy.js`
-læser den klassifikation direkte; navneparseren er kun en nødplan for de
-målepunkter, der endnu ikke er tagget.
+`src/anlaeg.js` indeholder alle 61 regler over fire niveauer med konfidens.
+Det dybeste niveau vinder: **L4 slår L2, som slår L0/1.**
 
-**Koblingen Enity ↔ Dalux** sker på butiksnummeret, der står forrest i
-Enity-bygningens navn (`07360 SB Aalborg`, af og til med `L_`-præfiks). 865 af
-1.171 butikker er koblet i dag; 723 har et registreret salgsareal, og uden
-areal kan benchmark pr. m² ikke køre.
+Den vigtigste enkeltregel er `kraeverUnderniveau`: **"L0/1 HVAC" må aldrig
+auto-mappes alene.** Den dækker både ventilation, køleflade og varmeflade, og
+uden et L2- eller L4-tag kan faggruppen ikke afgøres. Det er den regel, der
+forhindrer, at en køleflade bliver talt som ventilation i energiregnskabet.
+Målepunkter, der mangler underniveauet, markeres med ⚑ i butiksvisningen.
+
+### Anlægsklasser — Dalux' eget register
+
+52 klassifikationer med kode, mappet til faggruppe. 50.000 registrerede anlæg:
+13.090 køle-/frostgondoler, 6.589 reoler, 3.651 køle-/frostrum, 1.222 centrale
+køleanlæg, 1.080 ventilationsanlæg, 777 chillere.
+
+To huller er værd at kende:
+
+- **Solcellerne har ingen anlægsklasse i Dalux.** Anlægsregistret for dem ligger
+  i solcelleplatformen, nøglet på `plant_id`. En solcellesag kan derfor ikke
+  hænges på et Dalux-komponent, før anlæggene er oprettet der.
+- **2.375 "impulskølere uden overvågning"** — køl helt uden måling eller
+  overvågning. Usynlig for både AK-centralen og Enity.
+
+## Opgavesiden — 23.040 rigtige Dalux-opgaver
+
+En butik melder alt ind, ikke kun det, der bruger strøm. Opgaverne henføres
+automatisk til ét af 21 fagområder ud fra anlægsfeltet, skabelonen og teksten,
+i den rækkefølge — regelbaseret, ikke med en sprogmodel, så det giver samme svar
+hver gang og kan testes.
+
+| Fagområde | Opgaver | Butikker | Konfidens |
+|---|---|---|---|
+| Køl/Frost | 5.142 | 675 | 83 % |
+| Skadedyr | 2.355 | 834 | 98 % |
+| VVS/Sanitet | 2.256 | 524 | 88 % |
+| Bygning/Tag | 2.162 | 878 | **58 %** |
+| Ventilation/Klima | 1.844 | 579 | **58 %** |
+| Sikkerhed/Alarm | 1.557 | 620 | 77 % |
+| Port/Dør | 1.550 | 488 | 89 % |
+
+Bygning/Tag og Ventilation/Klima er de mest tvetydige at læse ud af en fritekst
+— "der er varmt i butikken" kan være ventilation, køl eller solindfald. De skal
+gennemgås manuelt, før en sag på dem sendes videre.
+
+### Gentagne fejl — det, energidata alene ikke kan give
+
+Fagbogens linje gælder alt: gentagen tilsmudsning er et placeringsproblem, ikke
+et rengøringsproblem. To detektorer kører på Dalux' opgavehistorik alene og
+fanger dermed "gentagen alarm"-mønsteret **i dag**, uden at vente på AK-centralen:
+
+- **D-19** · samme anlæg meldt ind gentagne gange
+- **D-20** · butikken melder samme fagområde ind igen og igen
+
+Kolonnen "anlæg" afgør tolkningen. Samler opgaverne sig på få anlæg, er der en
+systematisk fejl eller en garantisag. Spreder de sig over mange anlæg, er det
+butikkens anlægsportefølje, der er ved at være udtjent — og den samtale hører
+til i budgettet, ikke i endnu en serviceopgave.
+
+**Planlagt service tæller ikke som gentagne fejl.** Skadedyr, rengøring, affald,
+alarm og elevator kører på serviceaftale eller lovpligtigt eftersyn, så mange
+opgaver er forventet. Der foreslås aldrig udskiftning på dem, og de eskalerer
+aldrig over P4 — spørgsmålet er, om antallet svarer til det aftalte. Uden den
+skelnen ville hubben foreslå at udskifte skadedyrssikringen efter 23 tilsyn.
+
+## Solceller — 84 anlæg, 7.111 kWp
+
+Solcelleplatformen har indstrålingsdata, forventet produktion, PR og
+degradering: det, D-07 og D-08 manglede. Fire dataveje — FusionSolar (20 anlæg,
+4.605 kWp), Solax (17 / 1.686), Solplanet (10 / 820) og 37 rene Enity-målere
+uden anlægsdata.
+
+Alle 1.109 alarmer kører i skyggedrift. Det er den rigtige disciplin.
+
+**To ting skal siges højt, før tallene bruges:**
+
+1. **Forventningsmodellen er ikke kalibreret.** Over halvdelen af anlæggene har
+   en performance ratio over 1,0, hvilket er fysisk urealistisk — den forventede
+   produktion er sat for lavt, ikke omvendt. Medianafvigelsen er ~20 %, og ingen
+   af de 36 kalibreringer er statistisk sikre. Afvigelser vises derfor, men de
+   bliver ikke til sager med beløb på.
+2. **Alle 14 åbne kritiske alarmer ligger på Solax-anlæg**, og de fire dårligst
+   ydende anlæg i porteføljen er også Solax. Det er ikke fjorten anlæg, der er
+   gået i stå samme uge. Det behandles som en fejl i dataopsamlingen, indtil
+   andet er bevist — første handling er at tjekke integrationen, ikke at sende
+   fjorten kørsler afsted.
+
+Degradering: 629 beregninger, 0 statistisk sikre. Et tal, der ikke kan bruges,
+er værd at vide, at man ikke kan bruge.
 
 ### Porteføljen, som tallene ser ud
 
@@ -134,8 +236,11 @@ Bølge 1 kan køre på Enity alene — uden at vente på en eneste ny integratio
 | D-03 | Bimålersum mod hovedmåler | drift |
 | D-04 | Måler uden data | drift |
 | D-05 | Benchmark pr. m² mod kædens median | drift |
+| D-19 | Gentagne opgaver på samme anlæg | drift |
+| D-20 | Butik med gentagne fejl i samme fagområde | drift |
 | D-06 | Køleandel mod naboer | skygge |
 | D-07/08 | Solproduktion mod forventet · gradvist fald | skygge |
+| D-21/22 | Nulproduktion 24 t · strengafvigelse | skygge |
 | D-09/10 | Lukkedag mod åbningstid · effektspids | planlagt |
 | D-11–18 | Køl, CTS, ventilation, overskudsvarme | planlagt — venter på kilder |
 
@@ -167,8 +272,11 @@ src/
   engine.js         detektorer + sagsbygger: konfidens, kroner, prioritet
   state.js          data, beslutninger, undertrykkelser, nøgletal
   dalux.js          opgavetekst, payload og oprettelse i Dalux FM
+  anlaeg.js         teknisk anlægsregister: tagmapping, Dalux-anlægsklasser
+  opgaver.js        fagområder, klassificering af Dalux-opgaver, gentagne fejl
   seed.js           rigtigt dataudtræk, så hubben virker uden netværk
-  views/            overblik · sager · butikker · detektorer · fagbog · opsætning
+  views/            overblik · sager · butikker · anlæg · gentagne fejl ·
+                    solceller · detektorer · fagbog · opsætning
 ```
 
 Principper, der er værd at kende, før man retter i koden:
@@ -202,3 +310,13 @@ Principper, der er værd at kende, før man retter i koden:
   proxy-feltet under Opsætning på en videresender.
 - **Timeprofilen** findes kun for den ene eksempelbutik i udtrækket. D-01 kører
   på alle butikker, så snart live-data er slået til.
+- **Opgaveøkonomi mangler.** Dalux rummer forventet pris pr. opgave, men den er
+  ikke hentet ind. Sager om gentagne fejl prioriteres derfor på gentagelser, ikke
+  på kroner — og det er en svagere prioritering end den, energisagerne får.
+- **Solcelleafvigelser er ikke handlingsklare.** Modellen skal kalibreres, før
+  en afvigelse kan blive til en sag. Det er også derfor, D-07, D-08, D-21 og
+  D-22 står i skyggedrift og ikke i drift.
+- **Koblingen mellem Enity og Dalux sker på butiksnummer/kardex.** De to felter
+  er ens i de fleste butikker, men ikke alle. Butikker, der kun kendes fra Dalux,
+  lægges ind som skyggeposter, så en sag om gentagne fejl ikke falder på gulvet —
+  men de har hverken areal eller forbrug, og kan derfor ikke benchmarkes.

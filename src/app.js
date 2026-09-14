@@ -16,6 +16,9 @@ import { state, abonner, indlaesData, skriv, opdater } from './state.js';
 import { overblik } from './views/overblik.js';
 import { sager } from './views/sager.js';
 import { butikker } from './views/butikker.js';
+import { anlaeg } from './views/anlaeg.js';
+import { gentagne } from './views/gentagne.js';
+import { solceller } from './views/solceller.js';
 import { detektorer, fagbog } from './views/detektorer.js';
 import { opsaetning } from './views/opsaetning.js';
 
@@ -23,6 +26,9 @@ const SIDER = [
   { id: 'overblik',   navn: 'Overblik',   tegn: overblik },
   { id: 'sager',      navn: 'Sager',      tegn: sager },
   { id: 'butikker',   navn: 'Butikker',   tegn: butikker },
+  { id: 'anlaeg',     navn: 'Anlæg',      tegn: anlaeg },
+  { id: 'gentagne',   navn: 'Gentagne fejl', tegn: gentagne },
+  { id: 'solceller',  navn: 'Solceller',  tegn: solceller },
   { id: 'detektorer', navn: 'Detektorer', tegn: detektorer },
   { id: 'fagbog',     navn: 'Fagbogen',   tegn: fagbog },
   { id: 'opsaetning', navn: 'Opsætning',  tegn: opsaetning },
