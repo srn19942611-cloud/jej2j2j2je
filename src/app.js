@@ -15,6 +15,7 @@ import { h } from './ui.js';
 import { state, abonner, indlaesData, skriv, opdater, gem } from './state.js';
 import { planlaegNatligKoersel, byggHenter, koerSynkronisering, opsummer } from './sync.js';
 import { overblik } from './views/overblik.js';
+import { mitOmraade } from './views/mitomraade.js';
 import { sager } from './views/sager.js';
 import { butikker } from './views/butikker.js';
 import { anlaeg } from './views/anlaeg.js';
@@ -26,6 +27,7 @@ import { opsaetning } from './views/opsaetning.js';
 
 const SIDER = [
   { id: 'overblik',   navn: 'Overblik',   tegn: overblik },
+  { id: 'mitomraade', navn: 'Mit område', tegn: mitOmraade },
   { id: 'sager',      navn: 'Sager',      tegn: sager },
   { id: 'butikker',   navn: 'Butikker',   tegn: butikker },
   { id: 'anlaeg',     navn: 'Anlæg',      tegn: anlaeg },
@@ -43,7 +45,8 @@ let argumenter = {};
 function gaaTil(id, args = {}) {
   nuvaerende = id;
   argumenter = args;
-  location.hash = id + (args.sag ? `/${encodeURIComponent(args.sag)}` : '');
+  const arg = args.sag || args.person;
+  location.hash = id + (arg ? `/${encodeURIComponent(arg)}` : '');
   tegn();
 }
 
@@ -51,7 +54,7 @@ function fraHash() {
   const [id, arg] = location.hash.replace(/^#/, '').split('/');
   if (SIDER.some((s) => s.id === id)) {
     nuvaerende = id;
-    argumenter = arg ? { sag: decodeURIComponent(arg) } : {};
+    argumenter = arg ? { sag: decodeURIComponent(arg), person: decodeURIComponent(arg) } : {};
   }
 }
 

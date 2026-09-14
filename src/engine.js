@@ -10,6 +10,7 @@
 
 import { FG, fgNavn, DETEKTORER } from './taxonomy.js';
 import { FO, HANDLINGER, vurderGentagelse } from './opgaver.js';
+import { ejerAfSag } from './personer.js';
 
 export const FORUDSAETNINGER = {
   elpris: 0.77,      // kr/kWh
@@ -412,12 +413,22 @@ export function byggSager(signaler, butikIndex, forud = FORUDSAETNINGER) {
       hypotese: (sigs.some((s) => s.planlagtService) && HYPOTESER[`${type}_planlagt`]) || HYPOTESER[type],
       tjekpunkter: TJEKPUNKTER[type] || [],
       forventetFund: FORVENTET_FUND[type],
-      ansvarlig: FG[faggruppe] ? FG[faggruppe].rolle : 'Energiansvarlig',
+      ansvarlig: null,   // sættes nedenfor, når sagen er bygget færdig
+      rolle: FG[faggruppe] ? FG[faggruppe].rolle : 'Energiansvarlig',
       fag: FG[faggruppe] ? FG[faggruppe].fag : '—',
       datadaekning: minDaekning,
       forbehold: sigs.map((s) => s.forbehold).filter(Boolean),
       manglerKilder: [...new Set(sigs.flatMap((s) => (DETEKTORER.find((d) => d.id === s.detektor) || {}).mangler || []))],
     });
+  }
+
+  // Hver sag får en navngiven modtager. Kan den ikke få en, står det i sagen —
+  // frem for at den tavst lander i et hul.
+  for (const sag of sager) {
+    const ejer = ejerAfSag(sag);
+    sag.ejer = ejer;
+    sag.ansvarlig = ejer ? ejer.navn : 'ingen ejer';
+    if (ejer && ejer.fag) sag.fag = ejer.fag;
   }
 
   // Sager under dækningsminimum oprettes ikke — men målerfejlsagen er netop

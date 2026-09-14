@@ -1,6 +1,6 @@
 import { h, tabel, badge, swatch, modal, kpi, dkTal, tom, prioritetBadge } from '../ui.js';
 import { state } from '../state.js';
-import { FAGOMRAADER, FO, foFarve, HANDLINGER, porteføljemønstre, vurderGentagelse } from '../opgaver.js';
+import { FAGOMRAADER, FO, foFarve, HANDLINGER, porteføljemønstre, vurderGentagelse, vurderButik } from '../opgaver.js';
 import { fgNavn, fgFarve } from '../taxonomy.js';
 import { visSag } from './sager.js';
 
@@ -116,14 +116,12 @@ export function gentagne(gaaTil) {
 }
 
 function tolkning(g) {
-  if (FO[g.fagomraade] && FO[g.fagomraade].planlagt) {
-    return h('span', {}, badge('Planlagt'), ' serviceaftale eller lovpligtigt eftersyn');
-  }
-  if (!g.anlaegAntal) return h('span', { class: 'muted' }, '—');
-  if (g.anlaegAntal === 1) return h('span', {}, badge('Ét anlæg', 'p1'), ' systematisk fejl eller garantisag');
-  if (g.antal / g.anlaegAntal >= 3) return h('span', {}, badge('Få anlæg', 'p2'), ' samme anlæg går igen');
-  if (g.anlaegAntal >= 8) return h('span', {}, badge('Spredt', 'p3'), ' porteføljen er ved at være udtjent');
-  return h('span', { class: 'muted' }, 'blandet billede');
+  const v = vurderButik(g.fagomraade, g.antal, g.anlaegAntal);
+  const maerke = v.planlagtService ? ['Planlagt', '']
+    : !g.anlaegAntal || g.anlaegAntal === 1 ? ['Ét anlæg', 'p1']
+    : g.antal / g.anlaegAntal >= 3 ? ['Få anlæg', 'p2']
+    : ['Spredt', 'p3'];
+  return h('span', {}, badge(maerke[0], maerke[1]), ' ', h('span', { class: 'muted' }, v.tolkning));
 }
 
 function fundKort(f) {

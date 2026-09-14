@@ -260,6 +260,54 @@ Rækkefølgen følger dataadgangen, ikke den faglige interesse.
 | **Vejrdata** | Mangler | Uden graddage og udetemperatur er halvdelen af alle kølesager falske om sommeren. |
 | **Enity-serveren** | Kører | Registreret uden login. Skal sikres, før den bruges bredere. |
 
+## Hvem har hvad
+
+Ingen sag må stå uden en navngiven modtager. `src/personer.js` er tabellen,
+der gør en faggruppe til en person — og dermed en sag til nogens ansvar.
+
+| Person | Område | Faggrupper | Fagområder i Dalux |
+|---|---|---|---|
+| **Henrik Ravn** | Køl og frost | Køl & frys | Køl/Frost |
+| **Mads** | Ventilation | Ventilation | Ventilation/Klima |
+| **Morten** | CTS, elevatorer og klimakøl | CTS & teknik, Køleflader/klima | Elevator/Rulletrappe |
+| **Emil** | Varme og overskudsvarme | Overskudsvarme, Varme el/varmepumpe, Varme fjernvarme | — |
+| **Stefan** | Solceller og belysning | Solceller, Belysning inde, Belysning ude | Solceller, Lys/El |
+| **Lars** | Flaskeautomater og porte | — | Flaskeautomat, Port/Dør |
+| **Martin** | Systemydelser og eltavler | — | El tavler, IT/Kasse |
+
+Fanen **Mit område** giver hver person sit eget billede: min kø, mine anlæg,
+mit forbrug, gentagne fejl på mit område, mine detektorer — og hvad jeg endnu
+ikke kan se.
+
+### Tre ting, opdelingen afslører
+
+**Mads og Morten deler det samme fysiske aggregat.** Mads har luftsiden,
+Morten har kølefladen. Den opdeling kan kun holdes i data, fordi
+Enity-målepunkterne har et L4-tag, der skiller `Kun ventilation` fra
+`Køleflade` — og fordi et bredt `L0/1 HVAC` aldrig auto-mappes alene. Uden den
+regel ville halvdelen af Mortens forbrug lande hos Mads.
+
+**Lars og Martin har områder uden energiside.** Deres anlæg bruger strøm, men
+vi måler det ikke separat. Deres billede er derfor drevet af Dalux-opgaver og
+gentagne fejl, ikke af kWh. Det er en reel forskel, ikke en mangel ved deres
+dashboard — og den vises frem for at skjules.
+
+**Der mangler en rolle.** De syv dækker hver sin anlægstype, men ingen dækker
+"Øvrigt/uspecificeret" — og det er dér, langt de fleste sager lander, fordi
+restpost, benchmark, målerfejl og ny konstant last netop handler om forbrug,
+der endnu ikke kan henføres til et anlæg. Opsætningen mangler en
+**energiansvarlig**, der visiterer de tværgående og uplacerede sager videre.
+Indtil den rolle har et navn, står de sager uden modtager, og hubben viser
+antallet øverst på listen "Sager uden ejer" frem for at fordele dem tilfældigt.
+
+### En tom kø er ikke i sig selv en god nyhed
+
+Den kan betyde tre forskellige ting, og den fagansvarlige skal kunne se
+hvilken: at detektorerne kører og intet har fundet, at detektorerne venter på
+en datakilde, eller at området slet ikke har en energiside. Hvert dashboard
+skriver det ud med de konkrete detektornavne og det, de mangler — en tom kø
+under et område uden detektorer i drift betyder, at der ikke bliver kigget.
+
 ## Motoren — hvilket anlæg handler opgaven om?
 
 Af 23.040 rigtige opgaver har kun 5.909 udfyldt anlægsfeltet, og feltet
@@ -381,11 +429,13 @@ src/
   dalux.js          opgavetekst, payload og oprettelse i Dalux FM
   anlaeg.js         teknisk anlægsregister: tagmapping, Dalux-anlægsklasser
   opgaver.js        fagområder, klassificering af Dalux-opgaver, gentagne fejl
+  personer.js       hvem har hvad — faggruppe og fagområde pr. fagansvarlig
   motor.js          anlægs- og faggruppemotoren: seks trin, konfidens, begrundelse
   sync.js           natlig synkronisering: trin, genforsøg, vandmærker
   seed.js           rigtigt dataudtræk, så hubben virker uden netværk
-  views/            overblik · sager · butikker · anlæg · gentagne fejl ·
-                    solceller · motor · detektorer · fagbog · opsætning
+  views/            overblik · mit område · sager · butikker · anlæg ·
+                    gentagne fejl · solceller · motor · detektorer ·
+                    fagbog · opsætning
 sync/
   run.mjs           indgangen til cron — samme kode, kørt fra Node
 .github/workflows/

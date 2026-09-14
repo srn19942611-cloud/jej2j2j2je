@@ -150,7 +150,9 @@ export function visSag(sag, gaaTil) {
       sag.tjekpunkter.map((t) => h('li', { style: { marginBottom: '4px' } }, t))),
     h('div', { class: 'kv' },
       h('dt', {}, 'Fag'), h('dd', {}, sag.fag),
-      h('dt', {}, 'Ansvarlig'), h('dd', {}, sag.ansvarlig),
+      h('dt', {}, 'Ansvarlig'), h('dd', {}, sag.ejer
+        ? h('span', {}, h('strong', {}, sag.ejer.navn), h('span', { class: 'muted' }, ` · ${sag.ejer.omraade}`))
+        : h('span', { style: { color: 'var(--p1)' } }, `ingen ejer — falder på "${fgNavn(sag.faggruppe)}", som ingen dækker`)),
       h('dt', {}, 'Forventet fund'), h('dd', {}, sag.forventetFund || '—'))));
 
   /* Forbehold — det, der gør sagen ærlig. */

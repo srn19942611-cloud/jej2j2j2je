@@ -317,6 +317,28 @@ export function detektorGentagneAnlaeg(opgaver, { minAntal = 5, vinduDage = 365 
  * når opgaverne rammer forskellige anlæg. Det er butikker, hvis anlæg
  * samlet set er ved at være udtjente.
  */
+/**
+ * Samme vurdering, men for en hel butik. Et anlæg kan udskiftes; en butik kan
+ * ikke. Rammer opgaverne mange forskellige anlæg, er svaret en gennemgang og
+ * et budgetoplæg — ikke en udskiftning af noget bestemt.
+ */
+export function vurderButik(fagomraade, antal, anlaegAntal) {
+  if (FO[fagomraade] && FO[fagomraade].planlagt) {
+    return { planlagtService: true, handling: 'kontroller_aftale',
+      tolkning: 'Serviceaftale eller lovpligtigt eftersyn — antallet skal holdes op mod det aftalte.' };
+  }
+  if (!anlaegAntal || anlaegAntal === 1) {
+    return { planlagtService: false, handling: 'warranty_claim',
+      tolkning: 'Alt samler sig på ét anlæg. Systematisk fejl eller garantisag.' };
+  }
+  if (antal / anlaegAntal >= 3) {
+    return { planlagtService: false, handling: 'warranty_claim',
+      tolkning: 'Få anlæg går igen. Se efter en systematisk fejl, før der bestilles mere arbejde.' };
+  }
+  return { planlagtService: false, handling: 'survey',
+    tolkning: 'Spredt over mange anlæg. Det er porteføljen i butikken, og den hører til i budgettet.' };
+}
+
 export function detektorGentagneButik(opgaver, { minAntal = 12 } = {}) {
   const grupper = new Map();
   for (const o of opgaver) {

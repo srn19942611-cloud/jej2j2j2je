@@ -1,6 +1,7 @@
 import { h, tabel, badge, felt, dkTal, tom } from '../ui.js';
 import { state, gem, indlaesData, koerDetektorer, opdater, skriv } from '../state.js';
 import { FAGGRUPPER, fgNavn, fgFarve } from '../taxonomy.js';
+import { PERSONER } from '../personer.js';
 import { DEFAULTS } from '../mcp.js';
 
 export function opsaetning() {
@@ -130,14 +131,28 @@ export function opsaetning() {
     h('h2', {}, 'Fagansvarlige'),
     h('p', { class: 'muted', style: { fontSize: '12.5px', marginTop: 0, maxWidth: '78ch' } },
       'Ingen sag må stå uden en navngiven modtager. Er en fagansvarlig fraværende, går sagen til stedfortræderen '
-      + 'efter det aftalte antal dage. Felterne her er tomme, indtil navnene er sat på — det er med vilje synligt.'),
+      + 'efter det aftalte antal dage — og det kræver et navn. Klik på en række for at sætte det.'),
     tabel([
-      { navn: 'Faggruppe', celle: (r) => h('span', {}, h('span', { class: 'swatch', style: { background: r.farve } }), r.navn) },
-      { navn: 'Rolle', celle: (r) => r.rolle },
+      { navn: 'Fagansvarlig', celle: (r) => h('strong', {}, r.navn) },
+      { navn: 'Område', celle: (r) => r.omraade, wrap: true },
+      { navn: 'Faggrupper', celle: (r) => (r.faggrupper.length
+          ? h('span', { class: 'pill-row' }, r.faggrupper.map((f) =>
+              h('span', {}, h('span', { class: 'swatch', style: { background: fgFarve(f) } }), fgNavn(f))))
+          : h('span', { class: 'muted' }, 'ingen energiside')), wrap: true },
       { navn: 'Fag på stedet', celle: (r) => r.fag },
-      { navn: 'Navngiven', celle: (r) => (state.ansvarlige[r.key]?.navn ? badge(state.ansvarlige[r.key].navn, 'ok') : badge('mangler', 'p2')) },
-      { navn: 'Stedfortræder', celle: (r) => (state.ansvarlige[r.key]?.stedfortraeder ? badge(state.ansvarlige[r.key].stedfortraeder, 'ok') : badge('mangler', 'p2')) },
-    ], FAGGRUPPER.filter((x) => x.key !== 'lejere' && x.key !== 'oevrigt'), { onRow: (r) => redigerAnsvarlig(r) })));
+      { navn: 'Stedfortræder', celle: (r) => (state.ansvarlige[r.id]?.stedfortraeder
+          ? badge(state.ansvarlige[r.id].stedfortraeder, 'ok') : badge('mangler', 'p1')) },
+    ], PERSONER, { onRow: (r) => redigerAnsvarlig(r) })));
+
+  const udaekket = FAGGRUPPER.filter((f) => f.key !== 'lejere'
+    && !PERSONER.some((p) => p.faggrupper.includes(f.key)));
+  if (udaekket.length) {
+    el.append(h('div', { class: 'note stop', style: { marginTop: '12px' } },
+      h('strong', {}, 'Faggrupper uden en navngiven ejer: '), udaekket.map((f) => f.navn).join(', '), '.', h('br'),
+      '"Øvrigt/uspecificeret" er den, der betyder noget: det er dér restpost, benchmark og målerfejl lander, '
+      + 'fordi de netop handler om forbrug, der endnu ikke kan henføres til et anlæg. '
+      + 'Opsætningen mangler en energiansvarlig, der visiterer de sager videre.'));
+  }
 
   /* ---- Undertrykkelser ---- */
   el.append(h('hr', { class: 'rule' }));
@@ -167,18 +182,20 @@ export function opsaetning() {
   return el;
 
   function redigerAnsvarlig(r) {
-    const nuv = state.ansvarlige[r.key] || {};
-    const navn = h('input', { type: 'text', value: nuv.navn || '' });
+    const nuv = state.ansvarlige[r.id] || {};
     const sted = h('input', { type: 'text', value: nuv.stedfortraeder || '' });
+    const email = h('input', { type: 'text', value: nuv.email || '', placeholder: 'til besked om P1-sager' });
     import('../ui.js').then(({ modal, lukModal }) => {
       modal({
-        titel: `Fagansvarlig · ${r.navn}`,
+        titel: `${r.navn} · ${r.omraade}`,
         krop: h('div', { class: 'grid', style: { gap: '12px' } },
-          h('p', { class: 'note', style: { margin: 0 } }, r.def),
-          felt('Fagansvarlig', navn), felt('Stedfortræder', sted,
-            'To-personers-reglen: en sag må aldrig kunne stå og vente på én person.')),
+          h('p', { class: 'note', style: { margin: 0 } }, r.beskrivelse),
+          felt('Stedfortræder', sted,
+            'To-personers-reglen: en sag må aldrig kunne stå og vente på én person.'),
+          felt('E-mail', email),
+          r.uafklaret ? h('div', { class: 'note warn' }, r.uafklaret) : null),
         knapper: [h('button', { class: 'btn primary', onclick: () => {
-          state.ansvarlige[r.key] = { navn: navn.value.trim(), stedfortraeder: sted.value.trim() };
+          state.ansvarlige[r.id] = { navn: r.navn, stedfortraeder: sted.value.trim(), email: email.value.trim() };
           gem(); opdater(); lukModal();
         } }, 'Gem')],
       });
