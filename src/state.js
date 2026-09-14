@@ -30,7 +30,8 @@ const standard = {
   forudsaetninger: { ...FORUDSAETNINGER },
   beslutninger: {},      // sagId → { valg, aarsag, note, bruger, tid, daluxWorkOrderId }
   undertrykkelser: [],   // { anlaeg, detektor, begrundelse, ejer, udloeb }
-  ansvarlige: {},        // faggruppe → { navn, email, stedfortraeder }
+  ansvarlige: {},        // person → { navn, email, stedfortraeder }
+  visitationer: {},      // sagsnøgle → personId, sat af visitatoren
 };
 
 function laes() {
@@ -69,9 +70,9 @@ state.klienter = buildClients(state.cfg);
 
 export function gem() {
   try {
-    const { cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, vandmaerker, sidsteKoersel } = state;
+    const { cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, visitationer, vandmaerker, sidsteKoersel } = state;
     localStorage.setItem(NØGLE, JSON.stringify({
-      cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, vandmaerker,
+      cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, visitationer, vandmaerker,
       // Kun hovedtallene fra sidste kørsel gemmes — ikke de hentede data.
       sidsteKoersel: sidsteKoersel && { ...sidsteKoersel, trin: sidsteKoersel.trin },
     }));
@@ -188,7 +189,7 @@ export function koerDetektorer() {
     ...detektorGentagneButik(d.gentagneButik || []),
   ].filter((s) => !erUndertrykt(s));
 
-  const sager = byggSager(signaler, index, f);
+  const sager = byggSager(signaler, index, { ...f, visitationer: state.visitationer || {} });
   for (const s of sager) {
     const b = state.beslutninger[nøgleFor(s)];
     if (b) { s.status = b.status; s.beslutning = b; }
@@ -239,6 +240,42 @@ export function traefBeslutning(sag, valg, detaljer = {}) {
   koerDetektorer();
   opdater();
   return beslutning;
+}
+
+/**
+ * Visitation: visitatoren sender en sag videre til en fagansvarlig.
+ * Valget gemmes på sagstypen + butikken, så det holder, når detektorerne
+ * kører igen — og så mønsteret kan gøres op bagefter. Rammer den samme
+ * sagstype gang på gang den samme person, er det en regel, der mangler,
+ * ikke en beslutning, nogen skal tage hver gang.
+ */
+export function visiter(sag, personId, note = '') {
+  const noegle = nøgleFor(sag);
+  if (personId) {
+    state.visitationer[noegle] = personId;
+    state.visitationslog = [{ noegle, personId, note, tid: new Date().toISOString(), sagstype: sag.sagstype },
+      ...(state.visitationslog || [])].slice(0, 200);
+  } else {
+    delete state.visitationer[noegle];
+  }
+  gem(); koerDetektorer(); opdater();
+}
+
+/** Sagstyper, der gang på gang visiteres til den samme person. */
+export function visitationsmoenstre() {
+  const pr = {};
+  for (const [noegle, personId] of Object.entries(state.visitationer)) {
+    const sagstype = noegle.split('|')[1];
+    (pr[sagstype] ||= {})[personId] = ((pr[sagstype] || {})[personId] || 0) + 1;
+  }
+  return Object.entries(pr)
+    .map(([sagstype, fordeling]) => {
+      const poster = Object.entries(fordeling).sort((a, b) => b[1] - a[1]);
+      const ialt = poster.reduce((a, x) => a + x[1], 0);
+      return { sagstype, personId: poster[0][0], antal: poster[0][1], ialt, andel: poster[0][1] / ialt };
+    })
+    .filter((m) => m.ialt >= 3 && m.andel >= 0.8)
+    .sort((a, b) => b.antal - a.antal);
 }
 
 export function genaabn(sag) {

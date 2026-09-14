@@ -1,6 +1,6 @@
-import { h, tabel, badge, swatch, kpi, modal, prioritetBadge, dkTal, dkKr, pct, tom, stack, legend } from '../ui.js';
-import { state, noegletal } from '../state.js';
-import { PERSONER, PERSON, sagerFor, herreloeseSager, udaekkedeFaggrupper, ejerAfSag } from '../personer.js';
+import { h, tabel, badge, swatch, kpi, modal, lukModal, felt, vaelger, prioritetBadge, dkTal, dkKr, pct, tom, stack, legend } from '../ui.js';
+import { state, noegletal, visiter, visitationsmoenstre } from '../state.js';
+import { PERSONER, PERSON, VISITATOR, sagerFor, visitationskoe, udaekkedeFaggrupper, ejerAfSag } from '../personer.js';
 import { FAGGRUPPER, FG, fgNavn, fgFarve, DETEKTORER } from '../taxonomy.js';
 import { FO, foFarve, HANDLINGER, vurderGentagelse, vurderButik } from '../opgaver.js';
 import { ANLAEGSKLASSER, ANLAEG_UDEN_ENERGI } from '../anlaeg.js';
@@ -25,12 +25,16 @@ export function mitOmraade(gaaTil, args = {}) {
 
   /* Personvælger. */
   const vaelger = h('div', { class: 'pill-row', style: { marginBottom: '20px' } });
+  const vis = state.visitationer || {};
   for (const p of PERSONER) {
-    const antal = sagerFor(p, state.sager).filter(aaben).length;
+    const antal = sagerFor(p, state.sager, vis).filter(aaben).length;
+    const tilVisitation = p.visitator ? visitationskoe(state.sager, vis).filter(aaben).length : 0;
     const knap = h('button', {
       class: 'btn' + (p.id === person.id ? ' primary' : ''),
       onclick: () => gaaTil('mitomraade', { person: p.id }),
-    }, p.navn, antal ? h('span', { class: 'badge', style: { marginLeft: '6px' } }, String(antal)) : null);
+    }, p.navn,
+      antal ? h('span', { class: 'badge', style: { marginLeft: '6px' } }, String(antal)) : null,
+      tilVisitation ? h('span', { class: 'badge p2', style: { marginLeft: '4px' }, title: 'til visitation' }, `+${tilVisitation}`) : null);
     vaelger.append(knap);
   }
   el.append(vaelger);
@@ -49,8 +53,10 @@ const aaben = (s) => s.status === 'ny' || s.status === 'vurderet';
 function dashboard(person, gaaTil) {
   const el = h('div', {});
   const d = state.data;
-  const mine = sagerFor(person, state.sager);
+  const vis = state.visitationer || {};
+  const mine = sagerFor(person, state.sager, vis);
   const aabne = mine.filter(aaben);
+  const koe = person.visitator ? visitationskoe(state.sager, vis).filter(aaben) : [];
 
   /* Hoved. */
   el.append(h('div', { class: 'card', style: { marginBottom: '14px' } },
@@ -60,9 +66,24 @@ function dashboard(person, gaaTil) {
         h('div', { style: { color: 'var(--ink-2)', fontSize: '13px', marginTop: '3px' } }, person.omraade),
         h('p', { class: 'muted', style: { fontSize: '12.5px', margin: '6px 0 0', maxWidth: '70ch' } }, person.beskrivelse)),
       h('div', { class: 'pill-row' },
-        ...person.faggrupper.map((f) => badge(h('span', {}, swatch(fgFarve(f)), fgNavn(f)))),
-        ...person.fagomraader.map((f) => badge(h('span', {}, swatch(foFarve(f)), f))),
-        badge(person.fag))),
+        // Et fagområde kan hedde det samme som en faggruppe (Solceller findes
+        // begge steder). Vis navnet én gang — det er samme område for personen.
+        ...(() => {
+          const set = new Set();
+          const ud = [];
+          for (const f of person.faggrupper) {
+            const navn = fgNavn(f);
+            if (set.has(navn)) continue;
+            set.add(navn); ud.push(badge(h('span', {}, swatch(fgFarve(f)), navn)));
+          }
+          for (const f of person.fagomraader) {
+            if (set.has(f)) continue;
+            set.add(f); ud.push(badge(h('span', {}, swatch(foFarve(f)), f)));
+          }
+          return ud;
+        })(),
+        badge(person.fag),
+        person.visitator ? badge('visitator', 'p2') : null)),
     person.uafklaret ? h('div', { class: 'note warn', style: { marginTop: '12px' } },
       h('strong', {}, 'Området er ikke afgrænset endnu.'), ' ', person.uafklaret) : null,
     person.deler ? h('div', { class: 'note', style: { marginTop: '10px' } },
@@ -82,8 +103,10 @@ function dashboard(person, gaaTil) {
       ? kpi('Energiside', 'ingen', 'området måles ikke separat i Enity')
       : kpi('Mit forbrug', kwh ? `${(kwh.gwh).toFixed(1)} GWh` : '—',
           kwh ? `${pct(kwh.andel)} af porteføljens el · ${dkKr(kwh.kr)}/år` : 'ingen submåling på området'),
-    kpi('Opgaver i Dalux', opgaver ? dkTal(opgaver.antal) : '—',
-      opgaver ? `på ${dkTal(opgaver.butikker)} butikker` : 'ingen fagområder på opgavesiden')));
+    person.visitator
+      ? kpi('Til visitation', dkTal(koe.length), 'sager uden fagansvarlig — skal sendes videre, ikke løses')
+      : kpi('Opgaver i Dalux', opgaver ? dkTal(opgaver.antal) : '—',
+          opgaver ? `på ${dkTal(opgaver.butikker)} butikker` : 'ingen fagområder på opgavesiden')));
 
   /* Køen. P1 først — fødevaresikkerhed venter ikke på et beløb. */
   el.append(h('h2', { style: { marginTop: '24px' } }, `Min kø (${aabne.length})`));
@@ -100,6 +123,9 @@ function dashboard(person, gaaTil) {
           s.krAar ? dkTal(s.krAar) : (s.gentagelser ? `${s.gentagelser}×` : '—')) },
     ], aabne, { onRow: (s) => visSag(s, gaaTil) }));
   }
+
+  /* Visitationskøen — en anden slags arbejde end min egen kø. */
+  if (person.visitator) el.append(visitationsafsnit(koe, gaaTil));
 
   /* Mine anlæg. */
   const klasser = ANLAEGSKLASSER.filter((a) => person.faggrupper.includes(a.fg));
@@ -270,48 +296,144 @@ function opgaverFor(person, d) {
   };
 }
 
-/* ---- Sager uden ejer ------------------------------------------------------ */
+/* ---- Visitationskøen ------------------------------------------------------ */
 
-function herreloese(gaaTil) {
+/* Visitation er triage, ikke ejerskab. En sag her er ubehandlet, uanset hvor
+ * dygtig visitatoren er — og hvis de to køer blandes sammen, forsvinder netop
+ * det, man skal kunne se: at firs sager venter på at blive placeret. */
+function visitationsafsnit(koe, gaaTil) {
   const el = h('div', {});
-  const uden = herreloeseSager(state.sager).filter(aaben);
-  const udaekkede = udaekkedeFaggrupper(FAGGRUPPER).filter((f) => f.key !== 'lejere');
-
-  el.append(h('h2', {}, `Sager uden ejer (${uden.length})`));
+  el.append(h('h2', { style: { marginTop: '24px' } }, `Til visitation (${koe.length})`));
   el.append(h('p', { class: 'muted', style: { fontSize: '12.5px', marginTop: '-4px', maxWidth: '84ch' } },
-    'Det her er den vigtigste liste i hele opsætningen. En sag uden modtager bliver aldrig behandlet, '
-    + 'og den fejl er tavs — der kommer ingen fejlmeddelelse, når noget lander i et hul.'));
+    'De her sager har ingen fagansvarlig, fordi de handler om forbrug, der endnu ikke er henført til et anlæg. '
+    + 'Opgaven er ikke at løse dem, men at sende dem videre — eller at lukke dem, hvis de ikke er værd at handle på. '
+    + 'En sag i denne kø er ubehandlet, uanset hvor hurtigt der bliver kigget på den.'));
 
-  if (!uden.length) {
-    el.append(h('div', { class: 'note' }, 'Alle åbne sager har en ejer.'));
+  if (!koe.length) {
+    el.append(h('div', { class: 'note' }, 'Køen er tom. Alle åbne sager har en fagansvarlig.'));
     return el;
   }
 
-  const prType = {};
-  for (const s of uden) {
-    const n = s.sagsnavn;
-    (prType[n] ||= { antal: 0, kr: 0, fg: s.faggruppe, eksempel: s });
-    prType[n].antal++; prType[n].kr += s.krAar;
+  /* Køens alder er nøgletallet — det måler os, ikke systemet. */
+  const perType = {};
+  for (const s of koe) {
+    (perType[s.sagsnavn] ||= { antal: 0, kr: 0, klasse: s.krKlasse, fg: s.faggruppe, sager: [] });
+    perType[s.sagsnavn].antal++; perType[s.sagsnavn].kr += s.krAar; perType[s.sagsnavn].sager.push(s);
   }
+
+  el.append(h('div', { class: 'note warn', style: { marginBottom: '12px' } },
+    h('strong', {}, 'Køens alder er nøgletallet her, ikke dens længde.'), ' ',
+    'Målet er under fem arbejdsdage. Det måler, om funktionen er bemandet — ikke om detektorerne er gode. '
+    + 'En lang kø, der tømmes hurtigt, er sundere end en kort, der står stille.'));
 
   el.append(tabel([
     { navn: 'Sagstype', celle: (r) => h('span', {}, swatch(fgFarve(r[1].fg)), r[0]), wrap: true },
     { navn: 'Antal', r: true, celle: (r) => dkTal(r[1].antal) },
-    { navn: 'Beløb/år', r: true, celle: (r) => h('span', { class: r[1].eksempel.krKlasse === 'blindt' ? 'muted' : '' }, dkTal(r[1].kr)) },
-    { navn: 'Falder på', celle: (r) => fgNavn(r[1].fg) },
-  ], Object.entries(prType).sort((a, b) => b[1].antal - a[1].antal), { onRow: (r) => visSag(r[1].eksempel, gaaTil) }));
+    { navn: 'Beløb/år', r: true, celle: (r) => h('span', { class: r[1].klasse === 'blindt' ? 'muted' : '' }, dkTal(r[1].kr)) },
+    { navn: 'Slags', celle: (r) => badge(r[1].klasse, r[1].klasse === 'besparelse' ? 'ok' : r[1].klasse === 'potentiale' ? 'p3' : '') },
+    { navn: '', celle: (r) => h('button', { class: 'btn', onclick: (e) => { e.stopPropagation(); dialogVisitering(r[1].sager, r[0]); } }, 'Send videre …') },
+  ], Object.entries(perType).sort((a, b) => b[1].antal - a[1].antal),
+     { onRow: (r) => visSag(r[1].sager[0], gaaTil) }));
 
-  el.append(h('div', { class: 'note stop', style: { marginTop: '14px' } },
-    h('strong', {}, 'Hullet er "Øvrigt/uspecificeret", og det er ikke en tilfældighed.'), h('br'),
-    'De fleste sager om restpost, benchmark, målerfejl og ny konstant last hører til dér, fordi de netop '
-    + 'handler om forbrug, der endnu ikke kan henføres til et anlæg. De syv fagansvarlige dækker hver sin '
-    + 'anlægstype — men ingen dækker det, der ikke er placeret endnu.', h('br'), h('br'),
-    'Opsætningen mangler derfor én rolle: en energiansvarlig, der visiterer de tværgående og uplacerede sager '
-    + 'videre. Indtil den er navngivet, står ', h('strong', {}, `${uden.length} åbne sager`), ' uden modtager.'));
+  /* Mønstre: rammer den samme sagstype gang på gang den samme person, er det
+     en regel, der mangler — ikke en beslutning, nogen skal tage hver gang. */
+  const moenstre = visitationsmoenstre();
+  if (moenstre.length) {
+    el.append(h('div', { class: 'note', style: { marginTop: '12px' } },
+      h('strong', {}, 'Mønstre i visitationen.'), ' ',
+      'Følgende sagstyper er sendt samme sted hen næsten hver gang — det er en routingregel, der mangler, '
+      + 'ikke en beslutning, der skal tages på ny:', h('br'),
+      ...moenstre.map((m) => h('div', { style: { marginTop: '4px' } },
+        `· ${m.sagstype} → ${PERSON[m.personId] ? PERSON[m.personId].navn : m.personId} (${m.antal} af ${m.ialt})`))));
+  }
+
+  el.append(h('details', { style: { marginTop: '12px' } },
+    h('summary', {}, 'Hvorfor de her sager ikke har en fagansvarlig'),
+    h('p', { style: { fontSize: '12.5px', margin: '8px 0 0', maxWidth: '84ch' } },
+      'De syv fagansvarlige dækker hver sin anlægstype. Restpost, benchmark, målerfejl og ny konstant last '
+      + 'handler derimod om forbrug, der endnu ikke ER henført til et anlæg — og de kan derfor ikke placeres '
+      + 'på en anlægstype, før nogen har set på dem. Det er dét, visitationen gør.'),
+    h('p', { class: 'muted', style: { fontSize: '12px', margin: '8px 0 0', maxWidth: '84ch' } },
+      'Jo bedre datadækningen bliver, jo kortere bliver den her kø af sig selv: et forbrug med en bimåler '
+      + 'på har en anlægstype, og en anlægstype har en fagansvarlig.')));
+
+  return el;
+}
+
+/** Send en eller flere sager videre til en fagansvarlig. */
+function dialogVisitering(sager, sagstype) {
+  const modtager = vaelger(
+    PERSONER.filter((p) => !p.visitator || p.faggrupper.length)
+      .map((p) => ({ vaerdi: p.id, navn: `${p.navn} — ${p.omraade}` })),
+    { tom: 'Vælg fagansvarlig …' });
+  const note = h('textarea', { rows: 2, placeholder: 'Hvorfor netop dem? (valgfri)' });
+  const alle = h('input', { type: 'checkbox' });
+  alle.checked = true;
+
+  const knap = h('button', { class: 'btn primary', disabled: true }, 'Send videre');
+  modtager.addEventListener('change', () => { knap.disabled = !modtager.value; });
+  knap.addEventListener('click', () => {
+    const maal = alle.checked ? sager : [sager[0]];
+    for (const s of maal) visiter(s, modtager.value, note.value);
+    lukModal();
+  });
+
+  modal({
+    titel: `Visitér · ${sagstype}`,
+    krop: h('div', { class: 'grid', style: { gap: '12px' } },
+      h('p', { class: 'note', style: { margin: 0 } },
+        'Sagen sendes videre til en fagansvarlig. Valget gemmes på sagstypen og butikken, så det holder, '
+        + 'når detektorerne kører igen — og så mønsteret kan gøres op bagefter.'),
+      felt('Fagansvarlig', modtager),
+      h('label', { style: { display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13px' } },
+        alle, `Send alle ${sager.length} sager af denne type`),
+      felt('Note', note)),
+    knapper: [h('button', { class: 'btn', onclick: lukModal }, 'Fortryd'), knap],
+  });
+}
+
+/* ---- Bunden: hvad der stadig ikke kan placeres ---------------------------- */
+/* ---- Sager uden ejer ------------------------------------------------------ */
+
+function herreloese(gaaTil) {
+  const el = h('div', {});
+  const vis = state.visitationer || {};
+  const koe = visitationskoe(state.sager, vis).filter(aaben);
+  const udaekkede = udaekkedeFaggrupper(FAGGRUPPER).filter((f) => f.key !== 'lejere');
+
+  el.append(h('h2', {}, 'Sager uden fagansvarlig'));
+  if (!koe.length) {
+    el.append(h('div', { class: 'note' }, 'Alle åbne sager har en fagansvarlig.'));
+    return el;
+  }
+
+  el.append(h('p', { class: 'muted', style: { fontSize: '12.5px', marginTop: '-4px', maxWidth: '84ch' } },
+    `${koe.length} åbne sager har ingen fagansvarlig og ligger derfor hos `,
+    VISITATOR ? h('strong', {}, `${VISITATOR.navn} som visitator`) : 'ingen',
+    '. De er ikke herreløse — men de er heller ikke placeret, og en sag i visitationskøen er ubehandlet, '
+    + 'indtil den er sendt videre.'));
+
+  const kr = { besparelse: 0, potentiale: 0, blindt: 0 };
+  for (const s of koe) kr[s.krKlasse] = (kr[s.krKlasse] || 0) + s.krAar;
+
+  el.append(h('div', { class: 'grid cards' },
+    kpi('I visitationskøen', dkTal(koe.length), VISITATOR ? `hos ${VISITATOR.navn}` : 'ingen visitator'),
+    kpi('Besparelse', dkKr(kr.besparelse), 'realistisk gevinst, der venter på en modtager'),
+    kpi('Potentiale', dkKr(kr.potentiale), 'øvre skøn — holder først efter en gennemgang'),
+    kpi('Blindt forbrug', dkKr(kr.blindt), 'ikke en gevinst, men det ingen kan se')));
+
+  if (VISITATOR) {
+    el.append(h('div', { class: 'note', style: { marginTop: '14px' } },
+      h('strong', {}, `${VISITATOR.navn} har to køer, og de må ikke blandes.`), ' ',
+      'Hans egen — solceller og belysning — er sager, han selv skal løse. Visitationskøen er sager, '
+      + 'han skal sende videre. Slås de sammen, forsvinder netop det, man skal kunne se: om sagerne '
+      + 'bliver placeret, eller om de bare ligger hos den, der fik dem sidst.'));
+  }
 
   if (udaekkede.length) {
     el.append(h('p', { class: 'muted', style: { fontSize: '12px', marginTop: '10px' } },
-      'Faggrupper uden en navngiven ejer: ' + udaekkede.map((f) => f.navn).join(', ') + '.'));
+      'Faggrupper uden en fagansvarlig: ' + udaekkede.map((f) => f.navn).join(', ')
+      + '. De går til visitation, indtil en anlægstype kan sættes på dem.'));
   }
 
   return el;

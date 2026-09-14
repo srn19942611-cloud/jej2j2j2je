@@ -10,7 +10,7 @@
 
 import { FG, fgNavn, DETEKTORER } from './taxonomy.js';
 import { FO, HANDLINGER, vurderGentagelse } from './opgaver.js';
-import { ejerAfSag } from './personer.js';
+import { ejerAfSag, ansvarligFor } from './personer.js';
 
 export const FORUDSAETNINGER = {
   elpris: 0.77,      // kr/kWh
@@ -422,13 +422,16 @@ export function byggSager(signaler, butikIndex, forud = FORUDSAETNINGER) {
     });
   }
 
-  // Hver sag får en navngiven modtager. Kan den ikke få en, står det i sagen —
-  // frem for at den tavst lander i et hul.
+  // Hver sag får en navngiven modtager. Har den ingen fagansvarlig, ligger den
+  // hos visitatoren — og det markeres, så en sag i visitationskøen ikke kan
+  // forveksles med en, der er placeret.
   for (const sag of sager) {
-    const ejer = ejerAfSag(sag);
-    sag.ejer = ejer;
-    sag.ansvarlig = ejer ? ejer.navn : 'ingen ejer';
-    if (ejer && ejer.fag) sag.fag = ejer.fag;
+    const a = ansvarligFor(sag, forud.visitationer || {});
+    sag.ejer = a.person;
+    sag.ansvarligRolle = a.rolle;
+    sag.visiteret = a.visiteret;
+    sag.ansvarlig = a.person ? a.person.navn : 'ingen';
+    if (a.rolle === 'fagansvarlig' && a.person && a.person.fag) sag.fag = a.person.fag;
   }
 
   // Sager under dækningsminimum oprettes ikke — men målerfejlsagen er netop

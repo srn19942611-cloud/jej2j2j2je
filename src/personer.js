@@ -69,13 +69,20 @@ export const PERSONER = [
   {
     id: 'stefan',
     navn: 'Stefan',
-    omraade: 'Solceller og belysning',
-    beskrivelse: 'Solcelleanlæg og invertere samt indendørs og udendørs belysning.',
+    omraade: 'Solceller og belysning · energiansvarlig',
+    beskrivelse: 'Solcelleanlæg og invertere samt indendørs og udendørs belysning. '
+      + 'Derudover energiansvarlig og visitator for de sager, der ikke kan placeres på en anlægstype.',
     faggrupper: ['solceller', 'lys_inde', 'lys_ude'],
     fagomraader: ['Solceller', 'Lys/El'],
     fag: 'Elektriker',
     detektorer: ['D-07', 'D-08', 'D-21', 'D-22', 'D-19', 'D-20'],
-    noegleKilder: ['Solcelleplatformen', 'Enity lysmålere', 'Indstrålingsdata'],
+    noegleKilder: ['Solcelleplatformen', 'Enity lysmålere', 'Indstrålingsdata', 'Enity målerhierarki'],
+    // Visitator for alt, der ikke kan placeres på en anlægstype: restpost,
+    // benchmark, målerfejl og ny konstant last. De sager handler netop om
+    // forbrug, der endnu ikke er henført til et anlæg, og de har derfor
+    // ingen naturlig fagansvarlig.
+    visitator: true,
+    visitatorDetektorer: ['D-01', 'D-02', 'D-03', 'D-04', 'D-05', 'D-09', 'D-10'],
   },
   {
     id: 'lars',
@@ -120,12 +127,21 @@ export function ejerAfFagomraade(fo) {
   return PERSONER.find((p) => p.fagomraader.includes(fo)) || null;
 }
 
+/** Den, der visiterer sager uden en fagansvarlig. */
+export const VISITATOR = PERSONER.find((p) => p.visitator) || null;
+
 /**
- * Finder den person, en sag hører til. Faggruppen vejer tungest — det er den,
- * energiregnskabet og anlægsklassifikationen peger på. Er der ingen faggruppe
- * (porte, flaskeautomater, tavler), bruges fagområdet fra opgavesiden.
+ * Finder den FAGANSVARLIGE for en sag — den, der kender anlægget. Faggruppen
+ * vejer tungest; det er den, energiregnskabet og anlægsklassifikationen peger
+ * på. Er der ingen faggruppe (porte, flaskeautomater, tavler), bruges
+ * fagområdet fra opgavesiden.
+ *
+ * `visiteret` er en manuel omrouting, visitatoren har foretaget. Den slår alt
+ * andet — et menneske, der har set sagen, ved mere end reglerne.
  */
-export function ejerAfSag(sag) {
+export function ejerAfSag(sag, visitationer = {}) {
+  const manuelt = visitationer[`${sag.butiksnummer}|${sag.sagstype}`];
+  if (manuelt && PERSON[manuelt]) return PERSON[manuelt];
   if (sag.faggruppe) {
     const p = ejerAfFaggruppe(sag.faggruppe);
     if (p) return p;
@@ -137,21 +153,40 @@ export function ejerAfSag(sag) {
   return null;
 }
 
-/** Sagerne, der hører til én person. */
-export function sagerFor(person, sager) {
+/**
+ * Hvem sagen ligger hos LIGE NU. Har den ingen fagansvarlig, ligger den hos
+ * visitatoren — ikke som ejer, men som en, der skal sende den videre.
+ *
+ * Forskellen er ikke kosmetisk. En sag i visitationskøen er ubehandlet
+ * uanset hvor dygtig visitatoren er, og hvis de to køer blandes, forsvinder
+ * netop det, man skal kunne se: at firs sager venter på at blive placeret.
+ */
+export function ansvarligFor(sag, visitationer = {}) {
+  const ejer = ejerAfSag(sag, visitationer);
+  if (ejer) return { person: ejer, rolle: 'fagansvarlig', visiteret: !!visitationer[`${sag.butiksnummer}|${sag.sagstype}`] };
+  if (VISITATOR) return { person: VISITATOR, rolle: 'visitator', visiteret: false };
+  return { person: null, rolle: 'ingen', visiteret: false };
+}
+
+/** Sagerne, der hører til én person som fagansvarlig — hans eget område. */
+export function sagerFor(person, sager, visitationer = {}) {
   return (sager || []).filter((s) => {
-    const ejer = ejerAfSag(s);
+    const ejer = ejerAfSag(s, visitationer);
     return ejer && ejer.id === person.id;
   });
 }
 
 /**
- * Sagerne, ingen ejer. Det er den vigtigste liste i hele opsætningen:
- * en sag uden modtager bliver aldrig behandlet, og den fejl er tavs.
+ * Sagerne, der venter på at blive placeret. De ligger hos visitatoren, men
+ * de er ikke hans i faglig forstand — de er en kø, der skal tømmes ved at
+ * sende hver sag videre eller lukke den.
  */
-export function herreloeseSager(sager) {
-  return (sager || []).filter((s) => !ejerAfSag(s));
+export function visitationskoe(sager, visitationer = {}) {
+  return (sager || []).filter((s) => !ejerAfSag(s, visitationer));
 }
+
+/** Bagudkompatibelt navn — samme liste, set fra den anden side. */
+export const herreloeseSager = visitationskoe;
 
 /** Faggrupper, ingen har. */
 export function udaekkedeFaggrupper(faggrupper) {

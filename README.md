@@ -271,7 +271,7 @@ der gør en faggruppe til en person — og dermed en sag til nogens ansvar.
 | **Mads** | Ventilation | Ventilation | Ventilation/Klima |
 | **Morten** | CTS, elevatorer og klimakøl | CTS & teknik, Køleflader/klima | Elevator/Rulletrappe |
 | **Emil** | Varme og overskudsvarme | Overskudsvarme, Varme el/varmepumpe, Varme fjernvarme | — |
-| **Stefan** | Solceller og belysning | Solceller, Belysning inde, Belysning ude | Solceller, Lys/El |
+| **Stefan** | Solceller og belysning · **energiansvarlig** | Solceller, Belysning inde, Belysning ude | Solceller, Lys/El |
 | **Lars** | Flaskeautomater og porte | — | Flaskeautomat, Port/Dør |
 | **Martin** | Systemydelser og eltavler | — | El tavler, IT/Kasse |
 
@@ -292,13 +292,34 @@ vi måler det ikke separat. Deres billede er derfor drevet af Dalux-opgaver og
 gentagne fejl, ikke af kWh. Det er en reel forskel, ikke en mangel ved deres
 dashboard — og den vises frem for at skjules.
 
-**Der mangler en rolle.** De syv dækker hver sin anlægstype, men ingen dækker
-"Øvrigt/uspecificeret" — og det er dér, langt de fleste sager lander, fordi
-restpost, benchmark, målerfejl og ny konstant last netop handler om forbrug,
-der endnu ikke kan henføres til et anlæg. Opsætningen mangler en
-**energiansvarlig**, der visiterer de tværgående og uplacerede sager videre.
-Indtil den rolle har et navn, står de sager uden modtager, og hubben viser
-antallet øverst på listen "Sager uden ejer" frem for at fordele dem tilfældigt.
+**Stefan er visitator, og det er en anden slags arbejde.** De syv dækker hver
+sin anlægstype, men "Øvrigt/uspecificeret" hører ikke til nogen af dem — og det
+er dér 87 af de 110 sager lander, fordi restpost, benchmark, målerfejl og ny
+konstant last netop handler om forbrug, der endnu ikke ER henført til et anlæg.
+Stefan er energiansvarlig og visiterer dem videre.
+
+Hans to køer holdes adskilt i hele hubben, og det er ikke kosmetik:
+
+- **Min kø** — solceller og belysning. Sager, han selv skal løse.
+- **Til visitation** — sager uden fagansvarlig. De skal *sendes videre*, ikke
+  løses.
+
+Slås de sammen, forsvinder netop det, man skal kunne se: om sagerne bliver
+placeret, eller om de bare ligger hos den, der fik dem sidst. En sag i
+visitationskøen er ubehandlet, uanset hvor dygtig visitatoren er.
+
+Knappen "Send videre" router en sagstype til en fagansvarlig, og valget gemmes
+på butik + sagstype, så det holder, når detektorerne kører igen. Rammer den
+samme sagstype gang på gang den samme person, vises det som et **mønster** —
+det er en routingregel, der mangler, ikke en beslutning, nogen skal tage hver
+gang.
+
+Nøgletallet på visitationskøen er dens **alder**, ikke dens længde. Målet er
+under fem arbejdsdage. Det måler, om funktionen er bemandet — ikke om
+detektorerne er gode. En lang kø, der tømmes hurtigt, er sundere end en kort,
+der står stille. Og køen bliver kortere af sig selv, efterhånden som
+datadækningen stiger: et forbrug med en bimåler på har en anlægstype, og en
+anlægstype har en fagansvarlig.
 
 ### En tom kø er ikke i sig selv en god nyhed
 
