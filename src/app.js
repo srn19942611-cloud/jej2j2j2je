@@ -12,13 +12,15 @@
  */
 
 import { h } from './ui.js';
-import { state, abonner, indlaesData, skriv, opdater } from './state.js';
+import { state, abonner, indlaesData, skriv, opdater, gem } from './state.js';
+import { planlaegNatligKoersel, byggHenter, koerSynkronisering, opsummer } from './sync.js';
 import { overblik } from './views/overblik.js';
 import { sager } from './views/sager.js';
 import { butikker } from './views/butikker.js';
 import { anlaeg } from './views/anlaeg.js';
 import { gentagne } from './views/gentagne.js';
 import { solceller } from './views/solceller.js';
+import { motor } from './views/motor.js';
 import { detektorer, fagbog } from './views/detektorer.js';
 import { opsaetning } from './views/opsaetning.js';
 
@@ -29,6 +31,7 @@ const SIDER = [
   { id: 'anlaeg',     navn: 'Anlæg',      tegn: anlaeg },
   { id: 'gentagne',   navn: 'Gentagne fejl', tegn: gentagne },
   { id: 'solceller',  navn: 'Solceller',  tegn: solceller },
+  { id: 'motor',      navn: 'Motor',      tegn: motor },
   { id: 'detektorer', navn: 'Detektorer', tegn: detektorer },
   { id: 'fagbog',     navn: 'Fagbogen',   tegn: fagbog },
   { id: 'opsaetning', navn: 'Opsætning',  tegn: opsaetning },
@@ -99,4 +102,30 @@ tegn();
 indlaesData().then(() => {
   skriv(`${state.sager.length} sager bygget ud fra ${state.data.butikker.length} butikker.`, 'ok');
   opdater();
+  armNatligKoersel();
 });
+
+/* Den natlige kørsel armes kun, hvis brugeren har slået den til. Timeren er
+ * en bekvemmelighed — en browserfane kan være lukket kl. 03, og den rigtige
+ * kørsel sker fra sync/run.mjs. Se README. */
+export function armNatligKoersel() {
+  if (state.planlaegger) { state.planlaegger.stop(); state.planlaegger = null; }
+  if (!state.cfg.autoSync) return;
+  state.planlaegger = planlaegNatligKoersel(
+    byggHenter({
+      klienter: state.klienter,
+      sol: null,
+      gem: async (n, v) => { (state.raadata ||= {})[n] = v; return v; },
+      vandmaerker: state.vandmaerker || {},
+    }),
+    {
+      tidspunkt: state.cfg.syncTidspunkt,
+      onKoersel: (k) => {
+        state.sidsteKoersel = k;
+        state.vandmaerker = { ...(state.vandmaerker || {}), ...k.vandmaerker };
+        skriv(`Natlig synkronisering: ${opsummer(k)}`, k.status === 'ok' ? 'ok' : 'fejl');
+        gem(); opdater();
+      },
+    });
+  skriv(`Natlig kørsel armet — næste ${state.planlaegger.naeste().toLocaleString('da-DK')}.`);
+}

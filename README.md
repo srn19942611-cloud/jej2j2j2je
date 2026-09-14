@@ -260,6 +260,113 @@ Rækkefølgen følger dataadgangen, ikke den faglige interesse.
 | **Vejrdata** | Mangler | Uden graddage og udetemperatur er halvdelen af alle kølesager falske om sommeren. |
 | **Enity-serveren** | Kører | Registreret uden login. Skal sikres, før den bruges bredere. |
 
+## Motoren — hvilket anlæg handler opgaven om?
+
+Af 23.040 rigtige opgaver har kun 5.909 udfyldt anlægsfeltet, og feltet
+indeholder tit et **sted** frem for et anlæg: "Lager", "Slagter",
+"Grøntafdeling", "På lagret". Resten skal læses ud af fritekst.
+
+Motoren (`src/motor.js`) afgør det i seks trin med faldende sikkerhed:
+
+| Trin | Hvad den gør | Konfidens |
+|---|---|---|
+| 1 | Anlægs-id står i opgaven og findes i butikkens register | 100 % |
+| 2 | Positionskode, fx `Pos. 117A` | 95 % |
+| 3 | Navnematch mod butikkens egne anlæg | 50–85 % |
+| 4 | Teksten peger på en anlægstype, men ikke et konkret anlæg | 70 % |
+| 5 | Kun fagområdet kan afgøres | 30–60 % |
+| 6 | Kan ikke afgøres — sagen går til gennemgang | — |
+
+Tre principper bærer den:
+
+**Anlægget først, faggruppen bagefter.** Kan vi pege på et anlæg, kender vi
+dets klassifikation i Dalux — og faggruppen følger af klassifikationen. Det er
+langt mere pålideligt end at gætte ud fra ord i en fritekst.
+
+**Kandidatmængden skal være lille.** Vi matcher aldrig mod alle 50.000 anlæg,
+men kun mod dem, der står i netop den butik — typisk 20–200. Det gør et svagt
+tekstmatch til et stærkt et. Ord vægtes desuden efter, hvor entydige de er
+*inden for butikken*: "ovn" peger på ét anlæg, "pos" peger på tyve.
+
+**Handlingsord må aldrig bestemme emnet.** *"Ovnen kan ikke gøre sig selv
+ren"* er en ovn, ikke rengøring. Ord som rens, vask, skift, service, eftersyn
+og tilbud beskriver, hvad der skal gøres — ikke hvad det handler om. Den fejl
+findes i de data, vi har set: en bageriovn var klassificeret som en
+rengøringsopgave. Motoren finder i stedet anlægget "Ovn bageri" og lander på
+det rigtige fagområde.
+
+Motoren har lov til at sige **"kan ikke afgøres"**, og det er ikke en mangel.
+Andelen er et sundhedstegn i begge retninger: er den nul, gætter motoren bare;
+er den halvtreds procent, mangler vi data. Gennemgangskøen er samtidig den
+prioriterede ønskeseddel til, hvad der ville løfte motoren mest.
+
+Fanen **Motor** lader dig skrive en opgave ind og se hele kæden — trin,
+kandidater, begrundelse og konfidens.
+
+## Natlig synkronisering
+
+Dalux, Enity og solcelleplatformen hentes én gang i døgnet kl. 03.15, og
+derefter kører motoren og detektorerne, så morgenens sagsliste er klar, inden
+nogen møder ind.
+
+Tolv trin, hver med sin egen status. Et trin, der fejler, stopper ikke de
+andre — alternativet er en kørsel, der vælter, fordi én leverandørs API var
+nede kl. 03.
+
+```
+dalux-bygninger → dalux-anlaeg → dalux-opgaver → dalux-historik
+enity-bygninger → enity-maalere → enity-forbrug
+sol-anlaeg → sol-produktion → sol-alarmer
+                                    ↓
+                        motor → detektorer
+```
+
+Rækkefølgen er ikke tilfældig: stamdata før bevægelsesdata, og motoren efter
+begge — den kan ikke matche en opgave mod et anlægsregister, der ikke er hentet.
+
+- **Inkrementelt.** Vandmærker gør, at kun det ændrede hentes. Forbrugsdata
+  hentes dog 45 døgn tilbage hver nat, fordi målerdata efterreguleres — en
+  aflæsning, der kom for sent, ville ellers aldrig blive hentet.
+- **Genforsøg med voksende ventetid** på netværksfejl (2s, 4s, 8s, 16s).
+  En afvist forespørgsel (403) prøves ikke igen; gentagne forsøg på den gør
+  kun skade.
+- **Tre udfald pr. trin**, ikke to: `ok`, `fejl` og `sprunget over`. Et trin,
+  hvis forudsætning manglede, melder aldrig grønt for nul rækker. Et trin, der
+  melder grønt uden at have gjort noget, er værre end et rødt.
+- **Delvis er ikke fejlet.** En kørsel, hvor otte af tolv trin gik igennem,
+  markeres som delvis, så ingen tror, dagens tal dækker hele porteføljen.
+
+### Sådan sættes den op
+
+```sh
+# afprøv planen uden at hente noget
+node sync/run.mjs --toer
+
+# kør den
+node sync/run.mjs --ud data/
+
+# kun én kilde
+node sync/run.mjs --kun dalux
+
+# cron, kl. 03.15 hver nat
+15 3 * * *  cd /sti/til/hubben && node sync/run.mjs --ud data/ >> sync.log 2>&1
+```
+
+GitHub Actions ligger klar i `.github/workflows/natlig-sync.yml`.
+Afslutningskoder: `0` alt kørte, `1` delvis, `2` intet kunne hentes.
+
+| Miljøvariabel | Bruges til |
+|---|---|
+| `ENITY_MCP_URL` / `DALUX_MCP_URL` | overskriver standard-endpoints |
+| `SOL_API_URL` / `SOL_API_KEY` | solcelleplatformen — uden dem springes de tre solcelletrin over |
+| `MCP_PROXY` | valgfri videresender, hvis CORS blokerer |
+
+**En browserfane er ikke en pålidelig cron.** Fanen kan være lukket kl. 03.
+Hubben kan arme en timer (slås til under Opsætning), men den er en
+bekvemmelighed — den rigtige kørsel sker fra `sync/run.mjs`. Derfor viser
+hubben altid, hvornår der sidst kom data ind, så en manglende kørsel ikke kan
+forveksles med en rolig nat.
+
 ## Sådan er det skruet sammen
 
 ```
@@ -274,9 +381,15 @@ src/
   dalux.js          opgavetekst, payload og oprettelse i Dalux FM
   anlaeg.js         teknisk anlægsregister: tagmapping, Dalux-anlægsklasser
   opgaver.js        fagområder, klassificering af Dalux-opgaver, gentagne fejl
+  motor.js          anlægs- og faggruppemotoren: seks trin, konfidens, begrundelse
+  sync.js           natlig synkronisering: trin, genforsøg, vandmærker
   seed.js           rigtigt dataudtræk, så hubben virker uden netværk
   views/            overblik · sager · butikker · anlæg · gentagne fejl ·
-                    solceller · detektorer · fagbog · opsætning
+                    solceller · motor · detektorer · fagbog · opsætning
+sync/
+  run.mjs           indgangen til cron — samme kode, kørt fra Node
+.github/workflows/
+  natlig-sync.yml   scheduled workflow, hvis der ikke er en server at croone på
 ```
 
 Principper, der er værd at kende, før man retter i koden:

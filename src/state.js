@@ -24,6 +24,8 @@ const standard = {
     proxy: '',
     liveData: false,
     tema: 'auto',
+    syncTidspunkt: '03:15',
+    autoSync: false,
   },
   forudsaetninger: { ...FORUDSAETNINGER },
   beslutninger: {},      // sagId → { valg, aarsag, note, bruger, tid, daluxWorkOrderId }
@@ -54,6 +56,11 @@ export const state = {
   sager: [],
   sambesoeg: [],
   daluxMetadata: null,
+  sidsteKoersel: null,
+  vandmaerker: {},
+  anlaegsindeks: null,
+  raadata: {},
+  planlaegger: null,
   log: [],
   lyttere: new Set(),
 };
@@ -62,8 +69,12 @@ state.klienter = buildClients(state.cfg);
 
 export function gem() {
   try {
-    const { cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige } = state;
-    localStorage.setItem(NØGLE, JSON.stringify({ cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige }));
+    const { cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, vandmaerker, sidsteKoersel } = state;
+    localStorage.setItem(NØGLE, JSON.stringify({
+      cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, vandmaerker,
+      // Kun hovedtallene fra sidste kørsel gemmes — ikke de hentede data.
+      sidsteKoersel: sidsteKoersel && { ...sidsteKoersel, trin: sidsteKoersel.trin },
+    }));
   } catch { /* privat vindue eller fuldt lager — hubben virker uden */ }
 }
 

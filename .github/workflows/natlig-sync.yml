@@ -1,0 +1,36 @@
+name: Natlig synkronisering
+
+# Kl. 03.15 dansk tid. Cron i GitHub Actions kører i UTC, så det er 01:15 om
+# sommeren og 02:15 om vinteren — begge er sat, og scriptet er idempotent, så
+# en ekstra kørsel koster kun et par API-kald.
+on:
+  schedule:
+    - cron: '15 1 * * *'
+    - cron: '15 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Kør synkronisering
+        env:
+          ENITY_MCP_URL: ${{ vars.ENITY_MCP_URL }}
+          DALUX_MCP_URL: ${{ vars.DALUX_MCP_URL }}
+          SOL_API_URL: ${{ vars.SOL_API_URL }}
+          SOL_API_KEY: ${{ secrets.SOL_API_KEY }}
+        run: node sync/run.mjs --ud data/
+
+      - name: Gem kørselslog
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidste-koersel
+          path: data/sidste-koersel.json
+          retention-days: 30

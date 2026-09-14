@@ -18,6 +18,9 @@ export function opsaetning() {
   const proxy = h('input', { type: 'text', value: state.cfg.proxy, placeholder: 'fx https://min-proxy.dk/mcp — lad stå tom hvis ikke nødvendig' });
   const live = h('input', { type: 'checkbox' });
   live.checked = state.cfg.liveData;
+  const autoSync = h('input', { type: 'checkbox' });
+  autoSync.checked = state.cfg.autoSync;
+  const syncTid = h('input', { type: 'text', value: state.cfg.syncTidspunkt || '03:15', placeholder: '03:15' });
 
   const status = h('div', { class: 'grid', style: { gap: '8px' } });
   const tegnStatus = () => {
@@ -50,6 +53,8 @@ export function opsaetning() {
     state.cfg.daluxUrl = daluxUrl.value.trim() || DEFAULTS.dalux;
     state.cfg.proxy = proxy.value.trim();
     state.cfg.liveData = live.checked;
+    state.cfg.autoSync = autoSync.checked;
+    state.cfg.syncTidspunkt = (syncTid.value || '03:15').trim();
     for (const k of ['enity', 'dalux']) {
       const c = state.klienter[k];
       c.url = k === 'enity' ? state.cfg.enityUrl : state.cfg.daluxUrl;
@@ -71,9 +76,19 @@ export function opsaetning() {
       felt('Proxy foran begge (valgfri)', proxy),
       h('label', { style: { display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13px' } },
         live, 'Hent porteføljedata live fra Enity i stedet for det seedede udtræk'),
+      h('label', { style: { display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13px' } },
+        autoSync, 'Kør den natlige synkronisering fra denne browser'),
+      felt('Tidspunkt for natlig kørsel', syncTid,
+        'Browseren er ikke en pålidelig cron — fanen kan være lukket kl. 03. Den rigtige kørsel sker fra sync/run.mjs.'),
       status,
       h('div', { class: 'btnrow' }, test,
-        knap('Gem og genindlæs', async () => { gemCfg(); await indlaesData(); skriv('Data genindlæst.'); })))));
+        knap('Gem og genindlæs', async () => {
+          gemCfg();
+          const { armNatligKoersel } = await import('../app.js');
+          armNatligKoersel();
+          await indlaesData();
+          skriv('Data genindlæst.');
+        })))));
 
   /* ---- Forudsætninger ---- */
   el.append(h('hr', { class: 'rule' }));
