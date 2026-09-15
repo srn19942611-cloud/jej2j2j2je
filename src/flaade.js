@@ -388,3 +388,137 @@ export function sigt(varsler, { aabne = [], gate = GATE, maalFDR = 0.10, budget 
     detaljer: { faldtIGate, gengangere, afvistAfFDR: f.afvist },
   };
 }
+
+/* ---- Den første kørsel er ikke en normal kørsel ---------------------------
+ *
+ * Det her er det sted, hvor en portefølje adskiller sig mest fra en enkelt
+ * butik, og hvor det er lettest at gøre noget dumt.
+ *
+ * Når agenten kører første gang over hele porteføljen, finder den ikke det,
+ * der gik galt i nat. Den finder alt, der har hobet sig op siden anlæggene
+ * blev sat op. Med omkring 5.500 analyserbare elmålere og den fundrate, vi
+ * målte på elleve butikker, bliver det i størrelsesordenen 1.400 sager efter
+ * sigten — mod en kapacitet på 45 om ugen. Det er 32 ugers arbejde, der
+ * lander på én morgen.
+ *
+ * Budgetlogikken ville stille de 1.355 i "venter". Det er teknisk korrekt og
+ * praktisk ubrugeligt: ingen kan overskue en kø på halvandet tusind, og den,
+ * der åbner hubben den morgen, slår den fra.
+ *
+ * Så en bunke skal behandles som en bunke. Tre greb, og de gør hver deres:
+ *
+ *   Sambesøg   seks fund i samme butik er ÉN køretur, ikke seks opgaver.
+ *   Kampagne   to hundrede fund med samme årsag på tværs af butikker er én
+ *              beslutning og en udrulning, ikke to hundrede servicebesøg.
+ *   Straks     det, der ikke kan vente, uanset hvor lang køen er.
+ *
+ * Og ét krav: sig hvor lang tid bunken tager at tømme. Et estimat, ingen har
+ * regnet, bliver til en forventning, ingen kan holde.
+ */
+
+export function foersteKoersel(varsler, { budget = STANDARDBUDGET, personer = 9, minSambesoeg = 3, minKampagne = 12 } = {}) {
+  /* 1 · Straks. Varer i fare og blinde punkter venter ikke på en kø. */
+  const straks = varsler.filter((v) => v.hastende);
+  const resten = varsler.filter((v) => !v.hastende);
+
+  /* 2 · Kampagner. Den samme årsag mange steder er én beslutning.
+   *
+   * Bemærk forskellen til systematiskeFejl(): dér ledte vi efter en FÆLLES
+   * HÆNDELSE — noget, der skete samtidig. Her leder vi efter en fælles
+   * ANLÆGSTYPE, hvor datoerne netop ikke klumper. Det er to forskellige ting
+   * og to forskellige samtaler: den første er "hvad skete der i marts", den
+   * anden er "sådan er de anlæg bygget". */
+  const prAarsag = new Map();
+  for (const v of resten) {
+    const n = `${v.faggruppe}|${v.aarsagId}`;
+    if (!prAarsag.has(n)) prAarsag.set(n, []);
+    prAarsag.get(n).push(v);
+  }
+  const kampagner = [];
+  const iKampagne = new Set();
+  for (const [n, liste] of prAarsag) {
+    const butikker = new Set(liste.map((v) => v.butiksnummer));
+    if (butikker.size < minKampagne) continue;
+    const [faggruppe, aarsagId] = n.split('|');
+    const a = AARSAG[aarsagId];
+    for (const v of liste) iKampagne.add(v.id);
+    kampagner.push({
+      id: `KAM-${faggruppe}-${aarsagId}`,
+      faggruppe, aarsagId, navn: a?.navn || aarsagId,
+      butikker: butikker.size, varsler: liste.length,
+      krSamlet: liste.reduce((x, v) => x + v.kr, 0),
+      ejerId: liste[0].ejerId, ejerNavn: liste[0].ejerNavn,
+      // Det, der gør en kampagne billigere end enkeltsager: tjeklisten er
+      // den samme hver gang, så den kan lægges i en aftale frem for i 200 besøg.
+      tjek: a?.tjek || [],
+      typiskFund: a?.typiskFund || null,
+      tolkning: `${a?.navn || aarsagId} findes på ${butikker.size} butikker. Datoerne klumper ikke, så det er `
+        + 'ikke én hændelse — det er sådan, den slags anlæg er sat op hos os. Behandles det som '
+        + `${liste.length} enkeltsager, bliver det ${liste.length} servicebesøg med den samme tjekliste. `
+        + 'Behandles det som én kampagne, er det én aftale og én udrulning.',
+      handling: 'Afgør først på tre til fem butikker, om diagnosen holder. Gør den det, så lav en samlet '
+        + 'aftale frem for enkeltopgaver — og brug de første besøg til at prissætte resten.',
+    });
+  }
+
+  /* 3 · Sambesøg. Flere fund i samme butik er én køretur. */
+  const enkelte = resten.filter((v) => !iKampagne.has(v.id));
+  const prButik = new Map();
+  for (const v of enkelte) {
+    if (!prButik.has(v.butiksnummer)) prButik.set(v.butiksnummer, []);
+    prButik.get(v.butiksnummer).push(v);
+  }
+  const sambesoeg = [];
+  const iSambesoeg = new Set();
+  for (const [butiksnummer, liste] of prButik) {
+    if (liste.length < minSambesoeg) continue;
+    for (const v of liste) iSambesoeg.add(v.id);
+    const ejere = [...new Set(liste.map((v) => v.ejerNavn))];
+    sambesoeg.push({
+      id: `SAM-${butiksnummer}`,
+      butiksnummer, butik: liste[0].butik,
+      antal: liste.length,
+      krSamlet: liste.reduce((x, v) => x + v.kr, 0),
+      ejere,
+      varsler: liste.sort((a, b) => b.kr - a.kr),
+      tolkning: ejere.length > 1
+        ? `${liste.length} fund i samme butik, fordelt på ${ejere.length} fagansvarlige (${ejere.join(', ')}). `
+          + 'Sendes de hver for sig, bliver det lige så mange kørsler. Koordineres de, er det ét besøg.'
+        : `${liste.length} fund i samme butik, alle hos ${ejere[0]}. Ét besøg frem for ${liste.length}.`,
+    });
+  }
+
+  const alene = enkelte.filter((v) => !iSambesoeg.has(v.id));
+
+  /* 4 · Hvor lang tid tager bunken? Regnet i BESØG, ikke i sager — det er
+   *     kørslerne, der koster tid, ikke linjerne i en liste. */
+  const besoeg = straks.length + sambesoeg.length + alene.length;
+  const ugentligKapacitet = budget * personer;
+  const uger = ugentligKapacitet ? Math.ceil(besoeg / ugentligKapacitet) : null;
+
+  return {
+    straks: straks.sort((a, b) => b.kr - a.kr),
+    kampagner: kampagner.sort((a, b) => b.butikker - a.butikker),
+    sambesoeg: sambesoeg.sort((a, b) => b.krSamlet - a.krSamlet),
+    alene: alene.sort((a, b) => b.kr - a.kr),
+    opgoerelse: {
+      varsler: varsler.length,
+      straks: straks.length,
+      iKampagne: iKampagne.size,
+      kampagner: kampagner.length,
+      iSambesoeg: iSambesoeg.size,
+      sambesoeg: sambesoeg.length,
+      alene: alene.length,
+      besoeg,
+      ugentligKapacitet,
+      uger,
+      // Det tal, der skal siges højt frem for at blive opdaget undervejs.
+      besked: uger != null && uger > 8
+        ? `${varsler.length} fund bliver til ${besoeg} besøg. Ved ${ugentligKapacitet} om ugen tager det `
+          + `${uger} uger — altså omkring ${Math.round(uger / 4.3)} måneder. Det er ikke en kø, der kan `
+          + 'tømmes ved at arbejde hårdere. Enten skal kampagnerne trække hovedparten, eller også skal '
+          + 'beløbsgrænsen op, så de mindste fund samles i en liste frem for at blive til besøg.'
+        : `${varsler.length} fund bliver til ${besoeg} besøg — omkring ${uger} ugers arbejde.`,
+    },
+  };
+}
