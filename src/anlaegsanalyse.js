@@ -77,10 +77,56 @@ export function byggNormallast(raekker, { faggruppe, minDage = 30, referenceAnde
    */
   const referenceSlut = Math.max(minDage,
     Math.min(Math.floor(alle.length * referenceAndel), alle.length - karensDage));
-  const gyldige = alle.slice(0, referenceSlut);
+  let gyldige = alle.slice(0, referenceSlut);
+  const vurderes = alle.slice(referenceSlut);
 
   if (gyldige.length < minDage) {
     return { brugbar: false, grund: `Kun ${gyldige.length} døgn i referenceperioden — der skal mindst ${minDage} til, før en normal kan regnes.`, daekning: daek };
+  }
+
+  /* Referencen må ikke være en anden årstid end det, den skal bedømme.
+   *
+   * Ovenstående sikrer, at fejlen ikke ryger ind i sin egen normal. Men den
+   * sikrer ikke, at normalen er relevant: de første 60 % af et vindue, der
+   * slutter i september, er efterår og vinter, og de bruges så til at bedømme
+   * sommeren. På rigtige data gav det et målepunkt med −13.346 % afvigelse,
+   * fordi en vintertilpasset model forudsagde nul forbrug på en julidag — og
+   * 37 af 113 målere fik deres brud på de samme to døgn i juni, hvilket ikke
+   * er 37 fejl, men ét modelsammenbrud.
+   *
+   * Derfor vælges referencedøgnene også efter, om de ligner dem, der skal
+   * bedømmes. Samme rettelse som i aarsag.js — de to steder skal ikke kunne
+   * pege hver sin vej. */
+  const tempvar = (VEJRFOELSOMHED[faggruppe] || { variable: [] }).variable
+    .find((v) => ['temperatur', 'cdd', 'hdd'].includes(v));
+  let refudvalg = null;
+  let ekstrapolation = null;
+  if (tempvar && vurderes.length > 10) {
+    const tNu = vurderes.map((r) => r[tempvar]).filter(Number.isFinite);
+    if (tNu.length > 10) {
+      const lav = Math.min(...tNu), hoej = Math.max(...tNu);
+      const luft = (hoej - lav) * 0.15;
+      const udvalgt = gyldige.filter((r) => Number.isFinite(r[tempvar]) && r[tempvar] >= lav - luft && r[tempvar] <= hoej + luft);
+      if (udvalgt.length >= Math.max(45, minDage)) {
+        gyldige = udvalgt;
+        refudvalg = `${udvalgt.length} døgn med samme slags vejr (${Math.round(lav)}–${Math.round(hoej)} °C)`;
+      }
+      const tRef = gyldige.map((r) => r[tempvar]).filter(Number.isFinite);
+      if (tRef.length) {
+        const rMin = Math.min(...tRef), rMax = Math.max(...tRef);
+        const udenfor = tNu.filter((t) => t < rMin || t > rMax).length / tNu.length;
+        ekstrapolation = { andelUdenfor: Math.round(udenfor * 1000) / 10, refSpaend: [Math.round(rMin), Math.round(rMax)] };
+        if (udenfor > 0.35) {
+          return {
+            brugbar: false, daekning: daek, ekstrapolation,
+            grund: `Referenceperioden dækker ${Math.round(rMin)} til ${Math.round(rMax)} °C, men `
+              + `${Math.round(udenfor * 100)} % af de døgn, der skal bedømmes, ligger udenfor. Modellen ville `
+              + 'skulle gætte på vejr, den aldrig har set. Der skal en reference til, der dækker samme årstid — '
+              + 'i praksis omkring to års data.',
+          };
+        }
+      }
+    }
   }
 
   const foelsomhed = VEJRFOELSOMHED[faggruppe] || { variable: [], note: null };
@@ -132,10 +178,13 @@ export function byggNormallast(raekker, { faggruppe, minDage = 30, referenceAnde
     daekning: daek,
     variable,
     afvisteVariable: afvist,
+    ekstrapolation,
     reference: {
       fra: gyldige[0].dato, til: gyldige[gyldige.length - 1].dato, doegn: gyldige.length,
+      udvalg: refudvalg,
       note: 'Normallasten er regnet på denne periode alene. De nyeste døgn indgår ikke i deres egen normal — '
-        + 'ellers ville en fejl, der har stået på et stykke tid, blive til en del af det "normale".',
+        + 'ellers ville en fejl, der har stået på et stykke tid, blive til en del af det "normale".'
+        + (refudvalg ? ` Døgnene er desuden valgt efter, om de ligner dem, der skal bedømmes: ${refudvalg}.` : ''),
     },
     vejrnote: foelsomhed.note,
     modeller,

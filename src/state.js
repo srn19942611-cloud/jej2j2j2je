@@ -231,8 +231,16 @@ export async function koerAgenten() {
     // Butikkens målte årsforbrug i faggruppen, delt på de enheder der måler den.
     const aar = forbrug[e.faggruppe];
     const basis = aar ? Math.max(8, Math.round(aar / (antalPrFg[e.faggruppe] || 1) / 365 * 0.8)) : 120;
-    const s = byggScenarie(sc, {
+    /* To års serie, og fejlen lagt i det SIDSTE år.
+     *
+     * Med ét år og en fast referencegrænse på 220 døgn blev sommeren bedømt
+     * mod en vintermodel — og det var netop dét, der gav −13.346 % på rigtige
+     * data. Ekstrapolationsvagten afviser nu den opsætning, som den skal, så
+     * demoen ville have vist en tom liste. To år giver referencen døgn med
+     * samme slags vejr at bygge på. */
+    const s = byggScenarie(sc.fejl === 'ingen' ? sc : { ...sc, start: 615 }, {
       froe: 20260915 + froe,
+      dage: 730,
       basis,
       // Vejrfølsomheden skaleres med anlægget — ellers får en lille måler en
       // temperaturrespons, der er større end den selv.
@@ -254,7 +262,8 @@ export async function koerAgenten() {
       },
       raekker: s.raekker,
       opgaver: s.opgaver,
-      referenceSlut: 220,
+      // Ingen fast grænse: maalSignatur vælger selv de seneste 120 døgn som
+      // vurderingsvindue og referencedøgn med samme slags vejr.
     };
   }).filter(Boolean);
 
