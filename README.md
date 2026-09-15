@@ -578,6 +578,42 @@ Priorene opdateres som en tælling af, hvor ofte hver årsag viste sig at *være
 rigtige, blandet med udgangspunktet efter hvor meget erfaring der er — tolv
 bekræftelser, før erfaringen vejer halvt.
 
+## Observerbarhed — hvad vi overhovedet kan se
+
+Det vigtigste spørgsmål er ikke "hvor mange fejl har vi fundet". Det er "hvor
+meget af forbruget kan vi se, og hvor skarpt" — for et anlæg, ingen kan måle,
+kan heller ikke fejle synligt. En fagansvarlig, der får få varsler, skal kunne
+se, om området kører godt, eller om vi er blinde på det.
+
+Observerbarheden er en trappe, ikke en ja/nej-ting:
+
+| Niveau | Andel af el'en | Hvad det låser op |
+|---|---|---|
+| **0 · Umålt** | 43,2 % | Ingenting. Et spild her ville ingen opdage |
+| **1 · Kun årstal** | — | Søskendesammenligning, benchmark pr. m² |
+| **2 · Døgnværdier** | 52,7 % | Normallast, niveauskift, glidning, korrelation mod Dalux |
+| **3 · Kvarterværdier** | 4,1 % | Døgnprofil, tidsplaner, weekenddrift, natforbrug pr. ugedag |
+
+**56,8 % kan dateres** — altså få en normal og en afvigelse med en dato på, og
+dermed holdes op mod opgaverne i Dalux. Det er tallet, der betyder mest.
+
+Men der er et forbehold, som vejer tungere end det ser ud: **41,4 % af el'en
+måles på en tavle, der dækker flere anlæg.** Afvigelsen kan findes; den kan bare
+ikke henføres til ét bestemt anlæg. Det står nu på hver enkelt fagansvarligs
+egen side — Henrik og Mads får beskeden, fordi deres målere er tavler; Stefan
+gør ikke, fordi sol og lys er dedikerede.
+
+Kvarterniveauets 4,1 % er en **underkant**, ikke en måling: det er bekræftet på
+Kvickly Aarhus C, hvor 8 af 14 målere kan bære det. Resten af porteføljen står
+som døgnniveau, indtil der er set efter.
+
+### Hvad et trin op koster og giver
+
+Rækkefølgen er ikke ligegyldig. Det største spring ligger i at måle de umålte
+43 % — men det er også det dyreste og langsomste, for det kræver hardware. Det
+*billigste* trin er at hente finopløste værdier på målere, der allerede findes:
+det er som regel kun et spørgsmål om, hvad der trækkes.
+
 ## Flåden — hvorfor en god detektor ikke er nok
 
 En detektor, der virker på ét anlæg, virker ikke nødvendigvis på 13.529.

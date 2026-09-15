@@ -5,6 +5,7 @@ import { FAGGRUPPER, FG, fgNavn, fgFarve, DETEKTORER, FALSK_ALARM_AARSAGER } fro
 import { GRUNDE, grundFor, foreslaaModtager, moenstreKlarTilRegel, koeAlder, hvadVilleToemmeKoeen, delKoe, regelnoegle } from '../visitation.js';
 import { UKLASSIFICEREDE, UDAEKKEDE_OMRAADER, FAGOMRAADER_UDEN_ANSVARLIG } from '../seed.js';
 import { FO, foFarve, HANDLINGER, vurderGentagelse, vurderButik } from '../opgaver.js';
+import { NIVEAU, fagomraadeDaekning } from '../datakvalitet.js';
 import { ANLAEGSKLASSER, ANLAEG_UDEN_ENERGI } from '../anlaeg.js';
 import { visSag } from './sager.js';
 
@@ -102,6 +103,8 @@ function dashboard(person, gaaTil) {
     person.deler ? h('div', { class: 'note', style: { marginTop: '10px' } },
       h('strong', {}, 'Delt anlæg.'), ' ',
       person.deler.map((x) => `${x.hvad} (${PERSON[x.med] ? PERSON[x.med].navn : x.med})`).join(' ')) : null));
+
+  el.append(seJegOveralt(person, d));
 
   /* Nøgletal. */
   const kwh = energiFor(person, d);
@@ -624,5 +627,47 @@ function herreloese(gaaTil) {
       + '. De går til visitation, indtil en anlægstype kan sættes på dem.'));
   }
 
+  return el;
+}
+
+
+/* ---- "Kan jeg overhovedet se mit område?" ---------------------------------
+ * Det spørgsmål stiller enhver fagansvarlig før eller siden, og det forkerte
+ * svar er farligt: får man få varsler, er den nærliggende konklusion, at
+ * området kører godt.
+ *
+ * Som regel er det rigtige svar et andet — at vi er blinde på det. Derfor står
+ * dækningen på hver enkelt persons side, ved siden af deres egne tal, og ikke
+ * gemt væk i en teknisk fane.
+ */
+function seJegOveralt(person, d) {
+  const el = h('div', {});
+  const mine = new Set((person.daekker || (person.faggrupper || []).map((f) => ({ fg: f }))).map((k) => k.fg));
+  if (!mine.size) return el;
+
+  /* Samme forudsætninger som på Overblik: kvarterdata er kun bekræftet dér,
+   * hvor det faktisk er hentet. Resten står som døgn, indtil andet er målt. */
+  const MED_KVARTER = new Set(['ventilation', 'lys_ude']);
+  const DELT = new Set(['koel_frys', 'koeleflader', 'ventilation']);
+  const enheder = (d.faggruppeAar || [])
+    .filter((f) => mine.has(f.fg) && f.gwh > 0)
+    .map((f) => ({
+      id: f.fg, faggruppe: f.fg, kwhAar: f.gwh * 1e6,
+      niveau: MED_KVARTER.has(f.fg) ? 3 : 2,
+      dedikeret: !DELT.has(f.fg),
+    }));
+  if (!enheder.length) return el;
+
+  const daekning = fagomraadeDaekning(enheder);
+  const beskeder = daekning.filter((g) => g.besked);
+  if (!beskeder.length) return el;
+
+  el.append(h('div', { class: 'note warn', style: { marginTop: '14px' } },
+    h('strong', {}, 'Hvad jeg kan se på mit område. '),
+    h('ul', { style: { margin: '6px 0 0', paddingLeft: '18px' } },
+      ...beskeder.map((g) => h('li', {}, h('strong', {}, `${g.navn}: `), g.besked))),
+    h('div', { class: 'note', style: { marginTop: '8px', background: 'none', border: 'none', padding: 0 } },
+      'Få varsler betyder ikke nødvendigvis, at der ikke er noget. Det kan lige så godt betyde, '
+      + 'at vi ikke kan se det — og de to skal kunne skelnes.')));
   return el;
 }

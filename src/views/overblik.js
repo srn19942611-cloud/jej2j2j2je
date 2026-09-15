@@ -2,6 +2,7 @@ import { h, kpi, tabel, stack, legend, badge, swatch, dkTal, dkKr, pct, tom } fr
 import { state, noegletal } from '../state.js';
 import { FAGGRUPPER, FG, fgNavn, fgFarve } from '../taxonomy.js';
 import { fmtKr } from '../engine.js';
+import { NIVEAUER, porteføljekort, hvadEtTrinOpGiver } from '../datakvalitet.js';
 
 export function overblik(gaaTil) {
   const d = state.data;
@@ -29,6 +30,8 @@ export function overblik(gaaTil) {
   el.append(h('p', { class: 'muted', style: { fontSize: '12px', margin: '10px 0 0' } },
     'De tre beløb lægges aldrig sammen. En besparelse er en gevinst, et potentiale er et øvre skøn, '
     + 'og et blindt beløb er en risiko — ikke penge, der kan hentes hjem.'));
+
+  el.append(observerbarhed(d, p));
 
   /* Datadækning er hubbens vigtigste sundhedstegn: den afgør, hvor mange af
      detektorerne der overhovedet kan sige noget. */
@@ -111,3 +114,86 @@ export function overblik(gaaTil) {
 
   return el;
 }
+
+
+/* ---- Observerbarhed -------------------------------------------------------
+ * Hvor meget af forbruget kan vi overhovedet se, og hvor skarpt?
+ *
+ * Det er et andet spørgsmål end "hvor mange fejl har vi fundet", og det er det
+ * vigtigere af de to: et anlæg, ingen kan måle, kan heller ikke fejle synligt.
+ * En fagansvarlig, der får få varsler, skal kunne se, om det er fordi området
+ * kører godt — eller fordi vi er blinde på det.
+ */
+function observerbarhed(d, p) {
+  const el = h('div', {});
+
+  /* Enhederne bygges af det, vi faktisk ved i dag: faggruppernes målte forbrug
+   * med den opløsning, deres målere leverer, plus restposten som niveau 0.
+   * Kvarterniveauet sættes kun på de faggrupper, hvor kvarterdata er bekræftet
+   * hentet — resten står som døgn, indtil andet er målt. */
+  const MED_KVARTER = new Set(['ventilation', 'lys_ude']);
+  const enheder = d.faggruppeAar
+    .filter((f) => f.gwh > 0)
+    .map((f) => ({
+      id: f.fg, faggruppe: f.fg, kwhAar: f.gwh * 1e6,
+      niveau: MED_KVARTER.has(f.fg) ? 3 : 2,
+      // Køl, køleflader og ventilation måles typisk på en tavle, der dækker
+      // flere anlæg. Det er koblingens tal, ikke et skøn her.
+      dedikeret: !['koel_frys', 'koeleflader', 'ventilation'].includes(f.fg),
+    }));
+  const submaalt = d.faggruppeAar.reduce((x, f) => x + f.gwh, 0);
+  const kort = porteføljekort(enheder, { restpostKwh: Math.max(0, (p.elBruttoGWh - submaalt) * 1e6) });
+
+  el.append(h('hr', { class: 'rule' }));
+  el.append(h('h2', {}, 'Hvad vi kan se — og hvor skarpt'));
+  el.append(h('p', { class: 'sub' },
+    'Observerbarheden er et trappeforløb, ikke en ja/nej-ting. Hvert trin op låser bestemte fejltyper op, '
+    + 'og hvert trin ned gør dem usynlige. Tallene er vægtet med forbruget, ikke med antallet af målere — '
+    + 'en måler på en frostcentral vejer tungere end ti på kontorlys.'));
+
+  el.append(h('div', { class: 'grid cards' },
+    kpi('Kan dateres', `${kort.kanDateres} %`, 'af el\'en kan få en normal og en afvigelse med en dato på'),
+    kpi('Kan døgnprofileres', `${kort.kanDoegnprofil} %`, 'tidsplaner, natforbrug, weekenddrift'),
+    kpi('Usynligt', `${kort.usynligt} %`, 'intet målepunkt — en fejl her ville ingen opdage'),
+    kpi('Målt, men delt', `${kort.delteAndel} %`, 'afvigelsen kan findes, men ikke henføres til ét anlæg'),
+  ));
+
+  el.append(h('div', { class: 'stack-row', style: { margin: '14px 0 6px' } },
+    stack(kort.trin.filter((t) => t.kwh > 0).map((t) => ({
+      navn: t.navn, vaerdi: t.kwh / 1e6, farve: niveaufarve(t.id),
+    })), kort.kwhIalt / 1e6)));
+
+  el.append(tabel([
+    { navn: 'Niveau', celle: (t) => h('span', {}, swatch(niveaufarve(t.id)), ' ', h('strong', {}, t.navn)) },
+    { navn: 'GWh/år', r: true, celle: (t) => (t.kwh / 1e6).toFixed(1) },
+    { navn: 'Andel', r: true, celle: (t) => `${t.andel} %` },
+    { navn: 'Hvad det låser op', wrap: true, celle: (t) => (t.laaserOp.length
+      ? t.laaserOp.join(' · ') : h('span', { class: 'note' }, 'ingenting — der er ikke noget at måle på')) },
+  ], kort.trin.filter((t) => t.kwh > 0)));
+
+  const trin = hvadEtTrinOpGiver(kort).filter((x) => x.andel >= 1);
+  if (trin.length) {
+    el.append(h('h3', { style: { marginTop: '18px' } }, 'Hvad et trin op ville give'));
+    el.append(tabel([
+      { navn: 'Fra → til', wrap: true, celle: (x) => `${x.fra} → ${x.til}` },
+      { navn: 'GWh berørt', r: true, celle: (x) => (x.kwh / 1e6).toFixed(1) },
+      { navn: 'Hvad det kræver', wrap: true, celle: (x) => x.hvad },
+      { navn: 'Hvad det låser op', wrap: true, celle: (x) => h('span', { class: 'note' }, x.laaserOp.slice(0, 3).join(' · ')) },
+    ], trin));
+    el.append(h('div', { class: 'note' },
+      h('strong', {}, 'Rækkefølgen er ikke ligegyldig. '),
+      'Det største spring i kroner ligger i at måle det umålte — men det dyreste og langsomste. '
+      + 'Det billigste ligger i at hente finopløste værdier på målere, der allerede findes: '
+      + 'det er ofte kun et spørgsmål om, hvad der trækkes, ikke om hardware.'));
+  }
+
+  el.append(h('p', { class: 'note warn' },
+    h('strong', {}, 'Om tallene her. '),
+    'Kvarterniveauet er bekræftet på Kvickly Aarhus C, hvor 8 af 14 målere kan bære det. '
+    + 'For resten af porteføljen står faggrupperne som døgnniveau, indtil det er målt — ikke fordi de '
+    + 'ikke kan mere, men fordi vi ikke har set efter endnu. Tallet er altså en underkant.'));
+
+  return el;
+}
+
+const niveaufarve = (id) => ['#d1242f', '#d29922', '#1f6feb', '#2da44e'][id] || '#8b949e';
