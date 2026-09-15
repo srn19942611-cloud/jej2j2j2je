@@ -69,6 +69,10 @@ export const state = {
   vandmaerker: {},
   anlaegsindeks: null,
   varsler: [],
+  varslerVenter: [],
+  systematiske: [],
+  sigteregnskab: null,
+  sigtedetaljer: null,
   raadata: {},
   planlaegger: null,
   log: [],
@@ -254,8 +258,27 @@ export async function koerAgenten() {
     };
   }).filter(Boolean);
 
-  state.varsler = koerAgent(input, { laering: state.laering });
-  skriv(`Agenten kørte over ${input.length} analyseenheder og lagde ${state.varsler.length} varsler.`, 'ok');
+  const raa = koerAgent(input, { laering: state.laering });
+
+  /* Sigten. Uden den drukner alt: 0,9 % falske alarmer gange 11.770
+   * analyseenheder er 109 blindgyder hver nat, og det er tolv om dagen til
+   * hver fagansvarlig mod en kapacitet på under én. Se src/flaade.js. */
+  const { sigt } = await import('./flaade.js');
+  const sigtet = sigt(raa, {
+    aabne: state.varsler || [],
+    maalFDR: 0.10,
+    budget: state.cfg.varselbudget || 5,
+  });
+  state.varsler = sigtet.sendt;
+  state.varslerVenter = sigtet.venter;
+  state.systematiske = sigtet.systematiske;
+  state.sigteregnskab = sigtet.regnskab;
+  state.sigtedetaljer = sigtet.detaljer;
+
+  const r = sigtet.regnskab;
+  skriv(`Agenten kørte over ${input.length} enheder: ${r.ialt} varsler, hvoraf ${r.sendt} gik videre `
+    + `(${r.faldtIGate} faldt i gaten, ${r.afvistAfFDR} afvist statistisk, ${r.iSystematisk} samlet i `
+    + `systematiske fund, ${r.overBudget} venter).`, 'ok');
   opdater();
   return state.varsler;
 }

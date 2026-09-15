@@ -22,6 +22,7 @@ import { state, gem, opdater, skriv } from '../state.js';
 import { AFVIS_GRUNDE, AFVIS_GRUND, varselTilOpgavetekst, registrerSvar, bekraeftFraOpgave, traefsikkerhed, agentnoegletal, justeredePriors, erfaringsvaegt } from '../agent.js';
 import { AARSAGER, AARSAG } from '../aarsag.js';
 import { SAMTIDIGHED } from '../korrelation.js';
+import { GATE } from '../flaade.js';
 import { PERSONER, PERSON } from '../personer.js';
 import { fgNavn } from '../taxonomy.js';
 import { opretOpgave } from '../dalux.js';
@@ -48,8 +49,12 @@ export function agentside(gaaTil, args = {}) {
       n.praecision != null ? `af ${n.besvarede} besvarede` : `${n.besvarede} svar — der skal 5 til`),
   ));
 
+  el.append(sigteafsnit());
+  el.append(systematiskeAfsnit(gaaTil));
+
   if (!varsler.length) {
-    el.append(tom('Ingen varsler. Kør agenten fra Opsætning, eller vent på den natlige synkronisering.'));
+    el.append(tom('Ingen varsler til dig lige nu. Det betyder ikke, at der ikke er fundet noget — '
+      + 'se sigten ovenfor for, hvad der blev sorteret fra og hvorfor.'));
     return el;
   }
 
@@ -85,6 +90,109 @@ export function agentside(gaaTil, args = {}) {
 
   el.append(laeringsafsnit(laering));
   return el;
+}
+
+/* ---- Sigten ---------------------------------------------------------------
+ * Regnskabet skal kunne ses. En sigte, man ikke kan se igennem, er en sigte,
+ * ingen tør stole på — og så bliver den slået fra.
+ */
+function sigteafsnit() {
+  const r = state.sigteregnskab;
+  if (!r) return h('div', {});
+  const el = h('div', {});
+  el.append(h('h3', { style: { marginTop: '20px' } }, 'Hvad sigten sorterede fra'));
+  el.append(h('p', { class: 'sub' },
+    `Agenten fandt ${dkTal(r.ialt)} afvigelser. ${dkTal(r.sendt)} gik videre til en person. `
+    + 'Resten er ikke tabt — den står her, og hver linje siger hvorfor.'));
+
+  const trin = [
+    ['Fundet af agenten', r.ialt, 'afvigelser fra anlæggenes egen normal'],
+    ['Faldt i gaten', -r.faldtIGate, `for lidt data, for kort tid, eller under ${dkKr(GATE.minKr)}`],
+    ['Kendt i forvejen', -r.gengangere, 'samme anlæg, samme årsag — står allerede åben'],
+    ['Afvist statistisk', -r.afvistAfFDR, `for svagt til at skille sig ud blandt ${dkTal(r.tests)} samtidige prøver`],
+    ['Samlet i systematiske fund', -r.iSystematisk, 'samme fejl mange steder — én beslutning, ikke mange opgaver'],
+    ['Venter på plads i køen', -r.overBudget, 'over budgettet for nye sager pr. person'],
+    ['Sendt til en fagansvarlig', r.sendt, 'det, nogen skal tage stilling til nu'],
+  ];
+  el.append(tabel([
+    { navn: 'Trin', wrap: true, celle: (x) => (x[1] === r.sendt && x[0].startsWith('Sendt')
+      ? h('strong', {}, x[0]) : x[0]) },
+    // Math.abs, fordi -0 ellers skrives ud som "-0" på de trin, der ikke fjernede noget.
+    { navn: 'Antal', r: true, celle: (x) => (x[1] < 0 ? `− ${dkTal(Math.abs(x[1]))}` : dkTal(Math.abs(x[1]))) },
+    { navn: 'Hvorfor', wrap: true, celle: (x) => h('span', { class: 'note' }, x[2]) },
+  ], trin));
+
+  el.append(h('div', { class: 'note' },
+    h('strong', {}, 'Om de statistisk afviste. '),
+    `Med ${dkTal(r.tests)} anlæg, der prøves på én gang, vil nogle skille sig ud ved rent tilfælde. `
+    + `Grænsen er sat, så højst ${Math.round(r.maalFDR * 100)} % af det, der sendes videre, forventes at være blindgyder — `
+    + `det svarer til ${r.forventedeFalske} af de ${dkTal(r.sendt)}. `
+    + 'Uden den grænse ville en falsk-alarmrate på under én procent stadig give over hundrede blindgyder '
+    + 'hver nat på hele porteføljen, og agenten ville blive slået fra med rette.'));
+  return el;
+}
+
+/* ---- Systematiske fund ----------------------------------------------------
+ * Det greb, der giver overblik frem for arbejde.
+ */
+function systematiskeAfsnit(gaaTil) {
+  const liste = state.systematiske || [];
+  if (!liste.length) return h('div', {});
+  const el = h('div', {});
+  const samtidige = liste.filter((x) => x.samtidig);
+
+  el.append(h('h3', { style: { marginTop: '22px' } }, 'Den samme fejl mange steder'));
+  el.append(h('p', { class: 'sub' },
+    samtidige.length
+      ? 'Findes den samme fejl på mange butikker på én gang, er det sjældent mange anlæg, der er gået i '
+        + 'stykker hver for sig. Så er det én hændelse — og én beslutning.'
+      : 'Ingen fælles hændelser fundet. Mønstrene nedenfor optræder flere steder, men spredt over tid, '
+        + 'og hører derfor til som anlægstyper frem for som én fælles årsag.'));
+
+  el.append(tabel([
+    { navn: '', celle: (x) => (x.samtidig ? badge('fælles hændelse', 'p1') : badge('anlægstype')) },
+    { navn: 'Mønster', wrap: true, celle: (x) => h('strong', {}, x.navn) },
+    { navn: 'Faggruppe', celle: (x) => fgNavn(x.faggruppe) },
+    { navn: 'Butikker', r: true, celle: (x) => dkTal(x.butikker) },
+    { navn: 'Klumper datoerne?', wrap: true, celle: (x) => (x.klump
+      ? `${x.klump.antal} af ${x.varsler} inden for 45 dage — ${x.klump.taethed}× tættere end tilfældigt`
+      : h('span', { class: 'note' }, `kun ${x.medDato} har en dato at gå ud fra`)) },
+    { navn: 'Samlet', r: true, celle: (x) => (x.krSamlet ? dkKr(x.krSamlet) : '—') },
+    { navn: 'Til', celle: (x) => x.ejerNavn },
+  ], liste, { onRow: (x) => visSystematisk(x) }));
+  return el;
+}
+
+function visSystematisk(x) {
+  modal({
+    titel: `${x.navn} · ${x.butikker} butikker`,
+    bredde: 760,
+    krop: h('div', {},
+      h('div', { class: 'pill-row' },
+        x.samtidig ? badge('fælles hændelse', 'p1') : badge('anlægstype'),
+        badge(fgNavn(x.faggruppe)),
+        x.krSamlet ? badge(dkKr(x.krSamlet)) : null),
+      h('h4', { style: { marginTop: '12px' } }, 'Hvad vi ser'),
+      h('p', {}, x.tolkning),
+      h('h4', {}, 'Hvad der bør gøres først'),
+      h('p', {}, x.handling),
+      x.klump ? h('div', { class: 'note' },
+        h('strong', {}, 'Datoerne. '),
+        `${x.klump.antal} af ${x.varsler} anlæg fik afvigelsen mellem ${x.klump.fra} og ${x.klump.til}, `
+        + `omkring ${x.klump.midt}. Lå bruddene tilfældigt, ville man forvente ${Math.round(x.klump.forventet * 100)} % `
+        + `i et vindue af den bredde; her er det ${Math.round(x.klump.andel * 100)} % — ${x.klump.taethed} gange tættere.`)
+        : h('div', { class: 'note warn' },
+          h('strong', {}, 'Ingen pålidelige datoer. '),
+          `Kun ${x.medDato} af de ${x.varsler} anlæg har et fundet brud med en dato. Resten er glidende `
+          + 'fejl uden et bestemt starttidspunkt, og om det er én fælles hændelse kan derfor ikke afgøres på data.'),
+      h('h4', {}, 'Eksempler'),
+      tabel([
+        { navn: 'Butik', wrap: true, celle: (e) => e.butik },
+        { navn: 'Anlæg', wrap: true, celle: (e) => e.anlaeg },
+        { navn: 'Fra', celle: (e) => e.dato || '—' },
+      ], x.eksempler)),
+    knapper: [h('button', { class: 'btn', onclick: lukModal }, 'Luk')],
+  });
 }
 
 const beloebsord = (k) => ({ ingen: 'ingen elbesparelse', blindt: 'blindt punkt' }[k] || '—');

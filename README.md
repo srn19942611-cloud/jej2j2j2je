@@ -578,6 +578,128 @@ Priorene opdateres som en tælling af, hvor ofte hver årsag viste sig at *være
 rigtige, blandet med udgangspunktet efter hvor meget erfaring der er — tolv
 bekræftelser, før erfaringen vejer halvt.
 
+## Flåden — hvorfor en god detektor ikke er nok
+
+En detektor, der virker på ét anlæg, virker ikke nødvendigvis på 13.529.
+Regnestykket er ubarmhjertigt:
+
+> 0,9 % falske alarmer — et godt tal for en enkelt detektor — gange 11.770
+> analyseenheder er **109 blindgyder. Hver nat.** Fordelt på ni fagansvarlige:
+> tolv stykker hver, hver nat, mod en realistisk kapacitet på under én ny sag
+> om dagen.
+
+Agenten ville blive slået fra i løbet af en uge, og den ville have fortjent det.
+Det løses ikke med en bedre detektor. Det er multiplicitet, og det har sin egen
+matematik. `src/flaade.js` er fire greb i rækkefølge:
+
+| Greb | Hvad det fjerner |
+|---|---|
+| **Gate** | For lidt data, for kort tid, eller under 2.000 kr. — hastende sager og blinde punkter slipper altid forbi |
+| **Dedupering** | Samme anlæg, samme årsag. Et varsel, der allerede står åbent, er ikke et nyt varsel |
+| **FDR** (Benjamini–Hochberg) | Holder den forventede **andel** blindgyder under 10 %. Bonferroni ville kræve p < 0,000004 og kun lukke totalhavarier igennem |
+| **Budget** | Hver fagansvarlig får det, de kan nå. Resten venter — synligt, ikke skjult |
+
+To ting gøres bevidst konservativt i p-værdien: medianens usikkerhed vokser kun
+med √n, og døgnene er ikke uafhængige — er det koldt i dag, er det sandsynligvis
+koldt i morgen. Det effektive antal døgn deles derfor med tre. Tallet er et skøn,
+og det er sat, så det hellere afviser et ægte fund end slipper et falskt igennem.
+
+**Hele regnskabet vises i hubben.** En sigte, man ikke kan se igennem, er en
+sigte, ingen tør stole på.
+
+### Den samme fejl mange steder er én beslutning, ikke tredive opgaver
+
+Findes det samme mønster på tredive butikker inden for et par uger, er det
+sjældent tredive anlæg, der er gået i stykker hver for sig. Så er det en
+firmwareopdatering, en leverandør, en indstilling der er rullet ud — eller en
+fejl i vores egen model. Alle fire er **én** beslutning, og de tre første skal
+tages et helt andet sted end i en serviceopgave.
+
+Det kræver to ting, som begge blev gjort forkert i første forsøg:
+
+**Kun rigtige brud har en dato.** En glidende fejl har ingen startdag — der står
+bare referenceperiodens slutning i feltet, og den er ens for alle enheder. Første
+udgave regnede den med, og fjorten lækager med vidt forskellige forløb fik derfor
+en spredning på nul dage og blev udråbt til én fælles hændelse. Datoen var
+modellens, ikke anlæggets.
+
+**Klumpen skal være tættere end tilfældet.** Et vindue på 45 dage lagt ned over
+elleve datoer spredt over fire måneder fanger næsten halvdelen — og halvdelen så
+ud til at være nok. Elleve kompressorsvigt på elleve tilfældige dage blev til én
+fælles hændelse, der ikke fandtes. Nu holdes klumpen op mod, hvad tilfældigt
+spredte datoer ville give, og skal være mindst dobbelt så tæt.
+
+Prøvet af: **8 ud af 8 plantede hændelser fundet**, 0,25 falske fælles hændelser
+pr. kørsel over 16 kørsler à 400 enheder.
+
+## Døgnprofilen — hvad 15-minutters data viser
+
+Et døgnforbrug er ét tal. Et døgn i kvarterer er 96, og de indeholder ting,
+summen aldrig kan vise: afrimninger som periodiske toppe, tidsplaner der kan
+aflæses frem for gættes, grundlast adskilt fra spids.
+
+Enity leverer **ægte 15-minutters data** — bekræftet, med historik mindst 24
+måneder tilbage. Værdierne er forbrug i intervallet, ikke tællerstande. Der er et
+reelt datahul 12. oktober – 2. november 2025 på samtlige målere, og det ligger i
+kilden.
+
+### Tre ting, de rigtige data modsagde
+
+Jeg fik karakteristikken regnet på Kvickly Aarhus C, maj–august 2026, 11.712
+kvarterer pr. måler. Tre af svarene modsagde, hvad jeg havde bygget:
+
+**Afrimninger kunne ikke ses.** Målepunktet er en hel teknik-tavle med flere
+kompressorer og en grundlast på 50–70 kW. En enkelt afrimning på 2–5 kW forsvinder
+i den. Afrimningsdetektoren virker altså ikke overalt — den kræver en måler pr.
+kølegruppe, og den siger det nu frem for at finde noget alligevel.
+
+**Der lå en top på ét kvarter kl. 06:00 på 120 af 123 døgn, +70 % over baseline.**
+Den er for regelmæssig og for kortvarig til at være et anlæg og ligner en
+registreringsklump i måleren. Uden en regel for det ville den være blevet fundet
+som en afrimning hver eneste dag. Nu frasorteres ét-kvarters toppe, der rammer det
+samme klokkeslæt på over 80 % af døgnene — og antallet vises, så de ikke forsvinder
+i stilhed.
+
+**Små målere larmer.** Ventilationsmåleren kører 0,49 kWh/t i drift mod 0,05 i
+grundlast. Et spring på 0,01 kWh — altså intet — er 8 % af medianen. Alle relative
+tærskler har nu en absolut bund under sig.
+
+### To fund, der kom ud af det
+
+| Fund | Hvad data viser |
+|---|---|
+| **Ingen weekendnedsættelse** | Ventilationen kører 08:45–23:15 på 118 af 123 døgn — præcis det samme lørdag som tirsdag. Ikke en fejl på anlægget, men en tidsplan der aldrig er sat efter butikkens åbningstid |
+| **Lyset brænder kun i weekendnætterne** | 92 % af hverdagsnattens kvarterer står på præcis nul. I weekendnætterne 0,97–1,15 kWh/t. Anlægget slukker altså, når det skal — bare ikke i weekenden |
+
+Ingen af de to kan ses i en døgnsum. Den første kræver, at lørdagens profil lægges
+oven på tirsdagens; den anden, at nætterne skilles ad efter ugedag.
+
+### Kortcykling: hvad detektoren ikke kan
+
+Første udgave målte medianen af udsvinget fra kvarter til kvarter. Det var forkert,
+og prøven viste hvorfor: et anlæg, der cyklede hver anden time mellem fuld drift og
+stop, fik samme tal som et, der kørte helt jævnt. Medianen er robust over for
+enkeltspring — og cyklingens spring *er* enkeltspring.
+
+Det rigtige mål er **starter pr. time**, som er det tal, en køletekniker regner i.
+Men her er grænsen, og den skal stå: med 15-minutters data kan højst **2 starter i
+timen** ses, og ægte kortcykling ligger ofte på seks til ti. Detektoren kan derfor
+udelukke langsom cykling — den kan ikke frikende et anlæg for hurtig. Det kræver
+styringens egne starttællere.
+
+### Datakvalitet: 8 af 14 målere kan bære det
+
+| | Målere | |
+|---|---|---|
+| Egnet til kvartersanalyse | 8 | Køl, el total, lys og fire mindre laster |
+| Kun til start/stop | 1 | Ventilationen — 22 forskellige værdier på fire måneder |
+| Pulsmåler, hele kWh-trin | 4 | Overskudsvarme og varmeflader — for groft kvantiseret |
+| **Død** | **1** | **548601 AC Kontor: konstant nul i fire måneder** |
+
+Den sidste er et fund i sig selv, og den er fundet af datakvalitetstjekket, ikke af
+en detektor. Opløsningsgaten afviser nu både døde målere og pulsmålere frem for at
+regne procenter på dem.
+
 ## Koblingen anlæg ↔ målepunkt
 
 Den vigtigste kobling i hubben. Uden den kan vi sige *"køl i denne butik bruger
