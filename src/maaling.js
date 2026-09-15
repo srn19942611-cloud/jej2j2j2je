@@ -51,8 +51,18 @@ export function efterproev(m) {
    * summere til 1. */
   if (tal(m.restniveau) && tal(m.afvigPct)) {
     const forventet = 1 + m.afvigPct / 100;
-    if (Math.abs(m.restniveau - forventet) > 0.08) {
-      fejl.push(`restniveau ${m.restniveau} og afvigelse ${m.afvigPct} % er uforenelige — de burde summere til 1`);
+    /* Tolerancen skal være RELATIV, ikke absolut.
+     *
+     * Første udgave krævede, at de to lå inden for 0,08 af hinanden. Ved et
+     * restniveau omkring 1 er det 8 % og rimeligt. Men restniveauet kan
+     * sagtens være 6,3 — et anlæg, der bruger seks gange det forventede — og
+     * dér er 0,08 en tolerance på 1,3 %, altså strengere end de afrundinger,
+     * tallene overhovedet er opgivet med. Tolv af fyrre rigtige rækker blev
+     * afvist på den konto, og de var alle sammen konsistente. */
+    const tolerance = Math.max(0.08, Math.abs(forventet) * 0.04);
+    if (Math.abs(m.restniveau - forventet) > tolerance) {
+      fejl.push(`restniveau ${m.restniveau} og afvigelse ${m.afvigPct} % er uforenelige — `
+        + `de burde give ${Math.round(forventet * 100) / 100}`);
     }
   }
 
@@ -374,7 +384,11 @@ export function laesMaaletabel(tekst) {
     if (!r.maalerId) continue;
     // Forudsagt kan udledes, hvis den ikke står i tabellen.
     if (r.medianForudsagt == null && r.medianResidual != null && r.afvigPct) {
-      r.medianForudsagt = Math.round(100 * r.medianResidual / r.afvigPct);
+      /* Ikke afrundet til heltal. Et lille målepunkt kan sagtens have et
+       * forudsagt forbrug på 0,56 kWh/døgn, og Math.round gør det til 1 —
+       * hvorefter afvigelsen i procent ikke længere passer med sin egen brøk,
+       * og rækken afvises som selvmodsigende. */
+      r.medianForudsagt = Math.round(100 * r.medianResidual / r.afvigPct * 1000) / 1000;
     }
     raekker.push(r);
   }

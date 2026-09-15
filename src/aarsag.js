@@ -205,7 +205,26 @@ export function maalSignatur(raekker, { faggruppe, referenceSlut, knaek = 15, vu
    *
    * Derfor: find bruddet FØRST, og mål så kun på stykket efter det. Er der
    * intet brud, er hele vinduet stykket. */
-  const brud = cusum(rest.map((r) => r.afvig), { minStyrke: 2.5, minSegment: 7 });
+  /* ---- Residualerne skal standardiseres, før der ledes efter et brud ------
+   *
+   * CUSUM forudsætter, at spredningen er den samme hele vejen. Det er den
+   * ikke: et køleanlægs residualer svinger mere på en varm dag end på en kold,
+   * simpelthen fordi der er mere last at svinge omkring. Den kumulerede
+   * afvigelse driver derfor af sted, når sæsonen skifter, og argmax lander på
+   * sommerens begyndelse i stedet for på en fejl.
+   *
+   * Det blev målt: 19 af 114 målere fik deres brud 18.–19. juni, netop det
+   * døgn hvor temperaturen springer fra 13,6 til 18,2 °C og bliver deroppe.
+   * Det holdt, også med knækket model og med knæk ved 18 og 20 °C — fordi det
+   * ikke er modelformen, der er problemet, men antagelsen om konstant
+   * spredning.
+   *
+   * Rettelsen er at dele hvert residual med den spredning, der hører til DEN
+   * slags dag. Spredningen estimeres i temperaturbånd på referenceperioden,
+   * så et residual på en varm dag holdes op mod, hvad der er normalt at svinge
+   * på en varm dag. */
+  const standardiser = byggStandardisering(restRef, tempvar, spredning);
+  const brud = cusum(rest.map((r) => r.afvig / standardiser(r)), { minStyrke: 2.5, minSegment: 7 });
   const helTrend = theilSen(rest.map((r, i) => ({ x: i, y: r.afvig })));
   const trendSamlet = helTrend ? helTrend.haeldning * rest.length : 0;
 
@@ -415,6 +434,117 @@ export function maalOvergang(y) {
 }
 
 const middel = (a) => (a.length ? a.reduce((x, y2) => x + y2, 0) / a.length : 0);
+
+/**
+ * Spredning som funktion af vejret, estimeret i bånd.
+ *
+ * Fire bånd er nok: færre fanger ikke sæsonen, flere giver for få døgn i hvert
+ * til at et robust spredningsmål betyder noget. Uden for de observerede bånd
+ * bruges nærmeste, så funktionen aldrig gætter.
+ */
+function byggStandardisering(restRef, tempvar, faldback) {
+  if (!tempvar) return () => faldback || 1;
+  const med = restRef.filter((r) => Number.isFinite(r[tempvar]));
+  if (med.length < 40) return () => faldback || 1;
+
+  const t = med.map((r) => r[tempvar]).sort((a, b) => a - b);
+  const skaer = [0.25, 0.5, 0.75].map((q) => t[Math.floor(q * (t.length - 1))]);
+  const baand = [[-Infinity, skaer[0]], [skaer[0], skaer[1]], [skaer[1], skaer[2]], [skaer[2], Infinity]];
+
+  const spred = baand.map(([lav, hoej]) => {
+    const i = med.filter((r) => r[tempvar] > lav && r[tempvar] <= hoej).map((r) => r.afvig);
+    return i.length >= 8 ? (mad(i) || faldback || 1) : null;
+  });
+  // Huller fyldes med nærmeste nabo frem for med et gennemsnit, der ikke er målt.
+  for (let i = 0; i < spred.length; i++) {
+    if (spred[i] != null) continue;
+    spred[i] = spred.find((x, j) => x != null && Math.abs(j - i) === 1) ?? faldback ?? 1;
+  }
+
+  return (r) => {
+    const v = r[tempvar];
+    if (!Number.isFinite(v)) return faldback || 1;
+    const i = v <= skaer[0] ? 0 : v <= skaer[1] ? 1 : v <= skaer[2] ? 2 : 3;
+    return Math.max(spred[i], (faldback || 1) * 0.25);
+  };
+}
+
+/**
+ * Sammenligning med samme periode sidste år, på LIGE VARME DØGN.
+ *
+ * Det er den mest direkte prøve, der findes, og den er helt uden model: tag de
+ * døgn i år, hvor det var mellem 17 og 22 grader, og hold dem op mod sidste
+ * års døgn i det samme temperaturbånd. Er forholdet 1,05, er der ingen
+ * niveauændring — uanset hvad en regression måtte mene.
+ *
+ * Den kræver to års data og kan derfor ikke stå alene. Men når den kan regnes,
+ * vejer den tungere end alt andet, netop fordi den ikke forudsætter noget om
+ * formen på sammenhængen mellem vejr og forbrug.
+ */
+export function aarSammenligning(raekker, { tempvar = 'temperatur', vurderingsdage = 120, baandBredde = 5 } = {}) {
+  const alle = (raekker || []).filter((r) => Number.isFinite(r.kwh) && Number.isFinite(r[tempvar]));
+  if (alle.length < 500) return { brugbar: false, grund: 'kræver to års data' };
+
+  const nu = alle.slice(-vurderingsdage);
+  const ifjor = alle.slice(Math.max(0, alle.length - vurderingsdage - 365), alle.length - 365);
+  if (ifjor.length < 40) return { brugbar: false, grund: 'for få døgn i samme periode sidste år' };
+
+  const t = nu.map((r) => r[tempvar]).sort((a, b) => a - b);
+  const midt = t[Math.floor(t.length * 0.6)];
+  const lav = midt - baandBredde / 2, hoej = midt + baandBredde / 2;
+
+  const iBaand = (liste) => liste.filter((r) => r[tempvar] >= lav && r[tempvar] <= hoej).map((r) => r.kwh);
+  const a = iBaand(nu), b = iBaand(ifjor);
+  if (a.length < 8 || b.length < 8) {
+    return { brugbar: false, grund: `for få døgn i båndet ${Math.round(lav)}–${Math.round(hoej)} °C (${a.length} i år, ${b.length} sidste år)` };
+  }
+
+  const mNu = median(a), mFjor = median(b);
+  if (!mFjor) return { brugbar: false, grund: 'intet forbrug i samme bånd sidste år' };
+  const forhold = mNu / mFjor;
+
+  /* Medianen er selv usikker, og det skal med.
+   *
+   * Første udgave sammenlignede blot de to medianer mod en grænse på 10 %. På
+   * en ren serie med kraftig døgnstøj gav det 13 % og dermed "ægte ændring" —
+   * en falsk alarm skabt af stikprøven alene. Og en ægte stigning på 20 %
+   * blev målt som 10 %, af samme grund.
+   *
+   * Medianens standardfejl er omtrent 1,253·σ/√n for normalfordelt støj.
+   * Forskellen mellem to år har begge usikkerheder i sig. Vi kræver derfor
+   * både at ændringen er over ti procent OG at den er større end to gange sin
+   * egen usikkerhed — ellers er den ikke målt, den er gættet. */
+  const se = (liste) => (liste.length ? 1.253 * (mad(liste) || 0) / Math.sqrt(liste.length) : Infinity);
+  const usikkerhed = Math.sqrt(se(a) ** 2 + se(b) ** 2);
+  const forskel = Math.abs(mNu - mFjor);
+  const relUsikkerhed = mFjor ? usikkerhed / mFjor : Infinity;
+  const signifikant = forskel > 2 * usikkerhed;
+
+  return {
+    brugbar: true,
+    baand: [Math.round(lav), Math.round(hoej)],
+    doegnIAar: a.length, doegnSidsteAar: b.length,
+    kwhIAar: Math.round(mNu), kwhSidsteAar: Math.round(mFjor),
+    forhold: Math.round(forhold * 100) / 100,
+    aendring: Math.round((forhold - 1) * 1000) / 10,
+    usikkerhedPct: Math.round(relUsikkerhed * 1000) / 10,
+    signifikant,
+    // Både over ti procent og større end støjen. Ét af kravene alene er ikke nok.
+    bekraefter: Math.abs(forhold - 1) > 0.10 && signifikant,
+    tolkning: !signifikant
+      ? `På døgn mellem ${Math.round(lav)} og ${Math.round(hoej)} °C er forskellen til sidste år `
+        + `${Math.round((forhold - 1) * 100)} %, men usikkerheden på de to medianer er ±${Math.round(relUsikkerhed * 100)} %. `
+        + 'Forskellen er altså inden for støjen og kan ikke bruges til noget — hverken til at bekræfte eller '
+        + 'afkræfte et brud.'
+      : Math.abs(forhold - 1) <= 0.10
+        ? `På døgn mellem ${Math.round(lav)} og ${Math.round(hoej)} °C bruger anlægget ${Math.round((forhold - 1) * 100)} % `
+          + 'mere end sidste år på tilsvarende døgn. Det er ingen niveauændring. Finder modellen alligevel et '
+          + 'brud, er det modellen og ikke anlægget.'
+        : `På døgn mellem ${Math.round(lav)} og ${Math.round(hoej)} °C bruger anlægget ${Math.round((forhold - 1) * 100)} % `
+          + `${forhold > 1 ? 'mere' : 'mindre'} end sidste år på tilsvarende døgn (±${Math.round(relUsikkerhed * 100)} %). `
+          + 'Det er en ægte ændring — og den kan ses uden nogen model overhovedet.',
+  };
+}
 
 /* ---- 2 · Årsagskataloget ·--------------------------------------------------
  * Hver årsag beskriver den signatur, den sætter. `prior` er hvor almindelig
