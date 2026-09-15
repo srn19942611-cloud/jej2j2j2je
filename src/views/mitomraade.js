@@ -1,8 +1,8 @@
 import { h, tabel, badge, swatch, kpi, modal, lukModal, felt, vaelger, prioritetBadge, dkTal, dkKr, pct, tom, stack, legend } from '../ui.js';
 import { state, noegletal, visiter, gem, opdater, traefBeslutning } from '../state.js';
-import { PERSONER, PERSON, VISITATOR, sagerFor, visitationskoe, udaekkedeFaggrupper, ejerAfSag } from '../personer.js';
+import { PERSONER, PERSON, VISITATOR, sagerFor, visitationskoe, udaekkedeFaggrupper, ejerAfSag, BEVIDST_UDEN_ANSVARLIG } from '../personer.js';
 import { FAGGRUPPER, FG, fgNavn, fgFarve, DETEKTORER, FALSK_ALARM_AARSAGER } from '../taxonomy.js';
-import { GRUNDE, grundFor, foreslaaModtager, moenstreKlarTilRegel, koeAlder, hvadVilleToemmeKoeen, regelnoegle } from '../visitation.js';
+import { GRUNDE, grundFor, foreslaaModtager, moenstreKlarTilRegel, koeAlder, hvadVilleToemmeKoeen, delKoe, regelnoegle } from '../visitation.js';
 import { UKLASSIFICEREDE, UDAEKKEDE_OMRAADER, FAGOMRAADER_UDEN_ANSVARLIG } from '../seed.js';
 import { FO, foFarve, HANDLINGER, vurderGentagelse, vurderButik } from '../opgaver.js';
 import { ANLAEGSKLASSER, ANLAEG_UDEN_ENERGI } from '../anlaeg.js';
@@ -31,7 +31,10 @@ export function mitOmraade(gaaTil, args = {}) {
   const reg = state.routingregler || {};
   for (const p of PERSONER) {
     const antal = sagerFor(p, state.sager, vis, reg).filter(aaben).length;
-    const tilVisitation = p.visitator ? visitationskoe(state.sager, vis, reg).filter(aaben).length : 0;
+    // Kun det, der faktisk venter på en beslutning. De bevidst henlagte
+    // områder skal ikke tælles som en kø, nogen skylder at tømme.
+    const tilVisitation = p.visitator
+      ? delKoe(visitationskoe(state.sager, vis, reg).filter(aaben)).venter.length : 0;
     const knap = h('button', {
       class: 'btn' + (p.id === person.id ? ' primary' : ''),
       onclick: () => gaaTil('mitomraade', { person: p.id }),
@@ -61,7 +64,8 @@ function dashboard(person, gaaTil) {
   const reg = state.routingregler || {};
   const mine = sagerFor(person, state.sager, vis, reg);
   const aabne = mine.filter(aaben);
-  const koe = person.visitator ? visitationskoe(state.sager, vis, reg).filter(aaben) : [];
+  const heleKoen = person.visitator ? visitationskoe(state.sager, vis, reg).filter(aaben) : [];
+  const koe = person.visitator ? delKoe(heleKoen).venter : [];
 
   /* Hoved. */
   el.append(h('div', { class: 'card', style: { marginBottom: '14px' } },
@@ -110,8 +114,13 @@ function dashboard(person, gaaTil) {
       'kun realistiske gevinster — potentiale og blindt forbrug tælles ikke med'),
     person.udenEnergiside
       ? kpi('Energiside', 'ingen', 'området måles ikke separat i Enity')
-      : kpi('Mit forbrug', kwh ? `${(kwh.gwh).toFixed(1)} GWh` : '—',
-          kwh ? `${pct(kwh.andel)} af porteføljens el · ${dkKr(kwh.kr)}/år` : 'ingen submåling på området'),
+      : kpi(kwh && kwh.erRestpost ? 'Restposten' : 'Mit forbrug',
+          kwh ? `${(kwh.gwh).toFixed(1)} GWh` : '—',
+          kwh
+            ? (kwh.erRestpost
+                ? `${pct(kwh.andel)} af porteføljens el, som ingen detektor kan se · ${dkKr(kwh.kr)}/år`
+                : `${pct(kwh.andel)} af porteføljens el · ${dkKr(kwh.kr)}/år`)
+            : 'ingen submåling på området'),
     person.visitator
       ? kpi('Til visitation', dkTal(koe.length), 'sager uden fagansvarlig — skal sendes videre, ikke løses')
       : kpi('Opgaver i Dalux', opgaver ? dkTal(opgaver.antal) : '—',
@@ -134,7 +143,7 @@ function dashboard(person, gaaTil) {
   }
 
   /* Visitationskøen — en anden slags arbejde end min egen kø. */
-  if (person.visitator) el.append(visitationsafsnit(koe, gaaTil));
+  if (person.visitator) el.append(visitationsafsnit(heleKoen, gaaTil));
 
   /* Mine anlæg. */
   const klasser = ANLAEGSKLASSER.filter((a) => person.faggrupper.includes(a.fg));
@@ -284,10 +293,20 @@ function tomKoe(person) {
 /* ---- Beregninger pr. person ----------------------------------------------- */
 
 function energiFor(person, d) {
+  /* Restposten er ikke en linje i faggruppetabellen — den er det, der bliver
+   * tilovers, når alle linjerne er trukket fra. Den, der har målerne, har
+   * netop den, og så skal tallet regnes sådan. */
+  const daekker = (person.daekker || person.faggrupper.map((f) => ({ fg: f }))).map((k) => k.fg);
+  if (daekker.includes('oevrigt') && d && d.portefoelje && d.faggruppeAar) {
+    const submaalt = d.faggruppeAar.reduce((a, f) => a + f.gwh, 0);
+    const rest = d.portefoelje.elBruttoGWh - submaalt;
+    return { gwh: rest, andel: 100 * rest / d.portefoelje.elBruttoGWh,
+      kr: rest * 1e6 * state.forudsaetninger.elpris, erRestpost: true };
+  }
   if (!d || !d.faggruppeAar || !person.faggrupper.length) return null;
   const gwh = person.faggrupper.reduce((a, f) => a + ((d.faggruppeAar.find((x) => x.fg === f) || {}).gwh || 0), 0);
   if (!gwh) return null;
-  const total = d.portefolje ? d.portefolje.elBruttoGWh : null;
+  const total = d.portefoelje ? d.portefoelje.elBruttoGWh : null;
   return {
     gwh,
     andel: total ? (100 * gwh / total) : null,
@@ -311,18 +330,28 @@ function opgaverFor(person, d) {
  * nogen, er den værd at bruge tid på, og burde afgørelsen have været truffet
  * automatisk? Det sidste er det vigtigste — en visitator, der sender den samme
  * slags sag samme sted hen hver uge, udfører et arbejde, en regel burde gøre. */
-function visitationsafsnit(koe, gaaTil) {
+function visitationsafsnit(heleKoen, gaaTil) {
   const el = h('div', {});
   const regler = state.routingregler || {};
   const vis = state.visitationer || {};
+  const { venter, henlagt } = delKoe(heleKoen);
+  const koe = venter;
 
   el.append(h('h2', { style: { marginTop: '24px' } }, `Til visitation (${koe.length})`));
   el.append(h('p', { class: 'muted', style: { fontSize: '12.5px', marginTop: '-4px', maxWidth: '84ch' } },
     'Opgaven er ikke at løse sagerne, men at afgøre hvor de hører til — eller at lukke dem. '
     + 'En sag i denne kø er ubehandlet, uanset hvor hurtigt der bliver kigget på den.'));
 
+  if (henlagt.length) {
+    el.append(h('div', { class: 'note', style: { marginBottom: '12px' } },
+      h('strong', {}, `${henlagt.length} sager er lagt til side, ikke overset.`), ' ',
+      BEVIDST_UDEN_ANSVARLIG.map((x) => x.fagomraade).join(' og '),
+      ' står bevidst uden ansvarlig. Sagerne oprettes stadig og kan ses under Sager, '
+      + 'men de venter ikke på en beslutning og tæller ikke med i køen.'));
+  }
+
   if (!koe.length) {
-    el.append(h('div', { class: 'note' }, 'Køen er tom. Alle åbne sager har en fagansvarlig.'));
+    el.append(h('div', { class: 'note' }, 'Køen er tom. Alle åbne sager har en fagansvarlig eller er lagt til side.'));
     return el;
   }
 
@@ -524,7 +553,17 @@ function udaekkedeAfsnit() {
     { navn: 'Hvor den hører hjemme', celle: (r) => h('span', { class: 'muted' }, r.hvem), wrap: true },
   ], UDAEKKEDE_OMRAADER));
 
-  el.append(h('h3', { style: { marginTop: '20px' } }, 'Fagområder på opgavesiden uden en ansvarlig'));
+  el.append(h('h3', { style: { marginTop: '20px' } }, 'Områder, der bevidst står uden ansvarlig'));
+  el.append(h('p', { class: 'muted', style: { fontSize: '12.5px', marginTop: '-4px', maxWidth: '84ch' } },
+    'Det er en truffet beslutning, ikke et hul. Sagerne oprettes stadig, men de venter ikke på nogen — '
+    + 'og de tæller ikke med i visitationskøen, så beslutningen ikke bliver ved med at dukke op som en mangel.'));
+  el.append(tabel([
+    { navn: 'Fagområde', celle: (r) => h('span', {}, swatch(foFarve(r.fagomraade)), h('strong', {}, r.fagomraade)) },
+    { navn: 'Opgaver', r: true, celle: (r) => dkTal(r.opgaver) },
+    { navn: 'Begrundelse', celle: (r) => r.begrundelse, wrap: true },
+  ], BEVIDST_UDEN_ANSVARLIG));
+
+  el.append(h('h3', { style: { marginTop: '20px' } }, 'Fagområder, der endnu ikke er afklaret'));
   el.append(h('p', { class: 'muted', style: { fontSize: '12.5px', marginTop: '-4px', maxWidth: '84ch' } },
     'De syv dækker de tekniske anlæg. Butikkerne melder betydeligt mere ind end det — og de opgaver '
     + 'har ingen af de syv. Det er ikke et hul i hubben, men et spørgsmål om, hvor grænsen for '
@@ -541,12 +580,18 @@ function udaekkedeAfsnit() {
 function herreloese(gaaTil) {
   const el = h('div', {});
   const vis = state.visitationer || {};
-  const koe = visitationskoe(state.sager, vis, state.routingregler || {}).filter(aaben);
+  const alle = visitationskoe(state.sager, vis, state.routingregler || {}).filter(aaben);
+  const { venter: koe, henlagt } = delKoe(alle);
   const udaekkede = udaekkedeFaggrupper(FAGGRUPPER).filter((f) => f.key !== 'lejere');
 
   el.append(h('h2', {}, 'Sager uden fagansvarlig'));
+  if (henlagt.length) {
+    el.append(h('p', { class: 'muted', style: { fontSize: '12.5px', marginTop: '-4px' } },
+      `Ud over nedenstående er ${henlagt.length} sager lagt bevidst til side: `
+      + BEVIDST_UDEN_ANSVARLIG.map((x) => `${x.fagomraade} (${x.begrundelse.split('.')[0].toLowerCase()})`).join(', ') + '.'));
+  }
   if (!koe.length) {
-    el.append(h('div', { class: 'note' }, 'Alle åbne sager har en fagansvarlig.'));
+    el.append(h('div', { class: 'note' }, 'Alle åbne sager har en fagansvarlig eller er lagt bevidst til side.'));
     return el;
   }
 

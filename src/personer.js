@@ -105,16 +105,11 @@ export const PERSONER = [
     // ingen naturlig fagansvarlig.
     visitator: true,
     visitatorDetektorer: ['D-01', 'D-02', 'D-03', 'D-04', 'D-05', 'D-09', 'D-10'],
-    /* Målersager er ikke visitation.
-     *
-     * Restpost, målerfejl og benchmark handler om forbrug, der ikke er
-     * henført til et anlæg — og de kan ikke sendes til en fagansvarlig,
-     * for der er netop ikke noget anlæg at sende dem til. De er
-     * måleropgaver, og de hører til hos energiansvarlig som en del af
-     * hans eget arbejde. At lade dem ligge i visitationskøen ville få
-     * køen til at se ud, som om firs sager ventede på en beslutning,
-     * der ikke findes. */
-    egneSagstyper: ['restpost', 'maalerfejl', 'benchmark'],
+    /* Benchmark er en energiscreening, ikke en måleropgave: spørgsmålet
+     * "hvorfor ligger butikken højt mod sine søskende" hører til hos
+     * energiansvarlig. Selve målersagerne — restpost og målerfejl — er
+     * Christians. */
+    egneSagstyper: ['benchmark'],
   },
   {
     id: 'lars',
@@ -127,6 +122,41 @@ export const PERSONER = [
     detektorer: ['D-19', 'D-20'],
     noegleKilder: ['Dalux opgavehistorik', 'Dalux anlægsregister'],
     udenEnergiside: true,
+  },
+  {
+    id: 'charlie',
+    navn: 'Charlie',
+    omraade: 'Alarm og sikkerhed',
+    beskrivelse: 'Indbrudsalarm, brandalarm, ABDL, ITV-overvågning, adgangskontrol, sprinkler og '
+      + 'brandslukningsudstyr.',
+    faggrupper: [],
+    fagomraader: ['Sikkerhed/Alarm'],
+    fag: 'Sikringstekniker',
+    detektorer: ['D-19', 'D-20'],
+    noegleKilder: ['Dalux opgavehistorik', 'Dalux anlægsregister'],
+    udenEnergiside: true,
+  },
+  {
+    id: 'christian',
+    navn: 'Christian',
+    omraade: 'Målere og målepunkter',
+    beskrivelse: 'Målerhierarkiet: forsyningsmålere, bimålere, tagging af målepunkter i Enity og '
+      + 'datakvaliteten bag hele overvågningen.',
+    faggrupper: [],
+    // Øvrigt/uspecificeret er restposten — det forbrug, der endnu ikke er
+    // henført til en anlægstype. Det er ikke en anlægstype og kan derfor ikke
+    // have en fagansvarlig i sædvanlig forstand. Men at lukke hullet ER
+    // måleropgaven, og derfor er faggruppen Christians.
+    daekker: [{ fg: 'oevrigt', note: 'Restposten — forbrug, der endnu ikke er henført til et anlæg' }],
+    fagomraader: [],
+    fag: 'Elektriker / måletekniker',
+    detektorer: ['D-03', 'D-04', 'D-30'],
+    noegleKilder: ['Enity målerhierarki', 'Enity tags', 'Datahub'],
+    /* Målersagerne. De kan ikke sendes til en fagansvarlig, for der er netop
+     * ikke noget anlæg at sende dem til — det er hele pointen med dem. */
+    egneSagstyper: ['restpost', 'maalerfejl'],
+    fokus: 'Hver måler, der kommer på plads, fjerner sager fra visitationskøen af sig selv: '
+      + 'et forbrug med en bimåler på har en anlægstype, og en anlægstype har en fagansvarlig.',
   },
   {
     id: 'martin',
@@ -148,6 +178,28 @@ export const PERSONER = [
 ];
 
 export const PERSON = Object.fromEntries(PERSONER.map((p) => [p.id, p]));
+
+/* Områder, der bevidst står uden ansvarlig.
+ *
+ * Forskellen på "ingen har taget den endnu" og "ingen skal have den" er
+ * vigtig. Det første er et hul, der skal lukkes; det andet er en truffet
+ * beslutning, og den skal kunne ses som sådan — ellers bliver den ved med at
+ * dukke op som en mangel, nogen skal forholde sig til igen og igen.
+ *
+ * Sagerne oprettes stadig og kan stadig ses. De ligger bare ikke og venter på
+ * en visitator, der ikke har nogen at sende dem til.
+ */
+export const BEVIDST_UDEN_ANSVARLIG = [
+  { fagomraade: 'Skadedyr', opgaver: 2355,
+    begrundelse: 'Skadedyrsbekæmpelse kører på serviceaftale med egen leverandør. Opgaverne er '
+      + 'lovpligtige tilsyn frem for fejl, og driftsorganisationen har ingen rolle i dem.' },
+  { fagomraade: 'Bygning/Tag', opgaver: 2162,
+    begrundelse: 'Bygningsvedligehold ligger uden for de tekniske driftsområder og håndteres '
+      + 'af byggeriet, ikke af driften.' },
+];
+
+export const erBevidstUdenAnsvarlig = (fagomraade) =>
+  BEVIDST_UDEN_ANSVARLIG.some((x) => x.fagomraade === fagomraade);
 
 /** Hvem ejer en faggruppe? Bruges til at route en sag til en person. */
 export function ejerAfFaggruppe(fg) {
@@ -212,22 +264,40 @@ export function ejerMedRolle(fg, energirolle) {
 }
 
 export function ejerAfSag(sag, visitationer = {}, routingregler = {}) {
+  // 1 · Et menneske har set sagen og sendt den videre.
   const manuelt = visitationer[`${sag.butiksnummer}|${sag.sagstype}`];
   if (manuelt && PERSON[manuelt]) return PERSON[manuelt];
-  // Sagstyper, en person har taget på sig som sit eget arbejde.
-  const egen = PERSONER.find((p) => (p.egneSagstyper || []).includes(sag.sagstype));
-  if (egen) return egen;
-  // En fast regel dækker alle fremtidige sager af samme slags, så
-  // visitatoren slipper for at tage den samme beslutning igen.
+
+  // 2 · En fast regel, nogen har godkendt.
   const regel = routingregler[`${sag.sagstype}|${sag.faggruppe || '-'}|${sag.energirolle || '-'}`];
   if (regel && PERSON[regel.personId]) return PERSON[regel.personId];
-  if (sag.faggruppe) {
-    const m = ejerMedRolle(sag.faggruppe, sag.energirolle);
-    if (m) return m.person;
-  }
+
+  // 3 · Sagstyper, en person har taget på sig som sit eget arbejde.
+  const egen = PERSONER.find((p) => (p.egneSagstyper || []).includes(sag.sagstype));
+  if (egen) return egen;
+
+  /* 4 · Fagområdet før faggruppen, når faggruppen kun er "øvrigt".
+   *
+   * En sag om gentagne alarmfejl har faggruppen "Øvrigt", fordi alarmanlæg
+   * ikke har en energiside — ikke fordi den er en målersag. Slog faggruppen
+   * igennem først, ville hver eneste opgavesag uden energiside lande hos den,
+   * der har restposten. "Øvrigt" er en restkategori, ikke en klassifikation,
+   * og den må derfor aldrig vinde over et fagområde, nogen faktisk dækker. */
   if (sag.fagomraade) {
     const p = ejerAfFagomraade(sag.fagomraade);
     if (p) return p;
+    /* Har sagen et fagområde, som ingen dækker, hører den til i visitationen
+     * — ikke hos den, der har restposten. En toiletlækage er ikke en
+     * målersag, blot fordi VVS ikke har en energiside. Faggruppen "Øvrigt"
+     * må kun bruges, når der slet ikke er et fagområde at gå efter, og det
+     * er der kun på de rene energi- og målersager. */
+    return null;
+  }
+
+  // 5 · Faggruppen i den rolle, sagen handler om.
+  if (sag.faggruppe) {
+    const m = ejerMedRolle(sag.faggruppe, sag.energirolle);
+    if (m) return m.person;
   }
   return null;
 }

@@ -10,7 +10,7 @@
  * forslaget til en regel, når mønsteret har vist sig nok gange.
  */
 
-import { PERSONER, PERSON, VISITATOR, ejerMedRolle, ejerAfFagomraade } from './personer.js';
+import { PERSONER, PERSON, VISITATOR, ejerMedRolle, ejerAfFagomraade, erBevidstUdenAnsvarlig, BEVIDST_UDEN_ANSVARLIG } from './personer.js';
 import { FG, fgNavn } from './taxonomy.js';
 import { FO } from './opgaver.js';
 
@@ -19,6 +19,11 @@ import { FO } from './opgaver.js';
  * skjuler, at nogle er et bemandingsspørgsmål og andre er et datahul.
  */
 export const GRUNDE = {
+  bevidst_henlagt: {
+    navn: 'Området står bevidst uden ansvarlig',
+    handling: 'Ingen handling. Beslutningen er truffet — sagerne oprettes, men venter ikke på nogen.',
+    slags: 'besluttet',
+  },
   udaekket_faggruppe: {
     navn: 'Faggruppen har ingen ansvarlig',
     handling: 'Udpeg en ansvarlig, eller afgør at området ikke skal overvåges.',
@@ -46,8 +51,16 @@ export const GRUNDE = {
   },
 };
 
-/** Afgør hvorfor en sag står uden fagansvarlig. */
+/**
+ * Afgør hvorfor en sag står uden fagansvarlig.
+ *
+ * "Bevidst henlagt" er ikke det samme som "mangler en ansvarlig". Det første
+ * er en truffet beslutning, det andet er et hul. Blandes de sammen, bliver
+ * beslutningen ved med at dukke op som en mangel, nogen skal forholde sig til
+ * igen og igen.
+ */
 export function grundFor(sag) {
+  if (sag.fagomraade && erBevidstUdenAnsvarlig(sag.fagomraade)) return 'bevidst_henlagt';
   if (sag.faggruppe && sag.faggruppe !== 'oevrigt') {
     // Dækkes faggruppen i netop den energirolle, er sagen slet ikke uden ejer.
     if (ejerMedRolle(sag.faggruppe, sag.energirolle)) return 'ukendt_fagomraade';
@@ -164,6 +177,12 @@ export function koeAlder(sager, { nu = new Date(), maal = 5 } = {}) {
  * Det mest nyttige, visitationen kan producere, er ikke en tømt kø — det er
  * en liste over, hvad der ville få sagerne til aldrig at havne der.
  */
+/** Deler køen i det, der venter på nogen, og det, der er lagt til side. */
+export function delKoe(koe) {
+  const henlagt = koe.filter((s) => s.fagomraade && erBevidstUdenAnsvarlig(s.fagomraade));
+  return { venter: koe.filter((s) => !henlagt.includes(s)), henlagt, henlagteOmraader: BEVIDST_UDEN_ANSVARLIG };
+}
+
 export function hvadVilleToemmeKoeen(koe) {
   const prGrund = {};
   for (const sag of koe) {

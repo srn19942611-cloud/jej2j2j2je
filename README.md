@@ -272,6 +272,8 @@ der gør en faggruppe til en person — og dermed en sag til nogens ansvar.
 | **Morten** | CTS, elevatorer og selvstændig klimakøl | CTS & teknik, Køleflader/klima (fritstående) | Elevator/Rulletrappe |
 | **Emil** | Varme og overskudsvarme | Overskudsvarme, Varme el/varmepumpe, Varme fjernvarme | — |
 | **Stefan** | Solceller og belysning · **energiansvarlig** | Solceller, Belysning inde, Belysning ude | Solceller, Lys/El |
+| **Charlie** | Alarm og sikkerhed | — | Sikkerhed/Alarm |
+| **Christian** | Målere og målepunkter | Øvrigt (restposten) | — |
 | — | **Produktion & køkken** (ovne, friture, kipsteger) | Produktion | — |
 | **Lars** | Flaskeautomater og porte | — | Flaskeautomat, Port/Dør |
 | **Martin** | Systemydelser og eltavler | — | El tavler, IT/Kasse |
@@ -365,21 +367,56 @@ De øvrige tre er ikke fejl, men huller, der kræver noget fysisk: et målepunkt
 der aldrig blev tagget, en tavle, ingen har gennemgået, og 278 aggregater, hvor
 ventilation, køle- og varmeflade deler én måler og derfor ikke kan skilles ad.
 
-Tre faggrupper kan aldrig få en fagansvarlig, og det er rigtigt:
-**Øvrigt/uspecificeret** er ikke en anlægstype, men det forbrug, der endnu ikke
-er henført til en; **Lejere** er et afregningsforhold; og **Produktion & køkken**
-serviceres i dag af leverandøren direkte.
+### Restposten har alligevel en ejer
+
+Jeg skrev tidligere, at **Øvrigt/uspecificeret** aldrig kunne få en
+fagansvarlig, fordi den ikke er en anlægstype. Det var forkert. Restposten er
+det forbrug, der endnu ikke er henført til et anlæg — og at lukke det hul
+*er* måleropgaven. Den hører derfor til hos **Christian**, ansvarlig for
+målere og målepunkter.
+
+Det flytter 71 sager fra visitationskøen til en person, der kan gøre noget ved
+dem, og giver en KPI, der betyder noget: **109,8 GWh — 43 % af porteføljens el,
+som ingen detektor kan se.** Hver måler, der kommer på plads, fjerner sager fra
+køen af sig selv.
+
+Tilbage står to faggrupper uden ejer: **Lejere** (et afregningsforhold, ikke en
+driftsopgave) og **Produktion & køkken** (serviceres i dag af leverandøren
+direkte).
+
+### Områder, der bevidst står uden ansvarlig
+
+Forskellen på *"ingen har taget den endnu"* og *"ingen skal have den"* er
+vigtig. Det første er et hul, der skal lukkes; det andet er en truffet
+beslutning, og den skal kunne ses som sådan — ellers dukker den op som en
+mangel, nogen skal forholde sig til igen og igen.
+
+| Fagområde | Opgaver | Begrundelse |
+|---|---|---|
+| Skadedyr | 2.355 | Serviceaftale med egen leverandør, lovpligtige tilsyn frem for fejl |
+| Bygning/Tag | 2.162 | Bygningsvedligehold ligger uden for de tekniske driftsområder |
+
+Sagerne oprettes stadig og kan ses, men de venter ikke på nogen og tæller ikke
+med i visitationskøen.
 
 ## Visitationen
 
 Visitation er tre afgørelser, ikke én flytning: hører sagen til hos nogen, er
 den værd at bruge tid på, og **burde afgørelsen have været truffet automatisk?**
 
-**Målersager er ikke visitation.** Restpost, målerfejl og benchmark kan ikke
-sendes til en fagansvarlig, for der er netop ikke noget anlæg at sende dem til.
-De er måleropgaver og ligger i energiansvarliges egen kø. Det flytter 70 af 87
-sager ud af visitationskøen — og får køen til at vise det, den skal: de 17
-sager, der faktisk venter på en beslutning.
+**Målersager er ikke visitation.** Restpost og målerfejl kan ikke sendes til en
+fagansvarlig, for der er netop ikke noget anlæg at sende dem til. De er
+Christians måleropgaver. Benchmark er derimod en energiscreening — spørgsmålet
+*"hvorfor ligger butikken højt mod sine søskende"* — og hører til hos Stefan.
+
+Sammen med de bevidst henlagte områder tømmer det køen for alt, der ikke
+venter på en beslutning: **fra 87 sager til 4.**
+
+**Rækkefølgen i routingen betyder noget.** Fagområdet vinder over faggruppen,
+når faggruppen kun er "Øvrigt". En sag om gentagne alarmfejl har faggruppen
+Øvrigt, fordi alarmanlæg ikke har en energiside — ikke fordi den er en
+målersag. Uden den regel ville hver eneste opgavesag uden energiside lande hos
+den, der har restposten: en toiletlækage er ikke en målersag.
 
 **Forslag med begrundelse.** Hubben peger på en modtager ad fem veje, i
 rækkefølge: en fast regel, anlægget bag sagen, fagområdet, **faget** (en

@@ -554,17 +554,16 @@ export const UDAEKKEDE_OMRAADER = [
     hvem: 'Hører til hos den kontraktansvarlige, ikke hos en fagansvarlig.' },
   { fg: 'oevrigt', navn: 'Øvrigt/uspecificeret', maalere: 1009, butikker: 479,
     hvorfor: 'Restposten er ikke en anlægstype — den er det forbrug, der endnu ikke er henført til en. '
-      + 'Den kan derfor aldrig få en fagansvarlig; den bliver mindre, når målepunkterne kommer på plads.',
-    hvem: 'Energiansvarlig som måleropgave — ikke som driftsopgave.' },
+      + 'Jeg skrev tidligere, at den derfor aldrig kunne få en fagansvarlig. Det var forkert: at lukke '
+      + 'hullet ER måleropgaven, og den har nu en ejer.',
+    hvem: 'Christian, ansvarlig for målere og målepunkter.' },
 ];
 
 export const FAGOMRAADER_UDEN_ANSVARLIG = [
-  { navn: 'Skadedyr', opgaver: 2355, hvorfor: 'Kører på serviceaftale. Ingen af de syv har området, og opgaverne er lovpligtige tilsyn frem for fejl.' },
-  { navn: 'VVS/Sanitet', opgaver: 2256, hvorfor: 'Ingen formelt udpeget, men faget er Emils. Hubben foreslår ham med det forbehold.' },
-  { navn: 'Bygning/Tag', opgaver: 2162, hvorfor: 'Bygningsvedligehold ligger uden for de syv tekniske områder.' },
-  { navn: 'Sikkerhed/Alarm', opgaver: 1557, hvorfor: 'Sikringsanlæg har egen leverandøraftale og egen ansvarlig uden for driftsorganisationen.' },
-  { navn: 'Inventar/Vogne/Kurve', opgaver: 963, hvorfor: 'Butiksinventar, ikke teknisk anlæg.' },
+  { navn: 'VVS/Sanitet', opgaver: 2256, hvorfor: 'Ingen formelt udpeget. Faget er Emils, og hubben foreslår ham med det forbehold — men beslutningen mangler.' },
+  { navn: 'Inventar/Vogne/Kurve', opgaver: 963, hvorfor: 'Butiksinventar, ikke teknisk anlæg. Ikke afklaret hvor det hører hjemme.' },
   { navn: 'IT/Kasse', opgaver: 826, hvorfor: 'Lagt foreløbigt hos Martin under "systemydelser" — skal bekræftes.' },
-  { navn: 'Rengøring', opgaver: 568, hvorfor: 'Serviceaftale uden for driftsorganisationen.' },
+  { navn: 'Rengøring', opgaver: 568, hvorfor: 'Serviceaftale. Ikke afklaret om driften har en rolle.' },
   { navn: 'Udenomsarealer', opgaver: 545, hvorfor: 'Anlægsgartnerarbejde, ikke teknisk anlæg.' },
+  { navn: 'Affald og ballepresser', opgaver: 625, hvorfor: 'Renovationsaftale. Ballepresseren er et anlæg, men ingen har det.' },
 ];
