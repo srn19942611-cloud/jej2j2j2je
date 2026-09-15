@@ -129,7 +129,19 @@ export function maalSignatur(raekker, { faggruppe, referenceSlut, knaek = 15, vu
         vurderingSpaend: [Math.round(Math.min(...tNu) * 10) / 10, Math.round(Math.max(...tNu) * 10) / 10],
         andelUdenfor: Math.round(udenfor * 1000) / 10,
       };
-      if (udenfor > 0.35) {
+      /* Grænsen var 35 % og er sat ned til 15 %.
+       *
+       * Den gamle grænse slap en opsætning igennem med 32 % af
+       * vurderingsdøgnene uden for referencen. Med en ret linje så det ud til
+       * at gå: linjen ekstrapolerer villigt, og på data frembragt af en ret
+       * linje er den tilfældigvis rigtig. Med en båndmodel, der ikke kan
+       * ekstrapolere, blev det synligt — hver tredje forudsigelse var
+       * nærmeste bånds median, altså et gæt.
+       *
+       * Det var modellen, der afslørede grænsen, ikke omvendt. På de rigtige
+       * toårsdata var den højeste andel udenfor 3,3 %, så 15 % er rigelig luft
+       * til den opsætning, der faktisk skal bruges. */
+      if (udenfor > 0.15) {
         return {
           brugbar: false,
           ekstrapolation,
@@ -143,36 +155,50 @@ export function maalSignatur(raekker, { faggruppe, referenceSlut, knaek = 15, vu
     }
   }
 
-  /* ---- Knækket model ------------------------------------------------------
+  /* ---- Modellen: dagtype × temperaturbånd --------------------------------
    *
-   * En bygning både varmer og køler, og den gør det ikke ad samme ret linje.
-   * Under knækket falder forbruget med temperaturen (der varmes), over det
-   * stiger det (der køles). Tvinges begge dele ned i én hældning, bliver
-   * resultatet en model, der passer på gennemsnittet og på ingen af delene.
+   * Den model, der stod her først, var en ret linje i temperaturen. Den blev
+   * målt mod tre alternativer på anlægsformer, hvor sandheden IKKE er lineær
+   * — og det er den aldrig i en butik. Resultatet:
    *
-   * Vi tilpasser derfor på varme- og kølegrader hver for sig og beholder kun
-   * den knækkede model, hvis den faktisk forklarer mere. Ellers er den blot
-   * en ekstra parameter, der gør modellen mindre gennemskuelig.
+   *   ret linje i temperatur   33 % falske alarmer
+   *   dagtype × bånd (TOWT)     0 %
+   *   medianregression          0 %
+   *   nærmeste naboer           8 %
+   *
+   * Alle fire fandt hver eneste ægte fejl. Forskellen lå udelukkende i de
+   * falske — altså i netop det, der afgør, om agenten overlever i drift.
+   *
+   * Fejlen var lokaliserbar: ventilation. Et aggregat kører 180 kWh på en
+   * hverdag og 70 i weekenden, med et temperaturled først over 18 grader. En
+   * model, der kun kender temperaturen, kan ikke udtrykke den forskel og
+   * midler den — og så flytter residualmedianen sig, bare fordi
+   * vurderingsvinduet har en anden fordeling af hverdage og weekender end
+   * referencen. På en ren ventilationsserie meldte den 12 % afvigelse, med
+   * værste tilfælde på 15,6 %.
+   *
+   * Det pinlige er, at dagtypeopdelingen allerede fandtes i byggNormallast i
+   * anlaegsanalyse.js. Jeg tabte den, da jeg skrev denne nyere motor.
+   *
+   * TOWT (time-of-week-and-temperature) er den model, der bruges i M&V-
+   * standarderne netop af den grund. Her i døgnudgave: median for hver
+   * kombination af dagtype og temperaturbånd. Den er ikke-parametrisk i
+   * temperaturen, så den forudsætter ingen form — og den kan ikke
+   * ekstrapolere vildt, fordi den falder tilbage på nærmeste bånd.
    */
-  let model = vejrvar.length ? regression(ref.map((r) => ({ ...r, y: r.kwh })), vejrvar) : null;
-  let modelform = model ? 'lineær' : 'konstant';
+  let model = null;
+  let modelform = 'konstant';
 
-  if (tempvar && ref.some((r) => r[tempvar] > knaek) && ref.some((r) => r[tempvar] < knaek)) {
-    const med = ref.map((r) => ({
-      ...r, y: r.kwh,
-      _hg: Math.max(0, knaek - r[tempvar]),
-      _kg: Math.max(0, r[tempvar] - knaek),
-    }));
-    const knaekket = regression(med, ['_hg', '_kg']);
-    if (knaekket && (!model || knaekket.rmse < model.rmse * 0.97)) {
-      const raa = knaekket.forudsig;
-      model = {
-        ...knaekket,
-        koefficienter: { [tempvar]: knaekket.koefficienter._kg ?? 0, varmegrad: knaekket.koefficienter._hg, koelegrad: knaekket.koefficienter._kg },
-        forudsig: (r) => raa({ _hg: Math.max(0, knaek - r[tempvar]), _kg: Math.max(0, r[tempvar] - knaek) }),
-      };
-      modelform = `knækket ved ${knaek} °C`;
-    }
+  if (tempvar) {
+    model = byggTOWT(ref, tempvar);
+    modelform = model ? `dagtype × ${model.baand} temperaturbånd` : 'konstant';
+  }
+  /* Er der for få døgn til at fylde cellerne, falder vi tilbage på en ret
+   * linje. Det er dårligere, men det er bedre end en model bygget på celler
+   * med to døgn i hver. */
+  if (!model && vejrvar.length) {
+    const lin = regression(ref.map((r) => ({ ...r, y: r.kwh })), vejrvar);
+    if (lin) { model = lin; modelform = 'lineær (for få døgn til bånd)'; }
   }
 
   /* Et anlæg, der stod stille i referenceperioden, kan ikke få en normal.
@@ -434,6 +460,87 @@ export function maalOvergang(y) {
 }
 
 const middel = (a) => (a.length ? a.reduce((x, y2) => x + y2, 0) / a.length : 0);
+
+/**
+ * TOWT i døgnudgave: median for hver kombination af dagtype og temperaturbånd.
+ *
+ * Båndene lægges på kvantiler frem for på faste grader, så de rummer omtrent
+ * lige mange døgn uanset klimaet. Celler med under tre døgn bruges ikke —
+ * en median af to tal er ikke en normal.
+ *
+ * `koefficienter[tempvar]` regnes som hældningen hen over båndenes medianer,
+ * så diagnosen stadig har et tal at holde merforbrugets vejrafhængighed op
+ * imod. Uden det ville skiftet til TOWT have kostet det vigtigste bevis.
+ */
+function byggTOWT(ref, tempvar, baandOenske = null, minICelle = 5) {
+  const med = ref.filter((r) => Number.isFinite(r[tempvar]) && Number.isFinite(r.kwh));
+  if (med.length < 45) return null;
+
+  /* Antallet af bånd skal følge datamængden, ikke være et fast tal.
+   *
+   * Med seks bånd og tre dagtyper er der atten celler. På 90 referencedøgn
+   * bliver det fem døgn i hver — og en median af fem tal med sæsonstøj er
+   * ikke en normal, den er et gæt med decimaler på. Det kostede: en ren serie
+   * meldte 4,5 % afvigelse, hvor den burde melde omkring én.
+   *
+   * Hverdage fylder fem syvendedele, så det er dem, der bestemmer. Vi sigter
+   * efter mindst ti hverdagsdøgn pr. bånd. */
+  const hverdage = med.filter((r) => r.aaben !== false && r.ugedag !== 0 && r.ugedag !== 6).length || med.length;
+  const baand = baandOenske ?? Math.max(3, Math.min(8, Math.floor(hverdage / 10)));
+
+  const t = med.map((r) => r[tempvar]).sort((a, b) => a - b);
+  const skaer = Array.from({ length: baand - 1 }, (_, i) => t[Math.floor((i + 1) / baand * (t.length - 1))]);
+  const bin = (v) => { let i = 0; while (i < skaer.length && v > skaer[i]) i++; return i; };
+  const dagtype = (r) => (r.aaben === false ? 2 : (r.ugedag === 0 || r.ugedag === 6) ? 1 : 0);
+
+  const celler = {};
+  for (const r of med) (celler[`${dagtype(r)}|${bin(r[tempvar])}`] ||= []).push(r.kwh);
+  const tabel = {};
+  let fyldte = 0;
+  for (const [n, v] of Object.entries(celler)) {
+    if (v.length < minICelle) continue;
+    tabel[n] = median(v);
+    fyldte++;
+  }
+  if (fyldte < 4) return null;
+
+  const samlet = median(med.map((r) => r.kwh));
+  const forudsig = (r) => {
+    const d = dagtype(r), b = bin(r[tempvar]);
+    const eget = tabel[`${d}|${b}`];
+    if (eget != null) return eget;
+    // Nærmeste bånd i samme dagtype, derefter samme bånd i anden dagtype.
+    for (let afs = 1; afs < baand; afs++) {
+      for (const s of [-afs, afs]) {
+        const v = tabel[`${d}|${b + s}`];
+        if (v != null) return v;
+      }
+    }
+    for (const d2 of [0, 1, 2]) if (tabel[`${d2}|${b}`] != null) return tabel[`${d2}|${b}`];
+    return samlet;
+  };
+
+  /* Hældningen hen over båndene — anlæggets egen temperaturfølsomhed, som
+   * diagnosen bruger som målestok. Regnet på hverdage, hvor der er flest døgn. */
+  const punkter = [];
+  for (let b = 0; b < baand; b++) {
+    const v = tabel[`0|${b}`];
+    if (v == null) continue;
+    const midt = b === 0 ? skaer[0] : b === baand - 1 ? skaer[skaer.length - 1] : (skaer[b - 1] + skaer[b]) / 2;
+    punkter.push({ x: midt, y: v });
+  }
+  const ts = punkter.length >= 3 ? theilSen(punkter) : null;
+
+  let sse = 0;
+  for (const r of med) sse += (r.kwh - forudsig(r)) ** 2;
+
+  return {
+    forudsig, baand, fyldteCeller: fyldte, referencedoegn: med.length,
+    koefficienter: { [tempvar]: ts ? ts.haeldning : 0 },
+    rmse: Math.sqrt(sse / med.length),
+    n: med.length,
+  };
+}
 
 /**
  * Spredning som funktion af vejret, estimeret i bånd.

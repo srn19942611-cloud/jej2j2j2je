@@ -134,7 +134,10 @@ export const FEJLMODELLER = {
   maaler_doed: {
     navn: 'Måleren er holdt op med at levere',
     form: 'nul',
-    byg: (i, v, basis) => (i >= 300 ? -basis : 0),
+    // Bruger p.start som alle de andre. Var hårdkodet til dag 300, hvilket i
+    // en toårsserie lægger målerens død inde i referenceperioden — og så er
+    // der ingen normal at afvige fra.
+    byg: (i, v, basis, p) => (i >= p.start ? -basis : 0),
     std: {},
   },
 
