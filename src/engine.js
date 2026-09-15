@@ -426,7 +426,7 @@ export function byggSager(signaler, butikIndex, forud = FORUDSAETNINGER) {
   // hos visitatoren — og det markeres, så en sag i visitationskøen ikke kan
   // forveksles med en, der er placeret.
   for (const sag of sager) {
-    const a = ansvarligFor(sag, forud.visitationer || {});
+    const a = ansvarligFor(sag, forud.visitationer || {}, forud.routingregler || {});
     sag.ejer = a.person;
     sag.ansvarligRolle = a.rolle;
     sag.visiteret = a.visiteret;

@@ -268,10 +268,11 @@ der gør en faggruppe til en person — og dermed en sag til nogens ansvar.
 | Person | Område | Faggrupper | Fagområder i Dalux |
 |---|---|---|---|
 | **Henrik Ravn** | Køl og frost | Køl & frys | Køl/Frost |
-| **Mads** | Ventilation | Ventilation | Ventilation/Klima |
-| **Morten** | CTS, elevatorer og klimakøl | CTS & teknik, Køleflader/klima | Elevator/Rulletrappe |
+| **Mads** | Ventilation — hele aggregatet | Ventilation + køle- og varmeflade i aggregatet | Ventilation/Klima |
+| **Morten** | CTS, elevatorer og selvstændig klimakøl | CTS & teknik, Køleflader/klima (fritstående) | Elevator/Rulletrappe |
 | **Emil** | Varme og overskudsvarme | Overskudsvarme, Varme el/varmepumpe, Varme fjernvarme | — |
 | **Stefan** | Solceller og belysning · **energiansvarlig** | Solceller, Belysning inde, Belysning ude | Solceller, Lys/El |
+| — | **Produktion & køkken** (ovne, friture, kipsteger) | Produktion | — |
 | **Lars** | Flaskeautomater og porte | — | Flaskeautomat, Port/Dør |
 | **Martin** | Systemydelser og eltavler | — | El tavler, IT/Kasse |
 
@@ -281,11 +282,26 @@ ikke kan se.
 
 ### Tre ting, opdelingen afslører
 
-**Mads og Morten deler det samme fysiske aggregat.** Mads har luftsiden,
-Morten har kølefladen. Den opdeling kan kun holdes i data, fordi
-Enity-målepunkterne har et L4-tag, der skiller `Kun ventilation` fra
-`Køleflade` — og fordi et bredt `L0/1 HVAC` aldrig auto-mappes alene. Uden den
-regel ville halvdelen af Mortens forbrug lande hos Mads.
+**Ansvaret hænger på anlægget, ikke på faggruppen.** Den, der har
+ventilationsaggregatet, har også dets køle- og varmeflade — det er samme
+maskine og samme servicebesøg. Men en fritstående chiller er noget andet, selv
+om den havner i den samme faggruppe.
+
+Ansvarstabellen udtrykker derfor par af **faggruppe × energirolle**, ikke bare
+faggrupper:
+
+| Faggruppe | Energirolle | Ejer | Hvorfor |
+|---|---|---|---|
+| Ventilation | ventilatordrift | Mads | Aggregatet |
+| Køleflader/klima | køleflade | Mads | Fladen sidder i aggregatet |
+| Varme fjernvarme | varmeflade | Mads | Fladen sidder i aggregatet |
+| Køleflader/klima | alt andet | Morten | Fritstående chiller, AC, lufttæppe |
+| Varme fjernvarme | alt andet | Emil | Fjernvarme, veksler, VVB |
+
+Skelnen kan kun holdes, fordi målepunkterne har et L4-tag: `L2 Ventilation +
+L4 Køleflade` er Mads' flade, mens `L2 Klimaanlæg` er Mortens selvstændige
+anlæg. Et krav med eksplicitte roller vinder over et uden, så det mest præcise
+ansvar afgør.
 
 **Lars og Martin har områder uden energiside.** Deres anlæg bruger strøm, men
 vi måler det ikke separat. Deres billede er derfor drevet af Dalux-opgaver og
@@ -320,6 +336,72 @@ detektorerne er gode. En lang kø, der tømmes hurtigt, er sundere end en kort,
 der står stille. Og køen bliver kortere af sig selv, efterhånden som
 datadækningen stiger: et forbrug med en bimåler på har en anlægstype, og en
 anlægstype har en fagansvarlig.
+
+### Hvorfor nogle områder står uhåndterede
+
+Spørgsmålet fortjener tal. Gennemgangen af alle 11.817 el- og varmemålere gav
+fire forskellige grunde, og to af dem var fejl i hubben selv:
+
+| Grund | Målepunkter | Slags | Status |
+|---|---|---|---|
+| OK Tank — ekstern forbruger | 198 | mapping-fejl | **rettet** |
+| Ingen tags overhovedet | 162 | datahul | åben |
+| Tavle uden specifikt indhold | 94 | kræver fysisk gennemgang | åben |
+| Produktions- og køkkenudstyr | 80 | **manglende faggruppe** | **rettet** |
+| Samlet anlæg — tre strømme i én måler | 278 | kræver tre målere | åben |
+| Blandet HVAC uden underniveau | 20 | for bredt tag | åben |
+
+**De 198 OK Tank-målere** lå i Øvrigt, fordi tagget satte rollen til *lejer*,
+men ingen faggruppe. Det er lejerforbrug og skal ud af butikkens nøgletal.
+Rettet: rollen sætter nu faggruppen.
+
+**De 80 målepunkter på ovne, friture, kipsteger og komfurer** lå i Øvrigt, fordi
+der ikke fandtes en faggruppe til dem. Det er ikke "øvrigt" — det er et
+selvstændigt område med sin egen driftsprofil og sine egne leverandører.
+Faggruppen **Produktion & køkken** er oprettet. Den mangler stadig en
+ansvarlig, og det er nu synligt frem for skjult.
+
+De øvrige tre er ikke fejl, men huller, der kræver noget fysisk: et målepunkt,
+der aldrig blev tagget, en tavle, ingen har gennemgået, og 278 aggregater, hvor
+ventilation, køle- og varmeflade deler én måler og derfor ikke kan skilles ad.
+
+Tre faggrupper kan aldrig få en fagansvarlig, og det er rigtigt:
+**Øvrigt/uspecificeret** er ikke en anlægstype, men det forbrug, der endnu ikke
+er henført til en; **Lejere** er et afregningsforhold; og **Produktion & køkken**
+serviceres i dag af leverandøren direkte.
+
+## Visitationen
+
+Visitation er tre afgørelser, ikke én flytning: hører sagen til hos nogen, er
+den værd at bruge tid på, og **burde afgørelsen have været truffet automatisk?**
+
+**Målersager er ikke visitation.** Restpost, målerfejl og benchmark kan ikke
+sendes til en fagansvarlig, for der er netop ikke noget anlæg at sende dem til.
+De er måleropgaver og ligger i energiansvarliges egen kø. Det flytter 70 af 87
+sager ud af visitationskøen — og får køen til at vise det, den skal: de 17
+sager, der faktisk venter på en beslutning.
+
+**Forslag med begrundelse.** Hubben peger på en modtager ad fem veje, i
+rækkefølge: en fast regel, anlægget bag sagen, fagområdet, **faget** (en
+VVS-opgave hører til hos den, der laver VVS, selv om ingen formelt er sat på
+området), og endelig historikken. Forslaget siger altid hvorfor — en visitator,
+der ikke kan se begrundelsen, kan ikke tage stilling til om den holder.
+
+**Mønstre bliver til regler.** Er den samme slags sag sendt samme sted hen
+mindst tre gange og i mindst 80 % af tilfældene, foreslår hubben at gøre det
+til en fast routingregel. Så forsvinder sagerne fra køen af sig selv, og
+visitatoren slipper for at tage den samme beslutning igen.
+
+**At lukke er et gyldigt udfald.** Ikke alt, en detektor finder, er værd at
+sende videre — men årsagen skal med.
+
+**Køens alder er nøgletallet**, ikke dens længde: median og ældste sag mod et
+mål på fem arbejdsdage. Det måler, om funktionen er bemandet, ikke om
+detektorerne er gode.
+
+Fanen viser også **hvorfor** hver sag står i køen, fordelt på fem grunde — fordi
+nogle er et bemandingsspørgsmål og andre er et datahul, og datahullerne lukker
+sig selv, når målepunkterne kommer på plads.
 
 ### En tom kø er ikke i sig selv en god nyhed
 
@@ -572,7 +654,8 @@ src/
   dalux.js          opgavetekst, payload og oprettelse i Dalux FM
   anlaeg.js         teknisk anlægsregister: tagmapping, Dalux-anlægsklasser
   opgaver.js        fagområder, klassificering af Dalux-opgaver, gentagne fejl
-  personer.js       hvem har hvad — faggruppe og fagområde pr. fagansvarlig
+  personer.js       hvem har hvad — faggruppe × energirolle pr. fagansvarlig
+  visitation.js     forslag, grunde, regler og køens alder
   kobling.js        anlæg ↔ målepunkt: fire trin, delte målere, analyseenheder
   statistik.js      median, MAD, Theil-Sen, regression, CUSUM — robust mod udbrud
   anlaegsanalyse.js normallast pr. anlæg og seks mønsterbrud

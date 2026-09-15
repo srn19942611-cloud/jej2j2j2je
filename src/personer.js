@@ -35,32 +35,54 @@ export const PERSONER = [
     id: 'mads',
     navn: 'Mads',
     omraade: 'Ventilation',
-    beskrivelse: 'Drift af ventilationsanlæg: aggregater, ventilatorer, filtre, varmegenvinding og luftmængder.',
+    beskrivelse: 'Drift af ventilationsanlæg — hele aggregatet: ventilatorer, filtre, varmegenvinding, '
+      + 'luftmængder OG aggregatets køle- og varmeflade.',
     faggrupper: ['ventilation'],
+    // Kølefladen og varmefladen sidder i aggregatet og serviceres af den, der
+    // har aggregatet. De hører til Mads, når de er en del af et
+    // ventilationsanlæg — ikke når de står for sig selv.
+    daekker: [
+      { fg: 'ventilation' },
+      { fg: 'koeleflader', roller: ['køleflade'], note: 'Kølefladen i et ventilationsaggregat' },
+      { fg: 'varme_fjern', roller: ['varmeflade'], note: 'Varmefladen i et ventilationsaggregat' },
+    ],
     fagomraader: ['Ventilation/Klima'],
     fag: 'Ventilationstekniker',
-    detektorer: ['D-17', 'D-19', 'D-20'],
-    noegleKilder: ['Unikair', 'Enity el til ventilation', 'CTS-tidsplan'],
-    deler: [{ med: 'morten', hvad: 'Samme fysiske aggregat — Mads har luftsiden, Morten har kølefladen.' }],
+    detektorer: ['D-17', 'D-19', 'D-20', 'D-30', 'D-31', 'D-32'],
+    noegleKilder: ['Unikair', 'Enity el til ventilation', 'Enity køle- og varmeflademålere', 'CTS-tidsplan'],
   },
   {
     id: 'morten',
     navn: 'Morten',
     omraade: 'CTS, elevatorer og klimakøl',
-    beskrivelse: 'CTS-drift, elevatorer og rulletrapper samt ventilations- og klimakøl: køleflader, chillere og lufttæpper.',
-    faggrupper: ['cts', 'koeleflader'],
+    beskrivelse: 'CTS-drift, elevatorer og rulletrapper samt selvstændig komfortkøl: chillere, '
+      + 'klimaanlæg og lufttæpper, der ikke sidder i et ventilationsaggregat.',
+    faggrupper: ['cts'],
+    daekker: [
+      { fg: 'cts' },
+      // Komfortkøl, der IKKE er en flade i et aggregat. Skelnen ligger i
+      // målepunktets tags: L2 Klimaanlæg står for sig selv, mens
+      // L2 Ventilation + L4 Køleflade er en del af Mads' aggregat.
+      { fg: 'koeleflader', undtagenRoller: ['køleflade'], note: 'Selvstændig komfortkøl — chillere, AC, lufttæpper' },
+    ],
     fagomraader: ['Elevator/Rulletrappe'],
     fag: 'CTS-programmør',
     detektorer: ['D-15', 'D-16', 'D-19', 'D-20'],
-    noegleKilder: ['CTS Ltech', 'Enity køleflade-målere', 'Dalux elevatoropgaver'],
-    deler: [{ med: 'mads', hvad: 'Samme fysiske aggregat — Morten har kølefladen, Mads har luftsiden.' }],
+    noegleKilder: ['CTS Ltech', 'Enity klimaanlægsmålere', 'Dalux elevatoropgaver'],
   },
   {
     id: 'emil',
     navn: 'Emil',
     omraade: 'Varme og overskudsvarme',
     beskrivelse: 'Overskudsvarme, varmepumper og varmeinstallationer, herunder fjernvarme, vekslere og varmtvandsbeholdere.',
-    faggrupper: ['overskudsvarme', 'varme_el', 'varme_fjern'],
+    faggrupper: ['overskudsvarme', 'varme_el'],
+    daekker: [
+      { fg: 'overskudsvarme' },
+      { fg: 'varme_el' },
+      // Fjernvarme, vekslere og VVB — men ikke varmefladen i et
+      // ventilationsaggregat, som følger aggregatet.
+      { fg: 'varme_fjern', undtagenRoller: ['varmeflade'], note: 'Fjernvarme, vekslere og varmtvandsbeholdere' },
+    ],
     fagomraader: [],
     fag: 'VVS',
     detektorer: ['D-18', 'D-19', 'D-20'],
@@ -83,6 +105,16 @@ export const PERSONER = [
     // ingen naturlig fagansvarlig.
     visitator: true,
     visitatorDetektorer: ['D-01', 'D-02', 'D-03', 'D-04', 'D-05', 'D-09', 'D-10'],
+    /* Målersager er ikke visitation.
+     *
+     * Restpost, målerfejl og benchmark handler om forbrug, der ikke er
+     * henført til et anlæg — og de kan ikke sendes til en fagansvarlig,
+     * for der er netop ikke noget anlæg at sende dem til. De er
+     * måleropgaver, og de hører til hos energiansvarlig som en del af
+     * hans eget arbejde. At lade dem ligge i visitationskøen ville få
+     * køen til at se ud, som om firs sager ventede på en beslutning,
+     * der ikke findes. */
+    egneSagstyper: ['restpost', 'maalerfejl', 'benchmark'],
   },
   {
     id: 'lars',
@@ -119,7 +151,15 @@ export const PERSON = Object.fromEntries(PERSONER.map((p) => [p.id, p]));
 
 /** Hvem ejer en faggruppe? Bruges til at route en sag til en person. */
 export function ejerAfFaggruppe(fg) {
-  return PERSONER.find((p) => p.faggrupper.includes(fg)) || null;
+  const m = ejerMedRolle(fg, null);
+  return m ? m.person : null;
+}
+
+/** Alle faggrupper, nogen dækker — uanset i hvilken rolle. */
+export function daekkedeFaggrupper() {
+  const ud = new Set();
+  for (const p of PERSONER) for (const k of (p.daekker || p.faggrupper.map((f) => ({ fg: f })))) ud.add(k.fg);
+  return ud;
 }
 
 /** Hvem ejer et fagområde på opgavesiden? */
@@ -139,12 +179,51 @@ export const VISITATOR = PERSONER.find((p) => p.visitator) || null;
  * `visiteret` er en manuel omrouting, visitatoren har foretaget. Den slår alt
  * andet — et menneske, der har set sagen, ved mere end reglerne.
  */
-export function ejerAfSag(sag, visitationer = {}) {
+/**
+ * Hvem dækker en faggruppe i en bestemt energirolle?
+ *
+ * Et ventilationsaggregats køleflade og en fritstående chiller ender begge i
+ * faggruppen "Køleflader/klima", men de serviceres af hver sin person: fladen
+ * følger aggregatet, chilleren står for sig selv. Forskellen ligger i
+ * målepunktets tags — L2 Ventilation + L4 Køleflade mod L2 Klimaanlæg — og
+ * den skelnen skal derfor kunne udtrykkes i ansvarstabellen.
+ *
+ * Et krav med eksplicitte roller vinder over et uden, så det mest præcise
+ * ansvar afgør.
+ */
+export function ejerMedRolle(fg, energirolle) {
+  let bredt = null;
+  for (const p of PERSONER) {
+    for (const k of (p.daekker || p.faggrupper.map((f) => ({ fg: f })))) {
+      if (k.fg !== fg) continue;
+      if (k.roller) {
+        if (energirolle && k.roller.includes(energirolle)) return { person: p, krav: k, praecision: 'rolle' };
+        continue;
+      }
+      if (k.undtagenRoller) {
+        if (energirolle && k.undtagenRoller.includes(energirolle)) continue;
+        if (!bredt) bredt = { person: p, krav: k, praecision: 'rolle-undtagelse' };
+        continue;
+      }
+      if (!bredt) bredt = { person: p, krav: k, praecision: 'faggruppe' };
+    }
+  }
+  return bredt;
+}
+
+export function ejerAfSag(sag, visitationer = {}, routingregler = {}) {
   const manuelt = visitationer[`${sag.butiksnummer}|${sag.sagstype}`];
   if (manuelt && PERSON[manuelt]) return PERSON[manuelt];
+  // Sagstyper, en person har taget på sig som sit eget arbejde.
+  const egen = PERSONER.find((p) => (p.egneSagstyper || []).includes(sag.sagstype));
+  if (egen) return egen;
+  // En fast regel dækker alle fremtidige sager af samme slags, så
+  // visitatoren slipper for at tage den samme beslutning igen.
+  const regel = routingregler[`${sag.sagstype}|${sag.faggruppe || '-'}|${sag.energirolle || '-'}`];
+  if (regel && PERSON[regel.personId]) return PERSON[regel.personId];
   if (sag.faggruppe) {
-    const p = ejerAfFaggruppe(sag.faggruppe);
-    if (p) return p;
+    const m = ejerMedRolle(sag.faggruppe, sag.energirolle);
+    if (m) return m.person;
   }
   if (sag.fagomraade) {
     const p = ejerAfFagomraade(sag.fagomraade);
@@ -161,17 +240,17 @@ export function ejerAfSag(sag, visitationer = {}) {
  * uanset hvor dygtig visitatoren er, og hvis de to køer blandes, forsvinder
  * netop det, man skal kunne se: at firs sager venter på at blive placeret.
  */
-export function ansvarligFor(sag, visitationer = {}) {
-  const ejer = ejerAfSag(sag, visitationer);
+export function ansvarligFor(sag, visitationer = {}, routingregler = {}) {
+  const ejer = ejerAfSag(sag, visitationer, routingregler);
   if (ejer) return { person: ejer, rolle: 'fagansvarlig', visiteret: !!visitationer[`${sag.butiksnummer}|${sag.sagstype}`] };
   if (VISITATOR) return { person: VISITATOR, rolle: 'visitator', visiteret: false };
   return { person: null, rolle: 'ingen', visiteret: false };
 }
 
 /** Sagerne, der hører til én person som fagansvarlig — hans eget område. */
-export function sagerFor(person, sager, visitationer = {}) {
+export function sagerFor(person, sager, visitationer = {}, routingregler = {}) {
   return (sager || []).filter((s) => {
-    const ejer = ejerAfSag(s, visitationer);
+    const ejer = ejerAfSag(s, visitationer, routingregler);
     return ejer && ejer.id === person.id;
   });
 }
@@ -181,8 +260,8 @@ export function sagerFor(person, sager, visitationer = {}) {
  * de er ikke hans i faglig forstand — de er en kø, der skal tømmes ved at
  * sende hver sag videre eller lukke den.
  */
-export function visitationskoe(sager, visitationer = {}) {
-  return (sager || []).filter((s) => !ejerAfSag(s, visitationer));
+export function visitationskoe(sager, visitationer = {}, routingregler = {}) {
+  return (sager || []).filter((s) => !ejerAfSag(s, visitationer, routingregler));
 }
 
 /** Bagudkompatibelt navn — samme liste, set fra den anden side. */
@@ -190,5 +269,6 @@ export const herreloeseSager = visitationskoe;
 
 /** Faggrupper, ingen har. */
 export function udaekkedeFaggrupper(faggrupper) {
-  return faggrupper.filter((f) => !PERSONER.some((p) => p.faggrupper.includes(f.key)));
+  const daekket = daekkedeFaggrupper();
+  return faggrupper.filter((f) => !daekket.has(f.key));
 }

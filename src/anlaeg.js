@@ -31,19 +31,19 @@ export const TAGMAPPING = [
   { tag: 'L0/1 Lejere',           niveau: 1, fg: null,             rolle: 'lejer',             konfidens: 1,    kraeverUnderniveau: false, note: 'Lejerforbrug trækkes ud af butikkens eget forbrug' },
   { tag: 'L0/1 Lys',              niveau: 1, fg: 'lys_inde',       rolle: null,                konfidens: 0.8,  kraeverUnderniveau: false },
   { tag: 'L0/1 Overskudsvarme',   niveau: 1, fg: 'overskudsvarme', rolle: null,                konfidens: 0.9,  kraeverUnderniveau: false },
-  { tag: 'L0/1 Produktion',       niveau: 1, fg: 'oevrigt',        rolle: null,                konfidens: 0.5,  kraeverUnderniveau: false },
+  { tag: 'L0/1 Produktion',       niveau: 1, fg: 'produktion',     rolle: null,                konfidens: 0.7,  kraeverUnderniveau: false, note: 'Bageri-, slagter- og køkkenudstyr' },
   { tag: 'L0/1 Solceller',        niveau: 1, fg: null,             rolle: 'solceller',         konfidens: 1,    kraeverUnderniveau: false, note: 'Egenproduktion, ikke forbrug' },
   // niveau 2 — L2
   { tag: 'L2 Blandet belysning',                      niveau: 2, fg: 'lys_inde',       konfidens: 0.85 },
   { tag: 'L2 Blandet HVAC',                           niveau: 2, fg: null,             konfidens: 0,    note: 'Kræver gennemgang' },
-  { tag: 'L2 Blandet produktion',                     niveau: 2, fg: 'oevrigt',        konfidens: 0.5 },
+  { tag: 'L2 Blandet produktion',                     niveau: 2, fg: 'produktion',     konfidens: 0.7 },
   { tag: 'L2 EDB / Terminal Tavle (Kun 1300+ m2)',    niveau: 2, fg: 'cts',            konfidens: 0.9 },
   { tag: 'L2 Eltracing - Beton fliser',               niveau: 2, fg: 'varme_el',       konfidens: 0.9 },
   { tag: 'L2 Eltracing - Varme på tag',               niveau: 2, fg: 'varme_el',       konfidens: 0.9 },
   { tag: 'L2 Elvarme / komfortvarme',                 niveau: 2, fg: 'varme_el',       konfidens: 0.9 },
-  { tag: 'L2 Friture',                                niveau: 2, fg: 'oevrigt',        konfidens: 0.7 },
+  { tag: 'L2 Friture',                                niveau: 2, fg: 'produktion',     konfidens: 0.9 },
   { tag: 'L2 Grundbelysning',                         niveau: 2, fg: 'lys_inde',       konfidens: 0.9 },
-  { tag: 'L2 Kipsteger',                              niveau: 2, fg: 'oevrigt',        konfidens: 0.7 },
+  { tag: 'L2 Kipsteger',                              niveau: 2, fg: 'produktion',     konfidens: 0.9 },
   { tag: 'L2 Klimaanlæg',                             niveau: 2, fg: 'koeleflader',    konfidens: 0.85 },
   { tag: 'L2 Køle/frostmøbel med singlekomp.',        niveau: 2, fg: 'koel_frys',      konfidens: 0.95 },
   { tag: 'L2 Køle/frostrum med singlekomp.',          niveau: 2, fg: 'koel_frys',      konfidens: 0.95 },
@@ -55,7 +55,8 @@ export const TAGMAPPING = [
   { tag: 'L2 Overskudsvarme - Total produktion',      niveau: 2, fg: 'overskudsvarme', konfidens: 0.95 },
   { tag: 'L2 Overskudsvarme - VGV blæser med kølemiddel', niveau: 2, fg: 'overskudsvarme', konfidens: 0.95 },
   { tag: 'L2 Overskudsvarme - Videresalg',            niveau: 2, fg: 'overskudsvarme', konfidens: 0.95 },
-  { tag: 'L2 Ovn',                                    niveau: 2, fg: 'oevrigt',        konfidens: 0.7 },
+  { tag: 'L2 Ovn',                                    niveau: 2, fg: 'produktion',     konfidens: 0.9 },
+  { tag: 'L2 Komfur',                                 niveau: 2, fg: 'produktion',     konfidens: 0.9 },
   { tag: 'L2 Plug in møbler',                         niveau: 2, fg: 'koel_frys',      konfidens: 0.9 },
   { tag: 'L2 Primær køleanlæg',                       niveau: 2, fg: 'koel_frys',      konfidens: 0.92 },
   { tag: 'L2 Særbelysning',                           niveau: 2, fg: 'lys_inde',       konfidens: 0.85 },
@@ -129,6 +130,16 @@ export function klassificerMaalepunkt(meter) {
   }
 
   if (!rolle) rolle = 'bimaaler';
+
+  /* Rollen kender faggruppen, selv når tagget ikke sætter den.
+   *
+   * "L2 OK Tank" og "L2 Uspecificeret lejemål" sætter rollen til lejer, men
+   * ingen faggruppe — og målepunktet endte derfor i Øvrigt. Det ramte 198
+   * OK Tank-målere, som hverken er øvrigt eller uforklaret: de er lejere, og
+   * lejerforbrug trækkes ud af butikkens eget nøgletal. Samme gælder
+   * solcellemålere, hvor rollen er produktion. */
+  if (!fg && rolle === 'lejer') { fg = 'lejere'; konfidens = 1; }
+  if (!fg && rolle === 'solceller') { fg = 'solceller'; konfidens = 1; }
 
   // Underniveauet er fundet — så er det brede tag ikke længere et problem.
   const uafklaret = venter && !kilde;

@@ -32,6 +32,7 @@ const standard = {
   undertrykkelser: [],   // { anlaeg, detektor, begrundelse, ejer, udloeb }
   ansvarlige: {},        // person → { navn, email, stedfortraeder }
   visitationer: {},      // sagsnøgle → personId, sat af visitatoren
+  routingregler: {},     // regelnøgle → { personId, begrundelse } — visitation, der er blevet permanent
 };
 
 function laes() {
@@ -70,9 +71,9 @@ state.klienter = buildClients(state.cfg);
 
 export function gem() {
   try {
-    const { cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, visitationer, vandmaerker, sidsteKoersel } = state;
+    const { cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, visitationer, routingregler, vandmaerker, sidsteKoersel } = state;
     localStorage.setItem(NØGLE, JSON.stringify({
-      cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, visitationer, vandmaerker,
+      cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, visitationer, routingregler, vandmaerker,
       // Kun hovedtallene fra sidste kørsel gemmes — ikke de hentede data.
       sidsteKoersel: sidsteKoersel && { ...sidsteKoersel, trin: sidsteKoersel.trin },
     }));
@@ -189,7 +190,11 @@ export function koerDetektorer() {
     ...detektorGentagneButik(d.gentagneButik || []),
   ].filter((s) => !erUndertrykt(s));
 
-  const sager = byggSager(signaler, index, { ...f, visitationer: state.visitationer || {} });
+  const sager = byggSager(signaler, index, {
+    ...f,
+    visitationer: state.visitationer || {},
+    routingregler: state.routingregler || {},
+  });
   for (const s of sager) {
     const b = state.beslutninger[nøgleFor(s)];
     if (b) { s.status = b.status; s.beslutning = b; }

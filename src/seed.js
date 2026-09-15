@@ -507,3 +507,64 @@ export function demoDoegnserie({ dage = 365, fejl = 'niveauskift', froe = 202609
   }
   return raekker;
 }
+
+/* ---------------------------------------------------------------------------
+ * Hvorfor målepunkter ikke kan henføres til en faggruppe.
+ * Optalt på alle 11.817 el- og varmemålere i Enity, 15. september 2026.
+ * ------------------------------------------------------------------------- */
+
+export const UKLASSIFICEREDE = [
+  { grund: 'OK Tank — ekstern forbruger på matriklen', antal: 198, tags: 'L0/1 Andet + L2 OK Tank',
+    slags: 'mapping', status: 'rettet',
+    forklaring: 'Tagget satte rollen til lejer, men ingen faggruppe, så målepunktet endte i Øvrigt. '
+      + 'Det er lejerforbrug og skal trækkes ud af butikkens eget nøgletal. Rettet: rollen sætter nu faggruppen.' },
+  { grund: 'Ingen tags overhovedet', antal: 162, tags: '—',
+    slags: 'datahul', status: 'åben',
+    forklaring: 'Målepunktet er oprettet i Enity, men aldrig klassificeret. Der er ingen måde at gætte, '
+      + 'hvad det måler. Skal tagges af den, der kender eltavlen.' },
+  { grund: 'Tavle uden specifikt indhold', antal: 94, tags: 'L2 Tavle uden specifikt indhold',
+    slags: 'fysisk', status: 'åben',
+    forklaring: 'Tavlen er kendt, men ikke hvad der sidder på den. Kræver en gennemgang på stedet — '
+      + 'ikke en rettelse i data.' },
+  { grund: 'Produktions- og køkkenudstyr', antal: 80, tags: 'L0/1 Produktion + L2 Ovn / Friture / Kipsteger / Komfur',
+    slags: 'manglende-faggruppe', status: 'rettet',
+    forklaring: 'Ovne, friture, kipsteger og komfurer er ikke "øvrigt" — de er et selvstændigt fagområde med '
+      + 'sin egen driftsprofil og sine egne leverandører. Faggruppen "Produktion & køkken" er oprettet, '
+      + 'men mangler stadig en ansvarlig.' },
+  { grund: 'Blandet HVAC uden underniveau', antal: 20, tags: 'L0/1 HVAC + L2 Blandet HVAC',
+    slags: 'bredt-tag', status: 'åben',
+    forklaring: 'Tagget dækker både ventilation, køleflade og varmeflade. Uden et L4-niveau kan faggruppen '
+      + 'ikke afgøres — og det er netop den skelnen, der afgør, om anlægget hører til Mads eller Morten.' },
+  { grund: 'Samlet anlæg — tre strømme i én måler', antal: 278, tags: 'L4 Samlet anlæg',
+    slags: 'fysisk', status: 'åben',
+    forklaring: 'Ventilation, køle- og varmeflade måles på samme punkt. Faggruppen kan ikke afgøres, og en '
+      + 'afvigelse kan ikke henføres til én af de tre. Kræver tre målere, ikke en rettelse i data.' },
+];
+
+/** Faggrupper uden en navngiven ansvarlig, og hvorfor. */
+export const UDAEKKEDE_OMRAADER = [
+  { fg: 'produktion', navn: 'Produktion & køkken', maalere: 80, butikker: null,
+    hvorfor: 'Faggruppen blev først oprettet, da tallene viste, at 80 målepunkter på ovne, friture og '
+      + 'kipsteger lå i Øvrigt. Området har sine egne leverandører og sin egen driftsprofil — det hører '
+      + 'hverken til hos køl eller ventilation.',
+    hvem: 'Ingen udpeget. Bageri- og slagterudstyr serviceres i dag af leverandøren direkte.' },
+  { fg: 'lejere', navn: 'Lejere', maalere: 900, butikker: null,
+    hvorfor: 'Lejerforbrug er ikke Coops eget forbrug og skal trækkes ud af nøgletallene. Det er derfor '
+      + 'ikke en driftsopgave, men et afregningsforhold.',
+    hvem: 'Hører til hos den kontraktansvarlige, ikke hos en fagansvarlig.' },
+  { fg: 'oevrigt', navn: 'Øvrigt/uspecificeret', maalere: 1009, butikker: 479,
+    hvorfor: 'Restposten er ikke en anlægstype — den er det forbrug, der endnu ikke er henført til en. '
+      + 'Den kan derfor aldrig få en fagansvarlig; den bliver mindre, når målepunkterne kommer på plads.',
+    hvem: 'Energiansvarlig som måleropgave — ikke som driftsopgave.' },
+];
+
+export const FAGOMRAADER_UDEN_ANSVARLIG = [
+  { navn: 'Skadedyr', opgaver: 2355, hvorfor: 'Kører på serviceaftale. Ingen af de syv har området, og opgaverne er lovpligtige tilsyn frem for fejl.' },
+  { navn: 'VVS/Sanitet', opgaver: 2256, hvorfor: 'Ingen formelt udpeget, men faget er Emils. Hubben foreslår ham med det forbehold.' },
+  { navn: 'Bygning/Tag', opgaver: 2162, hvorfor: 'Bygningsvedligehold ligger uden for de syv tekniske områder.' },
+  { navn: 'Sikkerhed/Alarm', opgaver: 1557, hvorfor: 'Sikringsanlæg har egen leverandøraftale og egen ansvarlig uden for driftsorganisationen.' },
+  { navn: 'Inventar/Vogne/Kurve', opgaver: 963, hvorfor: 'Butiksinventar, ikke teknisk anlæg.' },
+  { navn: 'IT/Kasse', opgaver: 826, hvorfor: 'Lagt foreløbigt hos Martin under "systemydelser" — skal bekræftes.' },
+  { navn: 'Rengøring', opgaver: 568, hvorfor: 'Serviceaftale uden for driftsorganisationen.' },
+  { navn: 'Udenomsarealer', opgaver: 545, hvorfor: 'Anlægsgartnerarbejde, ikke teknisk anlæg.' },
+];

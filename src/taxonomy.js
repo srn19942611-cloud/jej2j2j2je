@@ -21,6 +21,7 @@ export const FAGGRUPPER = [
   { key: 'overskudsvarme', navn: 'Overskudsvarme (HRU)', farve: '#16a085', enhed: 'varme', rolle: 'Energi- og VVS-ansvarlig',fag: 'VVS',                 def: 'Leveret varme fra køleanlæg — vises som leveret, ikke som forbrug.' },
   { key: 'solceller',      navn: 'Solceller',            farve: '#d68910', enhed: 'el',    rolle: 'Solcelleansvarlig',       fag: 'Elektriker',          def: 'Produktion, strenge og invertere. Vises som produktion, ikke forbrug.' },
   { key: 'cts',            navn: 'CTS & teknik',         farve: '#636e72', enhed: 'el',    rolle: 'CTS-ansvarlig',           fag: 'CTS-programmør',      def: 'CTS, automatik, IT og teknisk udstyr.' },
+  { key: 'produktion',     navn: 'Produktion & køkken',  farve: '#d35400', enhed: 'el',    rolle: 'Ikke besat',              fag: 'Serviceleverandør',   def: 'Ovne, friture, kipsteger, komfurer og andet bageri- og slagterudstyr. Eget fagområde — ikke teknisk bygningsdrift.' },
   { key: 'lejere',         navn: 'Lejere',               farve: '#5d6d7e', enhed: 'el',    rolle: 'Energiansvarlig',         fag: '—',                   def: 'Fremlejet forbrug. Trækkes ud af butikkens eget nøgletal.' },
   { key: 'oevrigt',        navn: 'Øvrigt/uspecificeret', farve: '#95a5a6', enhed: 'el',    rolle: 'Energiansvarlig',         fag: 'Elektriker',                   def: 'Restpost og målepunkter uden sikker kategori.' },
 ];
