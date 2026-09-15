@@ -72,6 +72,29 @@ export function efterproev(m) {
   if (tal(m.b) && Math.abs(m.b) < 1e-6) advarsler.push('temperaturkoefficienten er nul — vejrafhængigheden kan ikke vurderes');
 
   if (tal(m.overgangsdoegn) && m.overgangsdoegn < 0) fejl.push('negativ overgangsbredde');
+
+  /* En model, der ikke forklarer noget, giver en normal, der næsten er et
+   * gennemsnit — og en afvigelse målt mod den bærer modellens usikkerhed med
+   * sig. Benchmarket satte tal på: en normallastmodel uden dagtypeled melder
+   * op til 15 % afvigelse på en ren ventilationsserie. Er den målte afvigelse
+   * ikke væsentligt større end det, kan den lige så godt være modellens som
+   * anlæggets. */
+  /* Men ikke på fund, der slet ikke afhænger af modellen.
+   *
+   * Et målepunkt på nul er på nul, uanset hvad normalen siger. Første udgave
+   * hæftede forbeholdet på tyve af tredive fund — og hovedparten var døde
+   * målere på −100 %, hvor konklusionen står lige så fast med eller uden
+   * model. Et forbehold, der sættes på alt, betyder ingenting. */
+  const modeluafhaengigt = tal(m.restniveau) && (m.restniveau <= 0.05 || m.restniveau >= 3);
+  if (tal(m.r2) && m.r2 < 0.25 && !modeluafhaengigt) {
+    advarsler.push(`Modellen forklarer kun ${Math.round(m.r2 * 100)} % af variationen. Normalen er dermed `
+      + 'tæt på et gennemsnit, og afvigelsen bærer den usikkerhed med sig.');
+    if (tal(m.afvigPct) && Math.abs(m.afvigPct) < 40) {
+      advarsler.push(`Afvigelsen på ${m.afvigPct} % ligger i det interval, hvor en modelskævhed alene kan `
+        + 'flytte konklusionen. Bekræft med en sammenligning mod samme periode sidste år på lige varme '
+        + 'døgn, før nogen rykker ud.');
+    }
+  }
   if (tal(m.segmentdoegn) && m.segmentdoegn < 10) {
     advarsler.push(`kun ${m.segmentdoegn} døgn efter bruddet — afvigelsen har ikke holdt længe nok til at være sikker`);
   }
@@ -144,6 +167,8 @@ export function signaturFraMaaling(m) {
     mangler: [
       m.vejrforhold == null ? 'vejrafhængighed er ikke målt' : null,
       'timedata — døgnprofil og natandel kan ikke ses',
+      Number.isFinite(m.r2) && m.r2 < 0.25 && !(Number.isFinite(m.restniveau) && (m.restniveau <= 0.05 || m.restniveau >= 3))
+        ? `normallastmodellen forklarer kun ${Math.round(m.r2 * 100)} % af variationen` : null,
     ].filter(Boolean),
     advarsler: k.advarsler,
   };
