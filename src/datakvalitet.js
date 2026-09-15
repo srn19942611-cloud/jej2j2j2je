@@ -97,11 +97,37 @@ export function vurderMaaler(maaler, punkter = null) {
 
   const puls = heltallige > 0.95 && unikke < 40;
   if (puls) grunde.push(`pulsmåler: ${unikke} forskellige værdier, alle hele tal`);
+
+  /* Grovkornet — en fjerde klasse, som porteføljekørslen tvang frem.
+   *
+   * 34 af 209 målere havde mellem 7 og 45 forskellige værdier over fire
+   * måneder. De er hverken døde eller rene pulsmålere, og de har masser af
+   * punkter. Men et niveau kan ikke måles på syv forskellige tal — kun om
+   * anlægget kører eller ej. De kan altså bære en tidsplan og ikke andet, og
+   * det skal stå, for ellers regnes der procenter på noget, der reelt er en
+   * tænd/sluk-kontakt. */
+  const grovkornet = !puls && unikke >= 2 && unikke < 50;
+  if (grovkornet) grunde.push(`kun ${unikke} forskellige værdier — nok til tænd/sluk, ikke til niveau`);
+
+  /* Fladlinje: nøjagtig samme værdi i hver eneste time i månedsvis.
+   *
+   * Ni varmemålere i udsnittet så sådan ud. Der ER forbrug, så de tæller ikke
+   * som døde — men profilen er en ret streg, og det er ikke en måling. Det er
+   * en månedsaflæsning, der er fordelt jævnt ud over timerne. Bruges den i en
+   * døgnprofil, får man et anlæg, der kører præcis lige meget kl. 3 om natten
+   * og kl. 14 om eftermiddagen, og det er en påstand om virkeligheden, som
+   * ingen har målt. */
+  const spaend = v.length ? Math.max(...v) - Math.min(...v) : 0;
+  const fladlinje = unikke <= 3 && spaend < (m || 1) * 0.02 && v.length > 500;
+  if (fladlinje) grunde.push('samme værdi i hver eneste time — fordelt månedsaflæsning, ikke en måling');
   const forSmaa = m > 0 && m < 0.25;
   if (forSmaa) grunde.push(`median ${Math.round(m * 1000) / 1000} kWh pr. interval — for lille til at procenter betyder noget`);
   if (daekning < 0.9) grunde.push(`${Math.round((1 - daekning) * 100)} % huller`);
 
   let niveau = skridtMin <= 15 ? 3 : skridtMin <= 1440 ? 2 : 1;
+  if (fladlinje) niveau = 1;
+  // Grovkornet kan bære en tidsplan (niveau 3's tænd/sluk) men ikke et niveau.
+  if (grovkornet && niveau === 3) niveau = 2;
   // Grov kvantisering eller et meget lille målepunkt kan ikke bære kvarteranalyse,
   // uanset hvor tit der måles.
   if (niveau === 3 && (puls || forSmaa)) niveau = 2;
@@ -111,7 +137,14 @@ export function vurderMaaler(maaler, punkter = null) {
   if (niveau === 3 && daekning < 0.75) { niveau = 2; grunde.push('for mange huller til en døgnprofil'); }
   if (puls && niveau === 2 && unikke < 10) niveau = 1;
 
-  return { niveau, maalt: true, skridtMin, daekning: Math.round(daekning * 100) / 100, unikke, medianKwh: Math.round(m * 1000) / 1000, puls, forSmaa, grunde };
+  return {
+    niveau, maalt: true, skridtMin, daekning: Math.round(daekning * 100) / 100,
+    unikke, medianKwh: Math.round(m * 1000) / 1000,
+    puls, forSmaa, grovkornet, fladlinje,
+    // Grovkornede målere kan stadig sige, HVORNÅR anlægget kører — bare ikke hvor meget.
+    kanTidsplan: !fladlinje && !puls && unikke >= 2 && skridtMin <= 60,
+    grunde,
+  };
 }
 
 /* ---- Kortet over porteføljen ---------------------------------------------- */
@@ -182,19 +215,96 @@ export function hvadEtTrinOpGiver(kort) {
  * måneder, er enten et anlæg ude af drift eller en måler, der er faldet ud.
  * Begge dele skal nogen vide, og ingen opdager det af sig selv.
  */
-export function doedeMaalere(enheder) {
-  return enheder
-    .filter((e) => e.vurdering?.doed)
+export function doedeMaalere(enheder, { vindueDage = 3, minIBoelge = 2 } = {}) {
+  const doede = enheder.filter((e) => e.vurdering?.doed || e.vurdering?.fladlinje);
+  if (!doede.length) return { boelger: [], enkeltvis: [], aldrigLeveret: [], ialt: 0 };
+
+  /* To bunker, og forskellen afgør alt for, hvem der skal handle.
+   *
+   * Porteføljekørslen viste det tydeligt: otte hovedmålere holdt op med at
+   * tælle samme dag i marts 2025. Det er en målerudskiftning, ikke otte fejl,
+   * og der skal ingen tekniker ud. Men de gamle id'er ligger stadig i Enity og
+   * forurener enhver sum, så nogen skal rydde op.
+   *
+   * De målere, der stoppede ALENE mens nabomålerne kørte videre, er noget
+   * andet — dér er enten anlægget eller måleren gået i stykker, og det skal
+   * nogen se på.
+   *
+   * Uden den skelnen ville de otte udskiftede målere fylde toppen af listen
+   * hver eneste dag og skubbe de rigtige fund ud.
+   */
+  const boelger = [];
+  const brugt = new Set();
+  const prButik = new Map();
+  for (const e of doede) {
+    const b = e.butiksnummer || '?';
+    if (!prButik.has(b)) prButik.set(b, []);
+    prButik.get(b).push(e);
+  }
+
+  for (const [butiksnummer, liste] of prButik) {
+    const medDato = liste.filter((e) => e.sidstForbrug).sort((a, b) => a.sidstForbrug.localeCompare(b.sidstForbrug));
+    let i = 0;
+    while (i < medDato.length) {
+      const start = new Date(medDato[i].sidstForbrug + 'T00:00:00Z').getTime();
+      const klump = medDato.filter((e) => {
+        const t = new Date(e.sidstForbrug + 'T00:00:00Z').getTime();
+        return t >= start && t <= start + vindueDage * 864e5;
+      });
+      if (klump.length >= minIBoelge) {
+        for (const e of klump) brugt.add(e.id);
+        boelger.push({
+          butiksnummer, butik: klump[0].butik,
+          dato: medDato[i].sidstForbrug,
+          antal: klump.length,
+          maalere: klump.map((e) => ({ id: e.id, navn: e.navn, maaler: e.maaler })),
+          tolkning: `${klump.length} målere i samme butik holdt op med at tælle inden for ${vindueDage} dage `
+            + `omkring ${medDato[i].sidstForbrug}. Det er mønsteret for en målerudskiftning, ikke for `
+            + `${klump.length} samtidige fejl — der skal ingen tekniker ud.`,
+          handling: 'De gamle målepunkter ligger stadig i Enity og tæller med i enhver sum. '
+            + 'De skal afsluttes eller markeres, ellers ser butikken ud til at mangle forbrug, den har.',
+        });
+        i += klump.length;
+      } else i++;
+    }
+  }
+
+  const enkeltvis = doede
+    .filter((e) => !brugt.has(e.id) && e.sidstForbrug)
+    .map((e) => ({
+      id: e.id, navn: e.navn, butik: e.butik, butiksnummer: e.butiksnummer,
+      maaler: e.maaler, faggruppe: e.faggruppe, sidstForbrug: e.sidstForbrug,
+      dageStille: Math.round((Date.now() - new Date(e.sidstForbrug + 'T00:00:00Z').getTime()) / 864e5),
+      fladlinje: !!e.vurdering?.fladlinje,
+      tolkning: e.vurdering?.fladlinje
+        ? 'Målepunktet leverer den samme værdi i hver eneste time. Det er en månedsaflæsning, der er '
+          + 'fordelt jævnt ud — ikke en måling. Tallet kan bruges til en årssum og til intet andet.'
+        : 'Denne måler stoppede alene, mens nabomålerne i butikken kørte videre. Enten er anlægget ude '
+          + 'af drift, eller også er måleren faldet ud. De to kan ikke skelnes på målepunktet alene: '
+          + 'begge ser ud som nul. Sammenhold med butikkens hovedmåler — er det samlede forbrug uændret, '
+          + 'kører anlægget stadig.',
+    }))
+    .sort((a, b) => b.dageStille - a.dageStille);
+
+  /* Målere, der aldrig har leveret noget. De er ikke gået i stykker — de er
+   * oprettet i Enity og aldrig koblet på. Det er en installationsopgave, ikke
+   * en fejlretning, og den hører et helt andet sted hjemme. */
+  const aldrigLeveret = doede
+    .filter((e) => !e.sidstForbrug)
     .map((e) => ({
       id: e.id, navn: e.navn, butik: e.butik, butiksnummer: e.butiksnummer,
       maaler: e.maaler, faggruppe: e.faggruppe,
-      kwhAar: e.kwhAar || null,
-      // Vi ved ikke hvilken af de to det er — og det skal siges, ikke gættes.
-      tolkning: 'Enten er anlægget ude af drift, eller også er måleren faldet ud af dataopsamlingen. '
-        + 'De to kan ikke skelnes på målepunktet alene: begge ser ud som nul. '
-        + 'Sammenhold med butikkens hovedmåler — er det samlede forbrug uændret, kører anlægget stadig.',
-    }))
-    .sort((a, b) => (b.kwhAar || 0) - (a.kwhAar || 0));
+      hovedmaaler: /hoved|forsyning/i.test(e.maaler || e.navn || ''),
+      tolkning: 'Målepunktet har aldrig leveret data, så langt historikken går. Det er formentlig oprettet '
+        + 'i Enity uden nogensinde at blive koblet på. Det er en installationsopgave, ikke en fejlretning.',
+    }));
+
+  return {
+    boelger, enkeltvis, aldrigLeveret,
+    ialt: doede.length,
+    // Det tal, der skal frem: hvor mange kræver rent faktisk, at nogen rykker ud?
+    kraeverHandling: enkeltvis.length,
+  };
 }
 
 /* ---- Hvad der kan findes i en given faggruppe ------------------------------

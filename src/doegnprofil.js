@@ -603,10 +603,39 @@ export function natrest(punkter, { natTimer = [1, 2, 3, 4], minKwh = 0.15 } = {}
     return { brugbar: false, grund: 'for få natkvarterer til at sammenligne' };
   }
 
+  /* Udendørsbelysning brænder om natten, fordi den skal.
+   *
+   * Porteføljekørslen fandt fire "Udv. Lys"-målere uden dagforbrug overhovedet
+   * og kun natforbrug. De er fuldstændig korrekte, og en detektor, der ikke
+   * kender dem, vil melde gadebelysning ind som en fejl hver eneste nat.
+   *
+   * Vi afgør det på forbruget frem for på navnet: er natten højere end dagen,
+   * er anlægget natstyret, og så er "der brænder noget om natten" ikke en sag.
+   */
+  const dag = punkter.filter((p) => p.v != null && timeAf(p.t) >= 11 && timeAf(p.t) < 16).map((p) => p.v);
+  const mDag = dag.length ? median(dag) : null;
+  const alleNat = median([...nat.hverdag, ...nat.weekend]);
+  /* Margin, ikke bare "større". Et anlæg, der brænder fladt døgnet rundt, har
+   * et natforbrug, der på støjen alene kan ende marginalt over dagforbruget —
+   * og blev derfor frikendt som natstyret. Et ægte natstyret anlæg bruger
+   * markant mere om natten, ikke en anelse. */
+  if (mDag != null && alleNat > mDag * 1.5) {
+    return {
+      brugbar: true, opløsning: opl, natstyret: true, mistanke: false,
+      hverdagNat: Math.round(median(nat.hverdag) * 1000) / 1000,
+      dagMedian: Math.round(mDag * 1000) / 1000,
+      tolkning: 'Målepunktet bruger mere om natten end om dagen. Det er udendørs- eller natbelysning, '
+        + 'der gør præcis, hvad den skal — ikke noget, der er glemt tændt. Et fravær af natforbrug ville '
+        + 'her være fejlen.',
+    };
+  }
+
   const mHv = median(nat.hverdag);
   const mWe = median(nat.weekend);
   const slukkerHv = nat.hverdag.filter((v) => v < minKwh).length / nat.hverdag.length;
   const slukkerWe = nat.weekend.filter((v) => v < minKwh).length / nat.weekend.length;
+  const slukkerIalt = (slukkerHv * nat.hverdag.length + slukkerWe * nat.weekend.length)
+    / (nat.hverdag.length + nat.weekend.length);
 
   return {
     brugbar: true, opløsning: opl,
@@ -616,11 +645,31 @@ export function natrest(punkter, { natTimer = [1, 2, 3, 4], minKwh = 0.15 } = {}
     slukkerWeekendPct: Math.round(slukkerWe * 100),
     // Merforbruget over et år, hvis weekendnætterne bragte sig ned på hverdagsniveau.
     kwhPrAar: Math.round(Math.max(0, mWe - mHv) * natTimer.length * 4 * 104),
-    mistanke: slukkerHv > 0.7 && slukkerWe < slukkerHv - 0.25,
+    /* To forskellige sager, og porteføljekørslen viste, at den anden er langt
+     * den almindeligste: weekendhullet fandtes slet ikke på 29 lysmålere,
+     * mens seks stod tændt døgnet rundt. Detektoren skal kunne begge dele —
+     * ellers leder den efter et mønster, der er sjældent, og går glip af det,
+     * der faktisk står og brænder. */
+    /* Tærsklen var 15 %, og den var for hård. Porteføljekørslen fandt to
+     * lysmålere, der kun slukkede 25 og 32 % af nætterne — hverdag som
+     * weekend — og kaldte dem den største lysbesparelse i udsnittet. De blev
+     * ikke fanget. En kreds, der slukker en fjerdedel af nætterne, HAR en
+     * slukkefunktion; den bruges bare næsten aldrig, og det er værre end
+     * ingen, ikke bedre. */
+    slukkerSjaeldent: slukkerIalt < 0.5,
+    slukkerAndel: Math.round(slukkerIalt * 100),
+    mistanke: (slukkerHv > 0.7 && slukkerWe < slukkerHv - 0.25) || slukkerIalt < 0.5,
     tolkning: slukkerHv > 0.7 && slukkerWe < slukkerHv - 0.25
       ? `Anlægget slukker ${Math.round(slukkerHv * 100)} % af hverdagsnætterne, men kun `
         + `${Math.round(slukkerWe * 100)} % af weekendnætterne. Det slukker altså, når det skal — bare ikke `
         + 'i weekenden. Det er næsten altid en tidsplan, der mangler lørdag og søndag, og ikke et behov.'
-      : `Natforbruget er ${mWe > mHv * 1.3 ? 'højere i weekenden' : 'ens hele ugen'} — ingen sag her.`,
+      : slukkerIalt < 0.5
+        ? `Anlægget slukker kun ${Math.round(slukkerIalt * 100)} % af nætterne — hverdag som weekend. `
+          + `Resten af tiden brænder det ${Math.round(mHv * 4 * 100) / 100} kWh/t hele natten. `
+          + (slukkerIalt > 0.05
+            ? 'At det slukker nogle nætter viser, at det KAN — så det er ikke et behov, men en tidsplan, der '
+              + 'ikke slår igennem.'
+            : 'Er det ikke udendørs- eller nødbelysning, er det en tidsplan, der aldrig er sat op.')
+        : `Natforbruget er ${mWe > mHv * 1.3 ? 'højere i weekenden' : 'ens hele ugen'} — ingen sag her.`,
   };
 }

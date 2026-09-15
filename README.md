@@ -603,9 +603,11 @@ ikke henføres til ét bestemt anlæg. Det står nu på hver enkelt fagansvarlig
 egen side — Henrik og Mads får beskeden, fordi deres målere er tavler; Stefan
 gør ikke, fordi sol og lys er dedikerede.
 
-Kvarterniveauets 4,1 % er en **underkant**, ikke en måling: det er bekræftet på
-Kvickly Aarhus C, hvor 8 af 14 målere kan bære det. Resten af porteføljen står
-som døgnniveau, indtil der er set efter.
+Kvarterniveauets 4,1 % er en **underkant**. Porteføljekørslen på 209 målere i
+elleve butikker viste, at **56 % kan bære kvartersanalyse** — og på elsiden alene
+73 % i Kvickly, 68 % i SuperBrugsen, 83 % i 365 og Dagli'Brugsen. Tallet i
+tabellen står lavt, fordi hubben kun regner med kvarterniveau dér, hvor det
+faktisk er hentet.
 
 ### Hvad et trin op koster og giver
 
@@ -613,6 +615,84 @@ Rækkefølgen er ikke ligegyldig. Det største spring ligger i at måle de umål
 43 % — men det er også det dyreste og langsomste, for det kræver hardware. Det
 *billigste* trin er at hente finopløste værdier på målere, der allerede findes:
 det er som regel kun et spørgsmål om, hvad der trækkes.
+
+### Hvad porteføljekørslen viste — 209 målere, elleve butikker
+
+Jeg troede, de store Kvickly'er var bedre instrumenteret end en Dagli'Brugsen på
+305 m². **Det holder ikke.** De små butikker har færre målere, men en *højere*
+andel brugbare, fordi de næsten kun har elmålere:
+
+| Kæde | Egnede, alle målere | Egnede, kun el |
+|---|---|---|
+| Kvickly | 51 % | **73 %** |
+| SuperBrugsen | 58 % | **68 %** |
+| 365 discount | 71 % | **83 %** |
+| Dagli'Brugsen | 71 % | **83 %** |
+
+Det, der trækker ned, er varmesiden: 52 varmemålere i udsnittet, og næsten ingen
+med kvarteropløsning. **Døgnprofil-laget kan bygges for hele porteføljen på el.**
+Og ingen butik havde huller over 5 % — dataleveringen er stabil, fraværet ligger i
+målerne selv.
+
+**En fjerde klasse måtte indføres.** 34 målere havde mellem 7 og 45 forskellige
+værdier over fire måneder. De er hverken døde eller pulsmålere, men et niveau kan
+ikke måles på syv tal — kun om anlægget kører eller ej. De kan bære en tidsplan og
+intet andet.
+
+**Og en artefakt mere:** ni varmemålere havde nøjagtig samme værdi i hver eneste
+time i fire måneder. Der *er* forbrug, så de tæller ikke som døde — men profilen
+er en ret streg. Det er en månedsaflæsning fordelt jævnt ud, ikke en måling, og
+brugt i en døgnprofil ville den påstå, at anlægget kører præcis lige meget kl. 3
+om natten og kl. 14 om eftermiddagen.
+
+### De døde målere falder i to bunker, og forskellen afgør alt
+
+31 målere stod på konstant nul. Havde de stået i én liste, ville de forkerte have
+fyldt toppen:
+
+| Bunke | Antal | Hvem skal handle |
+|---|---|---|
+| **Udskiftningsbølge** | 8 | Ingen tekniker. Otte hovedmålere stoppede *samme dag* i marts 2025 — en målerudskiftning. Men de gamle id'er ligger stadig i Enity og forurener enhver sum |
+| **Reelt døde** | 11 | Stoppet enkeltvis, mens nabomålerne kørte videre. Her er enten anlægget eller måleren gået i stykker |
+| **Aldrig leveret** | 9 | Installationsopgave, ikke fejlretning. Oprettet i Enity og aldrig koblet på — **fire af dem er hovedmålere på vand**, så de butikker har reelt ingen vandmåling |
+
+Hubben skelner dem nu automatisk: flere målere i samme butik, der stopper inden
+for tre dage, er en bølge. En, der stopper alene, er en sag.
+
+### Manglende weekendnedsættelse er udbredt
+
+29 af 51 ventilations- og HVAC-målere kører stort set samme timer i weekenden som
+på hverdage:
+
+| Butik | Flag | Weekenddrift |
+|---|---|---|
+| 07800 KV Nørresundby | 8 | ~26.600 kWh |
+| 04640 KV Vordingborg | 6 | ~15.750 kWh |
+| 02020 KV Aarhus C | 9 | ~5.980 kWh |
+| 05020 SB Thisted | 4 | ~3.270 kWh |
+
+Tre butikker havde **ingen målere med de tags overhovedet** — det er fravær af
+data, ikke god drift, og de to ting må aldrig se ens ud i en oversigt.
+
+### Det fund, jeg ledte forkert efter
+
+Jeg byggede en detektor på "lyset brænder kun i weekendnætterne", fordi det var
+mønstret i Aarhus C. **På 29 lysmålere i elleve butikker findes det ikke én eneste
+gang mere.** Til gengæld:
+
+- To lysmålere i Hillerød slukker kun **25 og 32 % af nætterne** — hverdag som
+  weekend. Det er den største lysbesparelse i udsnittet, og min tærskel på 15 %
+  fangede den ikke.
+- Seks lysmålere står tændt **døgnet rundt**. P-pladslys giver mening;
+  "Lys bager" på konstant 0,71 kWh/t gør ikke.
+- Fire "Udv. Lys"-målere har **intet dagforbrug og kun natforbrug**. De er
+  fuldstændig korrekte — og en detektor, der ikke kender dem, melder gadebelysning
+  ind som en fejl hver eneste nat.
+
+Detektoren er rettet efter alle tre: den kender natstyrede kredse, den fanger
+"slukker sjældent" frem for kun "slukker aldrig", og den siger, at en kreds der
+slukker en fjerdedel af nætterne *kan* slukke — så det er en tidsplan, ikke et
+behov.
 
 ## Flåden — hvorfor en god detektor ikke er nok
 
