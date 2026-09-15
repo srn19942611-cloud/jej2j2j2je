@@ -560,7 +560,6 @@ export const UDAEKKEDE_OMRAADER = [
 ];
 
 export const FAGOMRAADER_UDEN_ANSVARLIG = [
-  { navn: 'VVS/Sanitet', opgaver: 2256, hvorfor: 'Ingen formelt udpeget. Faget er Emils, og hubben foreslår ham med det forbehold — men beslutningen mangler.' },
   { navn: 'Inventar/Vogne/Kurve', opgaver: 963, hvorfor: 'Butiksinventar, ikke teknisk anlæg. Ikke afklaret hvor det hører hjemme.' },
   { navn: 'IT/Kasse', opgaver: 826, hvorfor: 'Lagt foreløbigt hos Martin under "systemydelser" — skal bekræftes.' },
   { navn: 'Rengøring', opgaver: 568, hvorfor: 'Serviceaftale. Ikke afklaret om driften har en rolle.' },

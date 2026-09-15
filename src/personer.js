@@ -73,8 +73,9 @@ export const PERSONER = [
   {
     id: 'emil',
     navn: 'Emil',
-    omraade: 'Varme og overskudsvarme',
-    beskrivelse: 'Overskudsvarme, varmepumper og varmeinstallationer, herunder fjernvarme, vekslere og varmtvandsbeholdere.',
+    omraade: 'Varme, overskudsvarme og VVS',
+    beskrivelse: 'Overskudsvarme, varmepumper og varmeinstallationer, herunder fjernvarme, vekslere og '
+      + 'varmtvandsbeholdere. Derudover VVS og sanitet: vand, afløb, kloak og toiletter.',
     faggrupper: ['overskudsvarme', 'varme_el'],
     daekker: [
       { fg: 'overskudsvarme' },
@@ -83,10 +84,10 @@ export const PERSONER = [
       // ventilationsaggregat, som følger aggregatet.
       { fg: 'varme_fjern', undtagenRoller: ['varmeflade'], note: 'Fjernvarme, vekslere og varmtvandsbeholdere' },
     ],
-    fagomraader: [],
+    fagomraader: ['VVS/Sanitet'],
     fag: 'VVS',
     detektorer: ['D-18', 'D-19', 'D-20'],
-    noegleKilder: ['Leanheat', 'Enity fjernvarme', 'Enity el til varmepumpe', 'CTS varmebehov'],
+    noegleKilder: ['Leanheat', 'Enity fjernvarme', 'Enity el til varmepumpe', 'CTS varmebehov', 'Dalux VVS-opgaver'],
   },
   {
     id: 'stefan',

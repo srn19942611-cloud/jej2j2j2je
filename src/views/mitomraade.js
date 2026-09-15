@@ -565,8 +565,8 @@ function udaekkedeAfsnit() {
 
   el.append(h('h3', { style: { marginTop: '20px' } }, 'Fagområder, der endnu ikke er afklaret'));
   el.append(h('p', { class: 'muted', style: { fontSize: '12.5px', marginTop: '-4px', maxWidth: '84ch' } },
-    'De syv dækker de tekniske anlæg. Butikkerne melder betydeligt mere ind end det — og de opgaver '
-    + 'har ingen af de syv. Det er ikke et hul i hubben, men et spørgsmål om, hvor grænsen for '
+    'De fagansvarlige dækker de tekniske anlæg. Butikkerne melder betydeligt mere ind end det — og de '
+    + 'opgaver har ingen af dem. Det er ikke et hul i hubben, men et spørgsmål om, hvor grænsen for '
     + 'driftsorganisationen går.'));
   el.append(tabel([
     { navn: 'Fagområde', celle: (r) => h('span', {}, swatch(foFarve(r.navn)), r.navn) },

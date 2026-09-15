@@ -270,7 +270,7 @@ der gør en faggruppe til en person — og dermed en sag til nogens ansvar.
 | **Henrik Ravn** | Køl og frost | Køl & frys | Køl/Frost |
 | **Mads** | Ventilation — hele aggregatet | Ventilation + køle- og varmeflade i aggregatet | Ventilation/Klima |
 | **Morten** | CTS, elevatorer og selvstændig klimakøl | CTS & teknik, Køleflader/klima (fritstående) | Elevator/Rulletrappe |
-| **Emil** | Varme og overskudsvarme | Overskudsvarme, Varme el/varmepumpe, Varme fjernvarme | — |
+| **Emil** | Varme, overskudsvarme og VVS | Overskudsvarme, Varme el/varmepumpe, Varme fjernvarme | VVS/Sanitet |
 | **Stefan** | Solceller og belysning · **energiansvarlig** | Solceller, Belysning inde, Belysning ude | Solceller, Lys/El |
 | **Charlie** | Alarm og sikkerhed | — | Sikkerhed/Alarm |
 | **Christian** | Målere og målepunkter | Øvrigt (restposten) | — |
@@ -310,8 +310,8 @@ vi måler det ikke separat. Deres billede er derfor drevet af Dalux-opgaver og
 gentagne fejl, ikke af kWh. Det er en reel forskel, ikke en mangel ved deres
 dashboard — og den vises frem for at skjules.
 
-**Stefan er visitator, og det er en anden slags arbejde.** De syv dækker hver
-sin anlægstype, men "Øvrigt/uspecificeret" hører ikke til nogen af dem — og det
+**Stefan er visitator, og det er en anden slags arbejde.** De fagansvarlige
+dækker hver sin anlægstype, men "Øvrigt/uspecificeret" hører ikke til nogen af dem — og det
 er dér 87 af de 110 sager lander, fordi restpost, benchmark, målerfejl og ny
 konstant last netop handler om forbrug, der endnu ikke ER henført til et anlæg.
 Stefan er energiansvarlig og visiterer dem videre.
@@ -420,8 +420,8 @@ den, der har restposten: en toiletlækage er ikke en målersag.
 
 **Forslag med begrundelse.** Hubben peger på en modtager ad fem veje, i
 rækkefølge: en fast regel, anlægget bag sagen, fagområdet, **faget** (en
-VVS-opgave hører til hos den, der laver VVS, selv om ingen formelt er sat på
-området), og endelig historikken. Forslaget siger altid hvorfor — en visitator,
+opgave på en ballepresser hører til hos den, der har presserne, selv om ingen
+formelt er sat på området), og endelig historikken. Forslaget siger altid hvorfor — en visitator,
 der ikke kan se begrundelsen, kan ikke tage stilling til om den holder.
 
 **Mønstre bliver til regler.** Er den samme slags sag sendt samme sted hen
