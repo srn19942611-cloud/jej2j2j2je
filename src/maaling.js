@@ -17,6 +17,7 @@
 
 import { diagnosticer } from './aarsag.js';
 import { samtidighed, FG_FAGOMRAADER } from './korrelation.js';
+import { median } from './statistik.js';
 
 /* ---- Efterprøvning -------------------------------------------------------- */
 
@@ -188,4 +189,200 @@ export function diagnosticerTabel(raekker, { priors = {}, opgaverPrEnhed = {} } 
     });
   }
   return { fund, afvist };
+}
+
+/* ---- Indlæsning af en måletabel -------------------------------------------
+ * Tallene kommer som en tabel, ikke som JSON. Det er med vilje: en tabel kan
+ * læses af et menneske, og den, der har målt, kan se hvad de sendte.
+ *
+ * Til gengæld skal indlæsningen være mistroisk. Danske tal bruger komma som
+ * decimaltegn og punktum som tusindtalsskilletegn, og "1.234" betyder derfor
+ * noget vidt forskelligt afhængigt af, hvem der skrev det. Vi gætter ikke —
+ * vi afgør det på formen og siger til, når den er tvetydig.
+ */
+
+/** Læser ét tal. Returnerer null frem for NaN, så et hul ikke bliver til nul. */
+export function talAf(s) {
+  if (s == null) return null;
+  const t = String(s).trim().replace(/\s|kWh|%|kr\.?/gi, '');
+  if (!t || t === '—' || t === '-' || t === 'n/a') return null;
+
+  /* Dansk eller engelsk? Afgjort på formen, ikke på et gæt:
+   *   "1.234,5"  → komma sidst: dansk, punktum er tusindtal
+   *   "1,234.5"  → punktum sidst: engelsk, komma er tusindtal
+   *   "0,52"     → kun komma: dansk decimal
+   *   "1.234"    → kun punktum, præcis tre cifre efter: tusindtal (tvetydig!)
+   */
+  const sidsteKomma = t.lastIndexOf(',');
+  const sidstePunktum = t.lastIndexOf('.');
+  let rent;
+  if (sidsteKomma >= 0 && sidstePunktum >= 0) {
+    rent = sidsteKomma > sidstePunktum
+      ? t.replace(/\./g, '').replace(',', '.')
+      : t.replace(/,/g, '');
+  } else if (sidsteKomma >= 0) {
+    rent = t.replace(',', '.');
+  } else if (sidstePunktum >= 0 && /\.\d{3}$/.test(t) && t.replace('.', '').length > 3) {
+    // "1.234" med præcis tre cifre efter punktummet: dansk tusindtal.
+    rent = t.replace(/\./g, '');
+  } else {
+    rent = t;
+  }
+  const n = Number(rent);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Læser en rørdelt tabel (markdown eller ren tekst) til rækker.
+ *
+ * Kolonnerne findes ud fra overskriften frem for ud fra deres plads, så en
+ * tabel med en ekstra kolonne eller en anden rækkefølge stadig kan læses.
+ */
+export const KOLONNER = {
+  butik: ['butik', 'store'],
+  maalerId: ['måler-id', 'maaler-id', 'meterid', 'måler id', 'id'],
+  navn: ['navn', 'name'],
+  tags: ['tags', 'tag'],
+  a: ['a'],
+  b: ['b'],
+  brudDato: ['brud-dato', 'bruddato', 'brud', 'dato'],
+  overgangsdoegn: ['b (døgn)', 'overgang', 'bredde', 'b_doegn'],
+  medianResidual: ['median residual', 'residual'],
+  afvigPct: ['afvig %', 'afvig%', 'afvigelse %', 'afvigelse'],
+  restniveau: ['restniveau'],
+  vejrforhold: ['vejrhældning/|b|', 'vejrhældning/|b', 'vejrhaeldning', 'vejrforhold', 'vejrhældning', 'vejr'],
+  koefFoer: ['koef før', 'koef foer', 'koeffør'],
+  koefEfter: ['koef efter'],
+  medianForudsagt: ['median forudsagt', 'forudsagt'],
+};
+
+export function laesMaaletabel(tekst) {
+  const linjer = String(tekst || '').split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.includes('|'));
+  if (!linjer.length) return { raekker: [], fejl: ['ingen tabelrækker fundet'] };
+
+  const del = (l) => l.replace(/^\|/, '').replace(/\|$/, '').split('|').map((x) => x.trim());
+  let hoved = del(linjer[0]).map((x) => x.toLowerCase().replace(/\*/g, ''));
+  const advarsler = [];
+
+  /* En kolonneoverskrift kan selv indeholde et rørtegn.
+   *
+   * Det er ikke en teoretisk risiko: jeg bad selv om kolonnen
+   * "vejrhældning/|b|", og den splitter i to. Resultatet var ikke en fejl —
+   * det var tre kolonner, der tavst blev læst som null, hvorefter diagnosen
+   * kørte videre uden vejrbevis og faldt tilbage på sine priors. Præcis den
+   * slags stilhed, der får en model til at se ud som om den virker.
+   *
+   * Kroppens kolonneantal er facit. Er hovedet længere, er der splittet for
+   * meget, og vi limer nabofelter sammen igen — helst dér, hvor sammenlimningen
+   * giver et navn, vi genkender. */
+  const kropslinjer = linjer.slice(1).filter((l) => !/^\|?[\s:|-]+$/.test(l));
+  const kropsbredde = kropslinjer.length
+    ? median(kropslinjer.map((l) => del(l).length)) : hoved.length;
+
+  /* Et tomt kolonnenavn med data under sig giver ingen mening. Når hovedet er
+   * længere end kroppen, er en tom celle utvetydigt affald fra en splitning —
+   * og at fjerne den er ikke et gæt. "…|b| |" efterlader netop sådan en. */
+  if (hoved.length > kropsbredde) {
+    const uden = hoved.filter((h) => h !== '');
+    if (uden.length >= kropsbredde && uden.length < hoved.length) hoved = uden;
+  }
+
+  if (hoved.length > kropsbredde) {
+    /* Gæt ikke på, hvor der skal limes. Prøv hver mulighed og mål resultatet.
+     *
+     * Første forsøg brugte en tommelfingerregel — "lim dér, hvor navnet ikke
+     * genkendes" — og den limede de to forkerte kolonner sammen, så koef før
+     * og koef efter forsvandt. En sammenlimning, der lander tal i de forkerte
+     * felter, er værre end ingen: den giver en diagnose, der ser rigtig ud.
+     *
+     * I stedet: prøv alle nabosammenlimninger, tæl hvor mange kendte kolonner
+     * hver af dem får til at gå op, og tag vinderen. Er der uafgjort, limes
+     * der ikke — så siges det i stedet, for et menneske kan se på tabellen,
+     * og det kan denne funktion ikke. */
+    const antalGenkendte = (h) => {
+      const brugt = new Set();
+      let n = 0;
+      for (const navne of Object.values(KOLONNER)) {
+        let i = h.findIndex((x, j) => !brugt.has(j) && navne.some((v) => x === v));
+        if (i < 0) i = h.findIndex((x, j) => !brugt.has(j) && navne.some((v) => v.length > 2 && x.startsWith(v)));
+        if (i >= 0) { brugt.add(i); n++; }
+      }
+      return n;
+    };
+
+    while (hoved.length > kropsbredde) {
+      const bud = [];
+      for (let i = 0; i < hoved.length - 1; i++) {
+        const kandidat = [...hoved.slice(0, i), `${hoved[i]}|${hoved[i + 1]}`, ...hoved.slice(i + 2)];
+        bud.push({ i, kandidat, score: antalGenkendte(kandidat) });
+      }
+      bud.sort((a, b) => b.score - a.score);
+      if (bud.length > 1 && bud[0].score === bud[1].score) {
+        return {
+          raekker: [], hoved, advarsler,
+          fejl: [`Overskriftsrækken har ${hoved.length} felter mod datarækkernes ${kropsbredde}. `
+            + 'En kolonneoverskrift indeholder sandsynligvis selv et rørtegn, og der er flere lige gode '
+            + 'måder at sætte den sammen igen på. Jeg gætter ikke — send tabellen igen uden rørtegn i '
+            + 'overskrifterne, eller omdøb kolonnen.'],
+        };
+      }
+      hoved = bud[0].kandidat;
+    }
+    advarsler.push('En kolonneoverskrift indeholdt selv et rørtegn. Kolonnerne er sat sammen igen efter '
+      + `datarækkernes bredde (${kropsbredde}), og sammensætningen var entydig. Kontrollér alligevel, at `
+      + 'tallene er landet de rigtige steder.');
+  }
+
+  /* Kolonnerne findes ved EKSAKT navn først, og kun derefter på begyndelsen.
+   *
+   * Rækkefølgen er ikke pedanteri. Aliaset for temperaturkoefficienten er "b",
+   * og med startsWith matcher det "butik" — som står som første kolonne. Feltet
+   * b læste altså butikkens navn, fik null, og vejrbeviset forsvandt uden en
+   * lyd. Derfor: eksakt match vinder altid, og begyndelses-match tillades kun
+   * for aliasser på over to tegn. En kolonne, der er taget, kan ikke stjæles. */
+  const plads = {};
+  const taget = new Set();
+  for (const [felt, navne] of Object.entries(KOLONNER)) {
+    const i = hoved.findIndex((h, j) => !taget.has(j) && navne.some((n) => h === n));
+    if (i >= 0) { plads[felt] = i; taget.add(i); }
+  }
+  for (const [felt, navne] of Object.entries(KOLONNER)) {
+    if (plads[felt] != null) continue;
+    const i = hoved.findIndex((h, j) => !taget.has(j) && navne.some((n) => n.length > 2 && h.startsWith(n)));
+    if (i >= 0) { plads[felt] = i; taget.add(i); }
+  }
+
+  const manglende = ['maalerId', 'medianResidual', 'afvigPct'].filter((f) => plads[f] == null);
+  if (manglende.length) {
+    return { raekker: [], fejl: [`tabellen mangler kolonnerne: ${manglende.join(', ')}`], hoved, advarsler };
+  }
+
+  const TEKSTFELT = new Set(['butik', 'maalerId', 'navn', 'tags', 'brudDato']);
+  const raekker = [];
+  for (const l of linjer.slice(1)) {
+    // Skillelinjen mellem hoved og krop i markdown: |---|---|
+    if (/^\|?[\s:|-]+$/.test(l)) continue;
+    const c = del(l);
+    if (c.length < hoved.length - 2) continue;
+    const r = {};
+    for (const [felt, i] of Object.entries(plads)) {
+      const v = c[i];
+      r[felt] = TEKSTFELT.has(felt) ? (v || null) : talAf(v);
+    }
+    if (!r.maalerId) continue;
+    // Forudsagt kan udledes, hvis den ikke står i tabellen.
+    if (r.medianForudsagt == null && r.medianResidual != null && r.afvigPct) {
+      r.medianForudsagt = Math.round(100 * r.medianResidual / r.afvigPct);
+    }
+    raekker.push(r);
+  }
+  /* Til sidst: sig til, hvis en kolonne, vi kender, slet ikke blev fundet. Det
+   * er bedre at vide, at vejrbeviset mangler, end at få en diagnose uden det. */
+  for (const felt of ['b', 'vejrforhold', 'koefFoer', 'koefEfter', 'restniveau']) {
+    if (plads[felt] == null) advarsler.push(`Kolonnen "${felt}" blev ikke fundet — diagnosen kører uden den.`);
+  }
+
+  return { raekker, fejl: [], hoved, advarsler };
 }
