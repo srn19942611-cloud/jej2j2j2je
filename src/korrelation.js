@@ -158,10 +158,32 @@ export function samtidighed(haendelse, opgaver, { faggruppe, vinduer = VINDUER, 
 
   const efter = kandidater.filter((o) => o.dage > vinduer.samtidig)
     .sort((a, b) => a.dage - b.dage)[0];
+  if (efter) {
+    return {
+      klasse: 'varsel', ...SAMTIDIGHED.varsel, opgave: efter, dage: efter.dage, faggruppe,
+      varslingsdage: efter.dage,
+      tekst: `Måleren så ændringen ${efter.dage} dage før butikken meldte den ind: "${kort(efter.tekst)}".`,
+    };
+  }
+
+  /* Der ER kandidater, men ingen af dem faldt i nogen af kasserne.
+   *
+   * Det kan lade sig gøre, fordi vinduerne med vilje er skæve: "forklaret"
+   * kræver mere end tre døgn før, "bekræftet" tillader kun ét døgn før. En
+   * opgave to eller tre døgn før hændelsen, hvis tekst ikke tydeligt er
+   * planlagt arbejde, falder derfor imellem — og første udgave antog bare, at
+   * der altid var en tilbage, og brød sammen på et undefined.
+   *
+   * Det rigtige svar er ikke at presse den ned i en af kasserne. Den ligger i
+   * netop det tidsrum, hvor datoen ikke kan afgøre, om opgaven er årsag eller
+   * virkning, og det skal siges. */
+  const naermest = [...kandidater].sort((a, b) => Math.abs(a.dage) - Math.abs(b.dage))[0];
   return {
-    klasse: 'varsel', ...SAMTIDIGHED.varsel, opgave: efter, dage: efter.dage, faggruppe,
-    varslingsdage: efter.dage,
-    tekst: `Måleren så ændringen ${efter.dage} dage før butikken meldte den ind: "${kort(efter.tekst)}".`,
+    klasse: 'uledsaget', ...SAMTIDIGHED.uledsaget,
+    opgave: naermest, dage: naermest.dage, faggruppe, tvetydig: true,
+    tekst: `Der ligger en opgave ${Math.abs(naermest.dage)} dage før ændringen: "${kort(naermest.tekst)}". `
+      + 'Så tæt på kan datoen ikke afgøre, om opgaven forklarer ændringen eller melder den — og teksten '
+      + 'siger det heller ikke. Den tæller derfor hverken for eller imod.',
   };
 }
 

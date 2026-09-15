@@ -578,6 +578,78 @@ Priorene opdateres som en tælling af, hvor ofte hver årsag viste sig at *være
 rigtige, blandet med udgangspunktet efter hvor meget erfaring der er — tolv
 bekræftelser, før erfaringen vejer halvt.
 
+## Den fejl, der først blev synlig på rigtige data
+
+Signaturen blev kørt på 113 elmålere i elleve butikker, døgnværdier over tolv
+måneder, med rigtig vejrdata. Resultatet afslørede en systematisk fejl i
+metoden — ikke i dataene.
+
+**Referenceperioden var ren vinter.** De første 60 % af et vindue, der slutter i
+september, løber fra 16. september til 23. april: middeltemperatur 5,3 °C.
+Vurderingsperioden er sommeren, middel 15,5 °C, og **24 % af dens døgn er varmere
+end den varmeste dag i hele referencen.** En lineær model tilpasset på vinter og
+anvendt på juli ekstrapolerer ud i det blå. Ét målepunkt kom ud med **−13.346 %**
+og et restniveau på −133 — ikke fordi anlægget fejlede, men fordi der blev
+divideret med et forudsagt forbrug på nul.
+
+**Beviset for at det var modellen og ikke anlæggene:** 37 af de 113 målere fik
+deres brud på 18. eller 19. juni — de samme to døgn. Hundrede og tretten anlæg
+går ikke i stykker samtidig. CUSUM fandt ikke en fejl; den fandt det sted, hvor
+modellen holdt op med at passe, altså sommerens begyndelse.
+
+**Mine egne prøver kunne aldrig fange det.** Scenariegeneratoren frembringer
+serierne med præcis den lineære form, modellen tilpasser. En model, der prøves af
+mod data, den selv har frembragt, består altid. Det er en advarsel, der rækker ud
+over denne sag.
+
+### Tre rettelser
+
+**Ekstrapolationsvagt.** Ligger over 35 % af vurderingsdøgnene uden for
+referenceperiodens temperaturinterval, afvises målingen med en begrundelse frem
+for at producere et tal. En afvigelse målt på et gæt er ikke en måling.
+
+**Sæsonvalgt reference.** Referencedøgnene vælges nu efter, om de *ligner* de
+døgn, der skal bedømmes — kun døgn inden for vurderingsperiodens
+temperaturinterval kommer i betragtning. Så tilpasses modellen dér, hvor den skal
+bruges.
+
+**Knækket vejrmodel.** En bygning både varmer og køler, og den gør det ikke ad
+samme ret linje. Modellen tilpasses nu på varme- og kølegrader hver for sig ved
+15 °C — men beholdes kun, hvis den faktisk forklarer mere, så den ikke bare
+bliver en ekstra parameter.
+
+Dertil: et anlæg, der stod stille i hele referenceperioden og først startede i
+juni, kan ikke få en normal. Tre målere i udsnittet var sådan. De afvises nu i
+stedet for at blive diagnosticeret.
+
+### Hvad det koster, og hvad det kræver
+
+| Opsætning | Rigtige årsager | Afvist af vagten |
+|---|---|---|
+| Vinter-reference, 145 døgns vurdering (som før) | 93 % | **100 %** — alt afvises nu |
+| Sæsonvalgt reference, 120 døgns vurdering, **2 års data** | **92 %** | 11 % |
+| Sæsonvalgt reference, 120 døgns vurdering, 1 års data | 94 % | **87 %** |
+
+Konklusionen er utvetydig: **der skal omkring to års døgndata til for at bygge en
+normal, der holder.** Med kun tolv måneder, der slutter om efteråret, kan
+sommeren ikke bedømmes mod noget, og metoden afviser — hvilket er det rigtige
+svar, for det er præcis dén situation, der gav −13.346 %.
+
+Enity har mindst 24 måneders historik. Det er altså ikke en begrænsning, vi skal
+leve med — det er en indstilling, der skal rettes.
+
+### En nedbrudsfejl, prøverne aldrig ramte
+
+Samtidighedskoblingen havde fire kasser: opgave over tre døgn før, ét døgn før
+til tre døgn efter, over tre døgn efter, og ingen opgave. En opgave **to eller
+tre døgn før** hændelsen, hvis tekst ikke tydeligt er planlagt arbejde, falder
+imellem dem alle — og koden antog, at der altid var en tilbage. Den brød sammen.
+
+Rettelsen er ikke at presse den ned i en kasse. Den ligger netop i det tidsrum,
+hvor datoen ikke kan afgøre, om opgaven er årsag eller virkning, og hvor teksten
+heller ikke siger det. Den tæller nu hverken for eller imod, og det står i
+begrundelsen.
+
 ## Observerbarhed — hvad vi overhovedet kan se
 
 Det vigtigste spørgsmål er ikke "hvor mange fejl har vi fundet". Det er "hvor

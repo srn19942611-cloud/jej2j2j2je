@@ -39,21 +39,156 @@ import { SAMTIDIGHED } from './korrelation.js';
  * `referenceSlut` er sidste døgn, der må indgå i det normale. Alt efter den
  * bedømmes mod modellen — og indgår aldrig i sin egen normal.
  */
-export function maalSignatur(raekker, { faggruppe, referenceSlut } = {}) {
+export function maalSignatur(raekker, { faggruppe, referenceSlut, knaek = 15, vurderingsdage = 120 } = {}) {
   const alle = (raekker || []).filter((r) => Number.isFinite(r.kwh));
-  const grænse = referenceSlut ?? Math.floor(alle.length * 0.6);
-  const ref = alle.slice(0, grænse);
-  const nu = alle.slice(grænse);
-  if (ref.length < 30 || nu.length < 14) {
-    return { brugbar: false, grund: `For kort serie: ${ref.length} referencedøgn og ${nu.length} vurderingsdøgn.` };
-  }
 
   const foelsom = (VEJRFOELSOMHED[faggruppe] || { variable: [] }).variable;
+  const tempvar = foelsom.includes('temperatur') ? 'temperatur' : (foelsom.includes('cdd') ? 'cdd' : (foelsom.includes('hdd') ? 'hdd' : null));
+
+  /* ---- Hvilke døgn bedømmer vi, og hvad bedømmer vi dem imod? -------------
+   *
+   * To fejl, som begge kom frem, da modellen blev kørt på rigtige data:
+   *
+   * (1) Vurderingsvinduet var "alt efter referencen". På et toårigt udtræk
+   *     bliver det 365 døgn, og en glidende fejl i de sidste fire måneder
+   *     fortyndes af otte rene måneder foran. Træfsikkerheden faldt fra 95 til
+   *     77 %, ikke fordi modellen blev dårligere, men fordi den blev spurgt om
+   *     et helt år i stedet for om nu. Vi bedømmer derfor de seneste
+   *     `vurderingsdage` døgn — en tilstand, ikke en årsberetning.
+   *
+   * (2) Referencen var de første 60 % af vinduet, altså efterår og vinter, og
+   *     den blev brugt til at bedømme sommeren. Nu vælges referencedøgnene
+   *     efter, om de LIGNER de døgn, der skal bedømmes: kun døgn inden for
+   *     vurderingsperiodens temperaturinterval kommer i betragtning. Så
+   *     tilpasses modellen dér, hvor den skal bruges, og den bliver aldrig
+   *     bedt om at gætte på vejr, den ikke har set.
+   */
+  const nuStart = referenceSlut != null
+    ? referenceSlut
+    : Math.max(30, alle.length - vurderingsdage);
+  const nu = alle.slice(nuStart);
+  const foer = alle.slice(0, nuStart);
+
+  if (foer.length < 30 || nu.length < 14) {
+    return { brugbar: false, grund: `For kort serie: ${foer.length} referencedøgn og ${nu.length} vurderingsdøgn.` };
+  }
+
+  /* Sæsonligt udvalg. Kun hvis der er nok tilbage — ellers er en bred
+   * reference med en ærlig advarsel bedre end en smal, der ikke kan bære en
+   * regression. */
+  let ref = foer;
+  let refudvalg = 'hele perioden før';
+  if (tempvar) {
+    const tNu = nu.map((r) => r[tempvar]).filter(Number.isFinite);
+    if (tNu.length > 10) {
+      const lav = Math.min(...tNu), hoej = Math.max(...tNu);
+      const luft = (hoej - lav) * 0.15;
+      const udvalgt = foer.filter((r) => Number.isFinite(r[tempvar]) && r[tempvar] >= lav - luft && r[tempvar] <= hoej + luft);
+      if (udvalgt.length >= 45) {
+        ref = udvalgt;
+        refudvalg = `${udvalgt.length} af ${foer.length} tidligere døgn med samme slags vejr (${Math.round(lav)}–${Math.round(hoej)} °C)`;
+      }
+    }
+  }
+
   const vejrvar = foelsom.filter((v) => ref.some((r) => Number.isFinite(r[v])) && mad(ref.map((r) => r[v]).filter(Number.isFinite)) > 1e-6);
 
-  // Normalmodellen, tilpasset kun på referenceperioden.
-  const model = vejrvar.length ? regression(ref.map((r) => ({ ...r, y: r.kwh })), vejrvar) : null;
-  const forudsig = model ? model.forudsig : () => median(ref.map((r) => r.kwh));
+  /* ---- Ekstrapolationsvagten ---------------------------------------------
+   *
+   * Det her er den vigtigste enkeltrettelse i hele modellen, og den kom af,
+   * at tallene blev kørt på rigtige data for første gang.
+   *
+   * Referenceperioden er de første 60 % af vinduet. For et vindue, der
+   * slutter i september, er det 16. september til 23. april — altså ren
+   * vinter, middeltemperatur 5,3 °C. Vurderingsperioden er sommeren, middel
+   * 15,5 °C, og 24 % af dens døgn er varmere end den varmeste dag i hele
+   * referencen. En lineær model tilpasset på vinter og anvendt på juli
+   * ekstrapolerer ud i det blå: med negativ hældning forudsiger den nær nul,
+   * og så eksploderer både afvigelsen i procent og restniveauet. Ét
+   * målepunkt kom ud med −13.346 % og et restniveau på −133.
+   *
+   * Beviset for at det var modellen og ikke anlæggene: 37 ud af 113 målere
+   * fik deres brud på 18. eller 19. juni — de samme to døgn. 113 anlæg går
+   * ikke i stykker samtidig. CUSUM fandt ikke en fejl; den fandt det sted,
+   * hvor modellen holdt op med at passe, altså sommerens begyndelse.
+   *
+   * Mine egne scenarieprøver kunne aldrig fange det: jeg genererede serierne
+   * med præcis den lineære form, modellen tilpasser. En model, der prøves af
+   * mod data, den selv har frembragt, består altid.
+   */
+  let ekstrapolation = null;
+  if (tempvar) {
+    const tRef = ref.map((r) => r[tempvar]).filter(Number.isFinite);
+    const tNu = nu.map((r) => r[tempvar]).filter(Number.isFinite);
+    if (tRef.length && tNu.length) {
+      const refMax = Math.max(...tRef), refMin = Math.min(...tRef);
+      const udenfor = tNu.filter((t) => t > refMax || t < refMin).length / tNu.length;
+      ekstrapolation = {
+        variabel: tempvar,
+        refSpaend: [Math.round(refMin * 10) / 10, Math.round(refMax * 10) / 10],
+        vurderingSpaend: [Math.round(Math.min(...tNu) * 10) / 10, Math.round(Math.max(...tNu) * 10) / 10],
+        andelUdenfor: Math.round(udenfor * 1000) / 10,
+      };
+      if (udenfor > 0.35) {
+        return {
+          brugbar: false,
+          ekstrapolation,
+          grund: `Referenceperioden dækker ${Math.round(refMin)} til ${Math.round(refMax)} °C, men `
+            + `${Math.round(udenfor * 100)} % af vurderingsdøgnene ligger udenfor det interval. `
+            + 'Modellen ville skulle gætte på vejr, den aldrig har set, og en afvigelse målt på et gæt '
+            + 'er ikke en måling. Flyt referenceperioden, så den dækker den samme årstid som det, der '
+            + 'vurderes — eller vent, til der er et helt år at bygge normalen på.',
+        };
+      }
+    }
+  }
+
+  /* ---- Knækket model ------------------------------------------------------
+   *
+   * En bygning både varmer og køler, og den gør det ikke ad samme ret linje.
+   * Under knækket falder forbruget med temperaturen (der varmes), over det
+   * stiger det (der køles). Tvinges begge dele ned i én hældning, bliver
+   * resultatet en model, der passer på gennemsnittet og på ingen af delene.
+   *
+   * Vi tilpasser derfor på varme- og kølegrader hver for sig og beholder kun
+   * den knækkede model, hvis den faktisk forklarer mere. Ellers er den blot
+   * en ekstra parameter, der gør modellen mindre gennemskuelig.
+   */
+  let model = vejrvar.length ? regression(ref.map((r) => ({ ...r, y: r.kwh })), vejrvar) : null;
+  let modelform = model ? 'lineær' : 'konstant';
+
+  if (tempvar && ref.some((r) => r[tempvar] > knaek) && ref.some((r) => r[tempvar] < knaek)) {
+    const med = ref.map((r) => ({
+      ...r, y: r.kwh,
+      _hg: Math.max(0, knaek - r[tempvar]),
+      _kg: Math.max(0, r[tempvar] - knaek),
+    }));
+    const knaekket = regression(med, ['_hg', '_kg']);
+    if (knaekket && (!model || knaekket.rmse < model.rmse * 0.97)) {
+      const raa = knaekket.forudsig;
+      model = {
+        ...knaekket,
+        koefficienter: { [tempvar]: knaekket.koefficienter._kg ?? 0, varmegrad: knaekket.koefficienter._hg, koelegrad: knaekket.koefficienter._kg },
+        forudsig: (r) => raa({ _hg: Math.max(0, knaek - r[tempvar]), _kg: Math.max(0, r[tempvar] - knaek) }),
+      };
+      modelform = `knækket ved ${knaek} °C`;
+    }
+  }
+
+  /* Et anlæg, der stod stille i referenceperioden, kan ikke få en normal.
+   * Tre målere i udsnittet var slukket hele vinteren og startede i juni —
+   * dér er der ingen normal at afvige fra, og en diagnose ville være et
+   * postulat. */
+  const refMedian = median(ref.map((r) => r.kwh));
+  if (!refMedian || refMedian <= 0) {
+    return {
+      brugbar: false, ekstrapolation,
+      grund: 'Anlægget brugte intet i referenceperioden. Der er ingen normal at afvige fra — '
+        + 'det er et anlæg, der først sættes i drift, ikke et anlæg, der afviger.',
+    };
+  }
+
+  const forudsig = model ? model.forudsig : () => refMedian;
 
   const rest = nu.map((r) => ({ ...r, afvig: r.kwh - forudsig(r) }));
   const restRef = ref.map((r) => ({ ...r, afvig: r.kwh - forudsig(r) }));
@@ -140,7 +275,6 @@ export function maalSignatur(raekker, { faggruppe, referenceSlut } = {}) {
    *     Vi måler det på afvigelsen og ikke på forbruget, netop fordi den
    *     normale vejrafhængighed allerede er trukket ud af modellen. Det, der
    *     er tilbage, er den vejrafhængighed, anlægget ikke plejer at have. */
-  const tempvar = foelsom.includes('temperatur') ? 'temperatur' : (foelsom.includes('cdd') ? 'cdd' : (foelsom.includes('hdd') ? 'hdd' : null));
   let vejrkobling = null;
   if (tempvar && form !== 'nul') {
     /* Tidstrenden ud først.
@@ -221,19 +355,24 @@ export function maalSignatur(raekker, { faggruppe, referenceSlut } = {}) {
     vejrrespons,
     koefFoer: koefFoer == null ? null : Math.round(koefFoer * 100) / 100,
     koefEfter: koefEfter == null ? null : Math.round(koefEfter * 100) / 100,
-    brud: brud ? { indeks: grænse + brud.indeks, forskel: Math.round(brud.forskel), styrke: Math.round(brud.styrke * 10) / 10, dato: alle[grænse + brud.indeks]?.dato } : null,
+    brud: brud ? { indeks: nuStart + brud.indeks, forskel: Math.round(brud.forskel), styrke: Math.round(brud.styrke * 10) / 10, dato: alle[nuStart + brud.indeks]?.dato } : null,
     trendKwh: Math.round(trendSamlet),
     overgangsdoegn: overgang ? overgang.bredde : null,
     // Døgn er længden af det stykke, signaturen faktisk er målt på — ikke af
     // hele vinduet. Det er dét tal, konfidensen skal stå i forhold til.
     doegn: segment.length,
     vurderingsdoegn: nu.length,
-    segmentStart: springer ? alle[grænse + brud.indeks]?.dato : alle[grænse]?.dato,
+    segmentStart: springer ? alle[nuStart + brud.indeks]?.dato : alle[nuStart]?.dato,
     referencedoegn: ref.length,
     modelleret: alle.some((r) => r.modelleret),
+    modelform,
+    refudvalg,
+    ekstrapolation,
     // Hvad vi IKKE kunne måle. Det skal med, for det sætter loftet over konfidensen.
     mangler: [
       tempvar ? null : 'vejrdata for anlægstypen',
+      ekstrapolation && ekstrapolation.andelUdenfor > 10
+        ? `${ekstrapolation.andelUdenfor} % af vurderingsdøgnene ligger uden for referenceperiodens temperaturinterval` : null,
       alle.some((r) => r.time) ? null : 'timedata — døgnprofil og natandel kan ikke ses',
     ].filter(Boolean),
   };
