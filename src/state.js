@@ -33,6 +33,13 @@ const standard = {
   ansvarlige: {},        // person → { navn, email, stedfortraeder }
   visitationer: {},      // sagsnøgle → personId, sat af visitatoren
   routingregler: {},     // regelnøgle → { personId, begrundelse } — visitation, der er blevet permanent
+  /* Alt, agenten har lært af svarene. Gemmes lokalt sammen med resten, så en
+   * afvisning ikke går tabt, når fanen lukkes — den er den eneste kilde til
+   * at vide, om diagnoserne rammer. */
+  laering: {
+    svar: [], priorJusteringer: {}, undertrykkelser: [],
+    beloebsgraenser: {}, koblingsfejl: [], ruter: {},
+  },
 };
 
 function laes() {
@@ -61,6 +68,7 @@ export const state = {
   sidsteKoersel: null,
   vandmaerker: {},
   anlaegsindeks: null,
+  varsler: [],
   raadata: {},
   planlaegger: null,
   log: [],
@@ -71,9 +79,9 @@ state.klienter = buildClients(state.cfg);
 
 export function gem() {
   try {
-    const { cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, visitationer, routingregler, vandmaerker, sidsteKoersel } = state;
+    const { cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, visitationer, routingregler, vandmaerker, sidsteKoersel, laering } = state;
     localStorage.setItem(NØGLE, JSON.stringify({
-      cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, visitationer, routingregler, vandmaerker,
+      cfg, forudsaetninger, beslutninger, undertrykkelser, ansvarlige, visitationer, routingregler, vandmaerker, laering,
       // Kun hovedtallene fra sidste kørsel gemmes — ikke de hentede data.
       sidsteKoersel: sidsteKoersel && { ...sidsteKoersel, trin: sidsteKoersel.trin },
     }));
@@ -162,6 +170,96 @@ const KAEDER_KODE = { SB: 'SuperBrugsen', KV: 'Kvickly', BR: "Dagli'Brugsen", '3
 const kaedeAf = (kode) => KAEDER_KODE[kode] || 'Ukendt';
 
 /** Kører hele detektorkataloget og bygger sager. */
+/* ---- Agenten -------------------------------------------------------------
+ * Kører hele kæden: kobling → normallast → korrelation mod Dalux → diagnose →
+ * varsel til den fagansvarlige.
+ *
+ * Enhederne er RIGTIGE: anlæggene kommer fra Dalux og målerne fra Enity, og
+ * koblingen mellem dem er den samme, som resten af hubben bruger. Døgnserierne
+ * er derimod modellerede, indtil Enitys timedata er trukket med — og hvert
+ * eneste varsel bærer det som forbehold, så ingen kommer til at læse et
+ * konkret tal som en aflæsning.
+ */
+export async function koerAgenten() {
+  const [{ koblButik }, { DEMO_ANLAEG, DEMO_MAALERE, DEMO_BUTIK, BUTIK_FAGGRUPPE }, { SCENARIER, byggScenarie }, { koerAgent }, { AARSAG }] =
+    await Promise.all([
+      import('./kobling.js'), import('./seed.js'), import('./scenarier.js'), import('./agent.js'), import('./aarsag.js'),
+    ]);
+
+  // koblButik svarer med { koblinger, enheder, ... } — analyseenhederne er
+  // det felt, agenten skal have, ikke returværdien selv.
+  const { enheder: alle } = koblButik(DEMO_ANLAEG, DEMO_MAALERE);
+  const enheder = alle.filter((e) => e.faggruppe && e.meterId);
+
+  /* Hver enhed får en scenarieserie — men den skal passe til enheden.
+   *
+   * Første udgave lagde et køleanlægs serie på 975 kWh/døgn ned over samtlige
+   * målere, også lysmålerne. Det gav et varsel på 206.000 kr. på "Lys 1" i en
+   * butik, hvis indendørs lys bruger 413 kWh/døgn i alt. Størrelsesordenen var
+   * ren fiktion, og en demo, man ikke kan tale ud fra, er værre end ingen demo.
+   *
+   * Så: basis sættes efter butikkens FAKTISKE forbrug i den faggruppe, delt på
+   * de enheder, der måler den, og der vælges kun scenarier, hvis årsag
+   * overhovedet kan optræde i faggruppen. Valget er deterministisk ud fra
+   * måler-id'et, så den samme enhed altid viser det samme.
+   */
+  const forbrug = {};
+  for (const r of BUTIK_FAGGRUPPE) {
+    if (r.butiksnummer === DEMO_BUTIK.kardex) forbrug[r.fg] = r.kwh;
+  }
+  const antalPrFg = {};
+  for (const e of enheder) antalPrFg[e.faggruppe] = (antalPrFg[e.faggruppe] || 0) + 1;
+
+  const relevanteScenarier = (fg) => SCENARIER.filter((sc) => {
+    const a = AARSAG[sc.fejl];
+    // 'ingen' har ingen årsag i kataloget og hører til overalt som kontrolprøve.
+    return !a || !a.faggrupper || a.faggrupper.includes(fg);
+  });
+
+  const input = enheder.map((e, i) => {
+    const kandidater = relevanteScenarier(e.faggruppe);
+    if (!kandidater.length) return null;
+    const froe = Number(e.meterId.slice(-4)) || i;
+    /* Fordelt på enhedens plads i listen frem for på måler-id'et. Med id'et
+     * klumpede valget: tre døde målere og tre totalhavarier i den samme butik,
+     * hvilket ingen kan tale ud fra. */
+    const sc = kandidater[i % kandidater.length];
+    // Butikkens målte årsforbrug i faggruppen, delt på de enheder der måler den.
+    const aar = forbrug[e.faggruppe];
+    const basis = aar ? Math.max(8, Math.round(aar / (antalPrFg[e.faggruppe] || 1) / 365 * 0.8)) : 120;
+    const s = byggScenarie(sc, {
+      froe: 20260915 + froe,
+      basis,
+      // Vejrfølsomheden skaleres med anlægget — ellers får en lille måler en
+      // temperaturrespons, der er større end den selv.
+      tempkoef: Math.max(0.5, basis * 0.018),
+      stoej: Math.max(4, basis * 0.08),
+    });
+
+    return {
+      enhed: {
+        id: e.id,
+        navn: e.navn,
+        butik: DEMO_BUTIK.navn,
+        butiksnummer: DEMO_BUTIK.kardex,
+        faggruppe: e.faggruppe,
+        energirolle: e.energirolle,
+        maaler: e.meterNavn,
+        dedikeret: e.kanPegePaaAnlaeg,
+        energienhed: e.energistroem === 'varme' ? 'varme' : 'el',
+      },
+      raekker: s.raekker,
+      opgaver: s.opgaver,
+      referenceSlut: 220,
+    };
+  }).filter(Boolean);
+
+  state.varsler = koerAgent(input, { laering: state.laering });
+  skriv(`Agenten kørte over ${input.length} analyseenheder og lagde ${state.varsler.length} varsler.`, 'ok');
+  opdater();
+  return state.varsler;
+}
+
 export function koerDetektorer() {
   const d = state.data;
   if (!d) return;

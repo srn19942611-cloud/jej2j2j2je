@@ -12,7 +12,7 @@
  */
 
 import { h } from './ui.js';
-import { state, abonner, indlaesData, skriv, opdater, gem } from './state.js';
+import { state, abonner, indlaesData, skriv, opdater, gem, koerAgenten } from './state.js';
 import { planlaegNatligKoersel, byggHenter, koerSynkronisering, opsummer } from './sync.js';
 import { overblik } from './views/overblik.js';
 import { mitOmraade } from './views/mitomraade.js';
@@ -24,11 +24,13 @@ import { solceller } from './views/solceller.js';
 import { motor } from './views/motor.js';
 import { anlaegsanalyse } from './views/anlaegsanalyse.js';
 import { detektorer, fagbog } from './views/detektorer.js';
+import { agentside } from './views/agent.js';
 import { opsaetning } from './views/opsaetning.js';
 
 const SIDER = [
   { id: 'overblik',   navn: 'Overblik',   tegn: overblik },
   { id: 'mitomraade', navn: 'Mit område', tegn: mitOmraade },
+  { id: 'agent',      navn: 'Agenten',    tegn: agentside },
   { id: 'sager',      navn: 'Sager',      tegn: sager },
   { id: 'butikker',   navn: 'Butikker',   tegn: butikker },
   { id: 'anlaeg',     navn: 'Anlæg',      tegn: anlaeg },
@@ -108,6 +110,8 @@ indlaesData().then(() => {
   skriv(`${state.sager.length} sager bygget ud fra ${state.data.butikker.length} butikker.`, 'ok');
   opdater();
   armNatligKoersel();
+  // Agenten kører efter dataene er inde — den skal bruge koblingen.
+  return koerAgenten().catch((f) => skriv(`Agenten kunne ikke køre: ${f.message}`, 'fejl'));
 });
 
 /* Den natlige kørsel armes kun, hvis brugeren har slået den til. Timeren er

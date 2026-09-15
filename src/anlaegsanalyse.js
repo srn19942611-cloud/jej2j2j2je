@@ -430,7 +430,7 @@ function vaelgForklaring(fund, afvig) {
 }
 
 /** Bedste totrins-tilpasning: prøv hvert skæringspunkt, tag den mindste fejl. */
-function sseTrinmodel(y) {
+export function sseTrinmodel(y) {
   let bedst = Infinity;
   for (let k = 7; k < y.length - 7; k += Math.max(1, Math.floor(y.length / 60))) {
     const a = median(y.slice(0, k)), b = median(y.slice(k));
@@ -442,7 +442,7 @@ function sseTrinmodel(y) {
 }
 
 /** Tilpasning med en ret linje. */
-function sseLinjemodel(y) {
+export function sseLinjemodel(y) {
   const t = theilSen(y.map((v, i) => ({ x: i, y: v })));
   if (!t) return Infinity;
   let sse = 0;

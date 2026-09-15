@@ -448,6 +448,136 @@ en datakilde, eller at området slet ikke har en energiside. Hvert dashboard
 skriver det ud med de konkrete detektornavne og det, de mangler — en tom kø
 under et område uden detektorer i drift betyder, at der ikke bliver kigget.
 
+## Agenten — fra afvigelse til en beslutning, nogen har taget
+
+Det er her, kæden bliver til noget, man kan handle på. Syv trin, hvert med ét job:
+
+| | Trin | Hvor |
+|---|---|---|
+| 1 | Opdag: måleren afviger fra sin egen vejrkorrigerede normal | `src/aarsag.js` · `maalSignatur` |
+| 2 | Kobl: hvad siger Dalux om det anlæg i samme periode? | `src/korrelation.js` |
+| 3 | Forklar: hvilken årsag passer på signaturen? | `src/aarsag.js` · `diagnosticer` |
+| 4 | Prissæt: i den rigtige beløbsklasse, eller slet ikke | `src/agent.js` · `prissaet` |
+| 5 | Adressér: hvem har anlægget? | `src/personer.js` · `ejerMedRolle` |
+| 6 | Spørg: ét varsel, to knapper | `src/views/agent.js` |
+| 7 | Lær: hvad svarede de, og hvad ændrer det? | `src/agent.js` · `registrerSvar` |
+
+### Det første, analysen viste: sammenhængen findes ikke i årstal
+
+Det oplagte sted at lede efter koblingen mellem nedbrud og energi er dér, hvor
+data allerede ligger: 80 butikker med både målt køleforbrug og talte
+Køl/Frost-opgaver. Butikker med gentagne kølefejl bruger 26 % mere el pr. m² på
+køl end butikker uden.
+
+Det tal holder ikke. De samme butikker er 27 % mindre, og deres samlede forbrug
+pr. m² er 18 % højere — altså er de mere intensive hele vejen rundt, ikke kun på
+køl. Måler man på køleandelen af elforbruget i stedet, som er upåvirket af
+størrelsen, falder forskellen til 2,6 procentpoint. En permutationstest med
+20.000 omrokeringer giver **p = 0,53**: seks butikker kan sagtens lande dér ved
+rent tilfælde.
+
+**Konklusionen er ikke, at sammenhængen ikke findes — men at årsopgørelser aldrig
+kan vise den.** Et kompressorsvigt er et spring på en tirsdag. Lagt sammen over
+tolv måneder forsvinder det. Koblingen lever i tid, og derfor er det timedata og
+opgavedatoer, den skal bygges på — ikke årssummer.
+
+### Retningen i tid afgør, om sagen overhovedet er en sag
+
+| Opgaven ligger | Betyder | Hvad agenten gør |
+|---|---|---|
+| **Før** afvigelsen | Nogen har lavet noget — ny sektion, nyt setpunkt | Ingen fejlmelding. Normalen skal genberegnes |
+| **Samtidig** | Butikken og måleren så det samme | Højeste konfidens, to uafhængige kilder |
+| **Efter** | Måleren så det først | Forspringet i dage er hele forretningsargumentet |
+| **Ingen opgave** | Uopdaget fejl — eller slet ikke en fejl | Siges højt frem for at gætte |
+
+Datoen alene kan ikke afgøre det. En opgave to dage før springet kan være begge
+dele. Derfor læses også **opgavens tekst**: *"idriftsættelse af ny frostsektion"*
+er planlagt arbejde, *"køleanlægget står, temperaturen stiger"* er en
+fejlmelding. Uden den skelnen blev et setpunkt, der var skruet ned efter aftale,
+læst som et nedbrud.
+
+### Årsagsanalysen skiller årsagerne ad på form, ikke på størrelse
+
+To fejl kan koste det samme og se ens ud på en månedsopgørelse:
+
+- **Tilsmudset kondensator** — merforbruget vokser med udetemperaturen. Om
+  vinteren er det næsten væk.
+- **Fastlåst afrimning** — det samme antal kWh i døgnet, året rundt.
+
+Det er vejrdataene, der skiller dem. Uden dem er begge bare "+14 %", og
+anbefalingen bliver "få en tekniker til at kigge på det" — altså ingen
+anbefaling. Seks ting måles, og hver af dem adskiller mindst ét årsagspar:
+**form** (spring eller glidning), **retning**, **overgangens bredde i døgn**,
+**vejrafhængighed** i merforbruget, **ændring i anlæggets vejrfølsomhed**, og
+**restniveau** — hvor meget der stadig kører.
+
+Restniveauet er det, der skiller en død måler (nul) fra et standset anlæg
+(styring og ventilatorer kører, 5–20 %) fra et tabt kompressortrin (næsten alt
+kører endnu). Tre sager, der ellers alle blot er "forbruget faldt".
+
+Afvejningen sker i log-odds, så beviser kan lægges sammen, og så det bagefter kan
+gøres op, hvilket bevis der trak i hvilken retning. Ingen sprogmodel stiller
+diagnosen; den beskriver kun den, tallene har stillet.
+
+### Prøvet af på ni scenarier med kendt facit
+
+En detektor, der aldrig er prøvet på noget, hvor man kender svaret, er ikke en
+detektor — den er et gæt med et konfidenstal på. `src/scenarier.js` bygger ni
+døgnserier, hvor fejlen, dens starttidspunkt og dens størrelse er lagt ind med
+vilje. Fire af dem er **ikke** fejl (setpunkt, ombygning, død måler, ren serie):
+en detektor, der finder fejl i dem, er værre end ingen detektor.
+
+| | Resultat |
+|---|---|
+| Ramte den rigtige årsag | **95,3 %** af 972 kørsler |
+| Falske alarmer på ren serie | **1 ud af 108** (0,9 %) |
+| Oversete fejl | 9 — alle sammen scenariet, der ikke er en fejl |
+
+De 972 kørsler er 12 tilfældighedsfrø × 3 støjniveauer × 3 anlægsstørrelser —
+altså data, tærsklerne **ikke** er sat efter. På de ni scenarier alene rammer den
+9 ud af 9, men det tal er intet værd i sig selv: det er målt på netop de serier,
+modellen blev rettet til imod.
+
+Vejen dertil gik gennem seks fejl, der alle var mine egne, og som alle ville have
+set rigtige ud i en demo. De står dokumenteret i koden, dér hvor de blev begået —
+`theilSen` kaldt med `[x, y]` i stedet for `{x, y}`, så hvert eneste vejrbevis
+tavst udeblev; en signatur målt over hele vinduet, så et kompressorsvigt 25 døgn
+før seriens slutning gav 0,1 % afvigelse; et restniveau på 1,046 på et skadet
+anlæg, fordi juli blev holdt op mod en vinterbaseline; en glidende fejl, der lånte
+temperaturens sæsonkurve og udgav sig for at være vejrafhængig; et spring, der
+blev målt som otte ugers optrapning, fordi tærskelkrydsninger drukner i støj; og
+en prior, der gik **op** for en årsag, der var blevet modbevist seks gange, fordi
+præcision og basisrate blev blandet sammen.
+
+### Pop-up'en: to knapper, og "Afvis" er ikke en skraldespand
+
+Den fagansvarlige skal kunne sige ja eller nej uden at åbne noget andet. Derfor
+står hele grundlaget i pop-up'en: hvad måleren viser, hvad agenten tror, hvad der
+taler for og imod, hvilke andre muligheder der ikke kan udelukkes, hvad der skal
+tjekkes i hvilken rækkefølge, hvad det koster at lade stå, og hvilke forbehold der
+er.
+
+**Opret opgave i Dalux** sender hele teksten med over, som den står. Ingen skal
+skrive den igen. Nederst i opgaven står et spørgsmål om, hvad årsagen viste sig at
+være — og det er dét svar, der lukker sløjfen.
+
+**Afvis** spørger hvorfor, og de seks grunde gør hver deres:
+
+| Grund | Hvad den ændrer |
+|---|---|
+| Årsagen er forkert — det var noget andet | Justerer sandsynlighederne for faggruppen: den forkerte ned, den rigtige op |
+| Det er ikke det anlæg, måleren dækker | Ryger i koblingsbunken — den fejl rammer alt, hvad der måles på den måler |
+| Kendt og accepteret | Undertrykkes til en **dato, der altid sættes** — en accept må ikke blive et blindt punkt |
+| Allerede løst | Lukkes uden at tælle som forkert diagnose. Agenten havde ret, den var for langsom |
+| For lille til at rykke ud på | Hæver beløbsgrænsen for faggruppen — varslet forsvinder ikke, det holder bare op med at afbryde |
+| Ikke mit område | Sender videre og noterer ruten. Tre gange samme rute foreslås som fast regel |
+
+**En bekræftelse tæller først, når Dalux-opgaven lukkes med en årsag.** At sende
+et varsel videre betyder kun, at nogen tog det alvorligt nok til at se efter.
+Priorene opdateres som en tælling af, hvor ofte hver årsag viste sig at *være* den
+rigtige, blandet med udgangspunktet efter hvor meget erfaring der er — tolv
+bekræftelser, før erfaringen vejer halvt.
+
 ## Koblingen anlæg ↔ målepunkt
 
 Den vigtigste kobling i hubben. Uden den kan vi sige *"køl i denne butik bruger
