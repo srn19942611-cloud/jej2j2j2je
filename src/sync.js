@@ -53,6 +53,12 @@ export const TRIN = [
     beskrivelse: 'Timeproduktion og forventet produktion for det seneste døgn.' },
   { id: 'sol-alarmer',     navn: 'Solceller · alarmer',     kilde: 'sol',   slags: 'bevaegelse',
     beskrivelse: 'Nye og lukkede alarmer. Kører i skyggedrift.' },
+  { id: 'vejr',            navn: 'Vejr · ti zoner',         kilde: 'vejr',  slags: 'bevaegelse',
+    beskrivelse: 'Temperatur, vind, skydække og indstråling. Uden dem er halvdelen af alle kølesager falske om sommeren.' },
+  { id: 'kobling',         navn: 'Kobling · anlæg mod målepunkt', kilde: 'lokal', slags: 'beregning',
+    beskrivelse: 'Binder Dalux-anlæg til Enity-målepunkter og afgør, hvad der kan analyseres hver for sig.' },
+  { id: 'anlaegsanalyse',  navn: 'Normallast og mønsterbrud', kilde: 'lokal', slags: 'beregning',
+    beskrivelse: 'Bygger normallasten pr. anlæg og finder niveauskift, drift og brudt vejrrespons.' },
   { id: 'motor',           navn: 'Motor · anlæg og faggruppe', kilde: 'lokal', slags: 'beregning',
     beskrivelse: 'Læser nye opgaver, finder anlægget og placerer dem i en faggruppe.' },
   { id: 'detektorer',      navn: 'Detektorer og sagsbygger', kilde: 'lokal', slags: 'beregning',
@@ -286,6 +292,28 @@ export function byggHenter({ klienter, sol, gem, beregn, vandmaerker = {}, sideS
         });
         await gem('enityForbrug', data);
         return { raekker: laengde(data), vandmaerke: slut.toISOString() };
+      }
+      case 'vejr': {
+        const { hentAlleZoner, VEJRZONER } = await import('./vejr.js');
+        const slut = new Date();
+        const start = new Date(slut.getTime() - 400 * 864e5);
+        const { zoner, fejl } = await hentAlleZoner({
+          fra: start.toISOString().slice(0, 10),
+          til: slut.toISOString().slice(0, 10),
+        });
+        await gem('vejr', zoner);
+        // Én zone, der fejler, må ikke vælte de ni andre — men det skal ses.
+        if (fejl.length === VEJRZONER.length) throw new Error(`Alle vejrzoner fejlede: ${fejl[0].besked}`);
+        return { raekker: Object.values(zoner).reduce((a, z) => a + z.length, 0), vandmaerke: slut.toISOString() };
+      }
+      case 'kobling':
+      case 'anlaegsanalyse': {
+        if (!beregn || !beregn[trin.id]) {
+          const f = new Error('Beregningen er ikke koblet på denne kørsel.');
+          f.springOver = true; throw f;
+        }
+        const r = await beregn[trin.id]({ gem });
+        return { raekker: (r && r.raekker) || 0 };
       }
       case 'sol-anlaeg':
       case 'sol-produktion':

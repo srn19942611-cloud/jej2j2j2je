@@ -329,6 +329,128 @@ en datakilde, eller at området slet ikke har en energiside. Hvert dashboard
 skriver det ud med de konkrete detektornavne og det, de mangler — en tom kø
 under et område uden detektorer i drift betyder, at der ikke bliver kigget.
 
+## Koblingen anlæg ↔ målepunkt
+
+Den vigtigste kobling i hubben. Uden den kan vi sige *"køl i denne butik bruger
+340.000 kWh"* — men ikke *"dette køleanlæg bruger for meget"*. Forskellen er
+hele forskellen mellem en rapport og en driftsopgave.
+
+### Fundet, der bærer det hele
+
+Anlægskoden står i målernavnet. Enity-måleren `VE.02 Slagter` hører til
+Dalux-anlægget `VE02.1`. Det er ikke et gæt — det er den samme kode, og
+koblingen har ligget i data hele tiden uden at være trukket ud.
+
+**Men det gælder kun 386 af 11.817 el- og varmemålere, altså 3,3 %.** Resten
+har ingen kode, og der findes typisk ÉN måler til FLERE anlæg: en butik med
+fire ventilationsanlæg kan have én måler mærket "Ventilation". Modellen er
+derfor bygget om det, data kan bære:
+
+| Trin | Grundlag | Konfidens | Giver |
+|---|---|---|---|
+| 1 | Anlægskoden står i begge navne | 95 % | Ægte 1:1 |
+| 1b | Zonekort lært af trin 1 | 85 % | 1:1 |
+| 2 | Klasse mod tag, ét anlæg af typen | 80 % | 1:1 |
+| 3 | Klasse mod tag, flere anlæg | 85 % | **Gruppe, ikke anlæg** |
+
+Trin 1b er værd at fremhæve: måleren `VE.02 Slagter` fortæller både at VE02 er
+anlægget, *og* at VE02 står i slagteren. Den anden oplysning bruges på
+nabomåleren `Klimakøl slagter`, som kun har zonen at gå efter. Uden det trin
+bliver kølefladen koblet til alle butikkens fem ventilationsanlæg.
+
+### Hvad modellen nægter at gøre
+
+En delt måler fordeles **aldrig** ud på anlæggene efter installeret effekt.
+Det ville give fire pæne tal, som ingen kan efterprøve — og en fejl på ét anlæg
+ville forsvinde i gennemsnittet af fire. Analysenheden er derfor gruppen, når
+måleren er delt, og sagen siger det: afvigelsen peger på gruppen, og
+servicebesøget skal starte med at finde ud af hvilket anlæg.
+
+To dækningstal rapporteres, ikke ét. På eksempelbutikken Kvickly Aarhus C:
+**91 % af anlæggene er koblet, men kun 45 % har egen måler.** Kun de sidste kan
+analyseres hver for sig.
+
+### Ét aggregat, tre energistrømme, tre ansvarlige
+
+`VE02.1` har tre målepunkter: ventilatordrift (el), køleflade (el) og
+varmeflade (varme). Det er tre forskellige fysikker med hver sin fejlmåde — og
+i Coops opsætning tre forskellige ansvarlige: Mads, Morten og Emil på det samme
+fysiske anlæg. Opdelingen kan kun holdes, fordi L4-tagget skiller strømmene ad.
+
+### Koblingen finder også hullerne
+
+Måleren `VE.05 Kiosk køkken` peger på et anlæg `VE05`, som ikke findes i
+butikkens Dalux-register. Det er ikke en koblingsfejl — det er et hul i
+anlægsregistret, og et anlæg, der ikke er oprettet, kan ingen opgave hænges på.
+Hubben melder det som sådan.
+
+## Normallast og mønsterbrud pr. anlæg
+
+Spørgsmålet er ikke *"bruger anlægget meget?"* men *"bruger det mere, end det
+plejer under de her forhold?"*. Et køleanlæg, der bruger mere i juli end i
+januar, er ikke i stykker.
+
+**Normallasten** regnes af enhedens egen historik, delt på dagtype (åben
+hverdag / weekend / lukket) og korrigeret for vejret. Modellen bruges kun, hvis
+den faktisk forklarer noget: R² under 0,25 forkastes, og medianen bruges i
+stedet. En model, der lader som om den ved noget, er værre end ingen model.
+
+**Seks mønstre** ses på afvigelsen fra normallasten:
+
+| Mønster | Hvad det er |
+|---|---|
+| Niveauskift | Forbruget flyttede sig og blev der |
+| Drift | Langsom forværring uden et tydeligt skift |
+| Vedvarende afvigelse | Ligger højt uden skift eller trend |
+| Brudt vejrrespons | Anlægget holdt op med at reagere på udetemperaturen |
+| Nulforbrug | Nul i syv døgn, hvor der normalt er forbrug |
+| Ny spids | Nyt maksimum, der kan ramme effekttariffen |
+
+### Tre statistiske valg, der afgør om modellen dur
+
+**Baseline må ikke bygges på data, der indeholder fejlen.** Det er den fejl,
+der oftest gør en energimodel ubrugelig. I en prøve, hvor et køleanlæg fik
++45 kWh/døgn fra dag 200, endte temperaturkoefficienten på 8,96 mod de sande
+6,0 — fejlen var blevet til en påstået vejrfølsomhed, og bruddet blev fundet
+140 døgn for tidligt. Normallasten tilpasses derfor på den ældste del af
+vinduet, og når et brud er fundet, genberegnes den på tiden *før* bruddet.
+
+**CUSUM skal bruge den rigtige estimator.** Den tabelform, der bruges til
+procesovervågning, akkumulerer til seriens ende og ville udpege sidste døgn som
+bruddet. Modellen bruger i stedet argmax af den kumulerede afvigelse, som
+rammer skiftepunktet præcist (prøve: fandt dag 200 af 365 med et spring på 44,7
+mod de sande 45,0).
+
+**Køleanlæg måles mod temperaturen selv, ikke mod kølegraddage.** En
+kondensator følger den omgivende luft hele året, også ved 5 grader.
+Kølegraddage med basis 20 ville være nul det meste af året og give en model,
+der intet forklarer. Komfortkøl er derimod ægte tærskelstyret, og dér er
+kølegraddage det rigtige mål.
+
+**Konkurrerende forklaringer vælges imellem, ikke rapporteres begge.** En
+glidende forværring ligner et niveauskift, hvis man skærer den over. Modellen
+sammenligner, hvor godt et trin og en linje hver især forklarer afvigelsen, og
+siger hvilken den valgte fra og hvorfor. Nulforbrug slår alt: en måler, der
+står stille, er ikke en besparelse på 62.000 kr.
+
+## Vejrdata
+
+Fire størrelser, hver med sin rolle: **temperatur** skiller sæson fra fejl,
+**solindstråling** giver forventet produktion og dagslysstyring, **skydække**
+forklarer en grå dag, og **vind** påvirker infiltration og kondensatorydelse.
+
+Kilden er Open-Meteo (ingen nøgle, historik og prognose i samme kald). DMI kan
+sættes ind som udbyder uden at ændre resten.
+
+**Ti vejrzoner frem for 1.171 adresser.** Butikkerne grupperes efter
+postnummer. Det er en bevidst afvejning: til graddage er fejlen typisk under én
+grad og slår ens igennem på alle butikker i zonen, så en nabosammenligning er
+upåvirket. Til solindstråling er fejlen større — skydække er lokalt — og derfor
+bruger solcelleanalysen anlæggets egne koordinater, når de findes.
+
+Graddage regnes dansk: varme mod 17 °C, køl mod 20 °C. Begge er forudsætninger,
+ikke naturlove, og kan rettes under Opsætning.
+
 ## Motoren — hvilket anlæg handler opgaven om?
 
 Af 23.040 rigtige opgaver har kun 5.909 udfyldt anlægsfeltet, og feltet
@@ -451,12 +573,16 @@ src/
   anlaeg.js         teknisk anlægsregister: tagmapping, Dalux-anlægsklasser
   opgaver.js        fagområder, klassificering af Dalux-opgaver, gentagne fejl
   personer.js       hvem har hvad — faggruppe og fagområde pr. fagansvarlig
+  kobling.js        anlæg ↔ målepunkt: fire trin, delte målere, analyseenheder
+  statistik.js      median, MAD, Theil-Sen, regression, CUSUM — robust mod udbrud
+  anlaegsanalyse.js normallast pr. anlæg og seks mønsterbrud
+  vejr.js           ti vejrzoner, graddage, Open-Meteo
   motor.js          anlægs- og faggruppemotoren: seks trin, konfidens, begrundelse
   sync.js           natlig synkronisering: trin, genforsøg, vandmærker
   seed.js           rigtigt dataudtræk, så hubben virker uden netværk
   views/            overblik · mit område · sager · butikker · anlæg ·
-                    gentagne fejl · solceller · motor · detektorer ·
-                    fagbog · opsætning
+                    gentagne fejl · solceller · anlægsanalyse · motor ·
+                    detektorer · fagbog · opsætning
 sync/
   run.mjs           indgangen til cron — samme kode, kørt fra Node
 .github/workflows/

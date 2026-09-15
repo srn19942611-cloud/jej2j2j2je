@@ -22,6 +22,7 @@ import { anlaeg } from './views/anlaeg.js';
 import { gentagne } from './views/gentagne.js';
 import { solceller } from './views/solceller.js';
 import { motor } from './views/motor.js';
+import { anlaegsanalyse } from './views/anlaegsanalyse.js';
 import { detektorer, fagbog } from './views/detektorer.js';
 import { opsaetning } from './views/opsaetning.js';
 
@@ -33,6 +34,7 @@ const SIDER = [
   { id: 'anlaeg',     navn: 'Anlæg',      tegn: anlaeg },
   { id: 'gentagne',   navn: 'Gentagne fejl', tegn: gentagne },
   { id: 'solceller',  navn: 'Solceller',  tegn: solceller },
+  { id: 'analyse',    navn: 'Anlægsanalyse', tegn: anlaegsanalyse },
   { id: 'motor',      navn: 'Motor',      tegn: motor },
   { id: 'detektorer', navn: 'Detektorer', tegn: detektorer },
   { id: 'fagbog',     navn: 'Fagbogen',   tegn: fagbog },

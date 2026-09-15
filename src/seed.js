@@ -426,3 +426,84 @@ export const SOL_KALIBRERING = [
 ];
 
 export const SOL_DEGRADERING = { beregninger: 629, statistiskSikre: 0 };
+
+/* ---------------------------------------------------------------------------
+ * Anlæg og målepunkter for én butik, hentet direkte fra Dalux og Enity
+ * (Kvickly Aarhus C, kardex 2020 / Enity-bygning 19929). Bruges til at
+ * demonstrere koblingen anlæg ↔ målepunkt på rigtige navne.
+ * ------------------------------------------------------------------------- */
+
+export const DEMO_BUTIK = { kardex: '2020', navn: '02020 KV Aarhus C', enityId: '19929', postnr: '8000' };
+
+export const DEMO_ANLAEG = [
+  { asset_id: '3197',   kardex: '2020', name: 'VE01.1',    classification_name: 'Ventilationsanlæg' },
+  { asset_id: '3199',   kardex: '2020', name: 'VE02.1',    classification_name: 'Ventilationsanlæg' },
+  { asset_id: '3202',   kardex: '2020', name: 'VE03.1',    classification_name: 'Ventilationsanlæg' },
+  { asset_id: '71904',  kardex: '2020', name: 'VE04.1',    classification_name: 'Ventilationsanlæg' },
+  { asset_id: '3201',   kardex: '2020', name: 'KØ02.1',    classification_name: 'Chillere (komfortkøl)' },
+  { asset_id: '140357', kardex: '2020', name: 'Pos. 2A',   classification_name: 'Centralt køleanlæg (konsumkøl)', description: 'Co2 anlæg - Po opt - Flydende/Statisk Konds.' },
+  { asset_id: '140358', kardex: '2020', name: 'Pos. 3A',   classification_name: 'Centralt køleanlæg (konsumkøl)', description: 'Co2 anlæg - Po opt - Flydende/Statisk Konds.' },
+  { asset_id: '140359', kardex: '2020', name: 'Pos. 10A',  classification_name: 'Køle-/frostrum', description: 'Rum' },
+  { asset_id: '140360', kardex: '2020', name: 'Pos. 11A',  classification_name: 'Køle-/frostrum', description: 'Rum' },
+  { asset_id: '171320', kardex: '2020', name: 'CTS-anlæg', classification_name: 'CTS-anlæg' },
+  { asset_id: '12581',  kardex: '2020', name: 'Overskudsvarme', classification_name: 'Varmegenvindingsanlæg', description: 'Kitech' },
+];
+
+export const DEMO_MAALERE = [
+  { id: '584291', name: 'El total - Datahub',               energyType: 'Electricity', tags: ['custom:L0/1 Forsyningsmåler', 'custom:L0/1 Hovedmåler', 'custom:Tax meter'] },
+  { id: '548608', name: 'VE.02 Slagter',                    energyType: 'Electricity', tags: ['custom:L0/1 HVAC', 'custom:L3 Slagter', 'custom:L2 Ventilation', 'custom:L4 Kun ventilation'] },
+  { id: '548629', name: 'VE.03 Bager',                      energyType: 'Electricity', tags: ['custom:L0/1 HVAC', 'custom:L3 Bager', 'custom:L2 Ventilation', 'custom:L4 Kun ventilation'] },
+  { id: '548609', name: 'VE.05 Kiosk køkken',               energyType: 'Electricity', tags: ['custom:L0/1 HVAC', 'custom:L2 Ventilation', 'custom:L4 Kun ventilation', 'custom:L3 Kiosk'] },
+  { id: '548610', name: 'Klimakøl slagter',                 energyType: 'Electricity', tags: ['custom:L0/1 HVAC', 'custom:L3 Slagter', 'custom:L2 Ventilation', 'custom:L4 Køleflade'] },
+  { id: '548606', name: 'Vent køl kontor',                  energyType: 'Electricity', tags: ['custom:L0/1 HVAC', 'custom:L3 Kontor & birum', 'custom:L2 Ventilation', 'custom:L4 Køleflade'] },
+  { id: '548358', name: 'Varme VE.01 (butik)',              energyType: 'Heat',        tags: ['custom:L0/1 HVAC', 'custom:L3 Salgsområde', 'custom:L2 Ventilation', 'custom:L4 Varmeflade'] },
+  { id: '548359', name: 'Varme VE.02 (slagter)',            energyType: 'Heat',        tags: ['custom:L0/1 HVAC', 'custom:L3 Slagter', 'custom:L2 Ventilation', 'custom:L4 Varmeflade'] },
+  { id: '548360', name: 'Varme VE.03 (bager)',              energyType: 'Heat',        tags: ['custom:L0/1 HVAC', 'custom:L3 Bager', 'custom:L2 Ventilation', 'custom:L4 Varmeflade'] },
+  { id: '548516', name: '(2-T02-02) Teknik Tavle (Kølanlæg)', energyType: 'Electricity', tags: ['custom:L3 Alt i butikken blandet', 'custom:L2 Primær køleanlæg', 'custom:L0/1 Konsumkøl'] },
+  { id: '548515', name: '(2-T02-01) Teknik Tavle',          energyType: 'Electricity', tags: ['custom:L0/1 HVAC', 'custom:L3 Lager', 'custom:L2 Ventilation', 'custom:L4 Kun ventilation'] },
+  { id: '548522', name: '(2-T05-01) Kontor og kantine ventilation', energyType: 'Electricity', tags: ['custom:L0/1 HVAC', 'custom:L3 Kontor & birum', 'custom:L2 Ventilation', 'custom:L4 Samlet anlæg'] },
+  { id: '548601', name: 'AC Kontor',                        energyType: 'Electricity', tags: ['custom:L0/1 HVAC', 'custom:L3 Kontor & birum', 'custom:L2 Klimaanlæg'] },
+  { id: '548592', name: 'Lys 1',                            energyType: 'Electricity', tags: ['custom:L0/1 Lys', 'custom:L3 Salgsområde', 'custom:L2 Særbelysning'] },
+  { id: '548233', name: 'Overskudsvarme',                   energyType: 'Heat',        tags: ['custom:L2 Overskudsvarme - Total produktion', 'custom:L0/1 Overskudsvarme', 'custom:Tax meter'] },
+];
+
+/**
+ * Døgnserie til at demonstrere normallastmodellen.
+ *
+ * VIGTIGT: de enkelte døgnværdier er MODELLEREDE, ikke aflæste. Enity har
+ * timedata, men de er ikke trukket med i udtrækket her. Serien er bygget ud
+ * fra butikkens rigtige årsforbrug på køl og en realistisk temperaturrespons,
+ * så modellen kan afprøves på noget, der opfører sig som virkeligheden.
+ *
+ * Den er med vilje mærket som modelleret, så ingen kommer til at læse et
+ * konkret døgn som en aflæsning. Når live-data er slået til, erstattes den
+ * af rigtige målinger.
+ */
+export function demoDoegnserie({ dage = 365, fejl = 'niveauskift', froe = 20260915 } = {}) {
+  let s = froe;
+  const rnd = () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; };
+  const raekker = [];
+  const start = new Date(Date.now() - dage * 864e5);
+  for (let i = 0; i < dage; i++) {
+    const d = new Date(start.getTime() + i * 864e5);
+    // Dansk årstemperatur: middel ~9 °C, amplitude ~8 °C, minimum i februar.
+    const aarsdag = (d.getMonth() * 30.4 + d.getDate());
+    const temp = 8.8 + 8.2 * Math.sin((aarsdag - 115) / 365 * 2 * Math.PI) + (rnd() - 0.5) * 6;
+    const ugedag = d.getDay();
+    const aaben = true;
+    // Køl: basis + temperaturrespons. Tallene svarer til butikkens rigtige
+    // køleforbrug på 355.765 kWh/år.
+    let kwh = 780 + 14 * temp + (rnd() - 0.5) * 60;
+    if (ugedag === 0) kwh *= 0.93;
+    if (fejl === 'niveauskift' && i >= dage - 96) kwh += 118;
+    if (fejl === 'drift') kwh += i * 0.55;
+    raekker.push({
+      dato: d.toISOString().slice(0, 10), kwh: Math.round(kwh), ugedag, aaben,
+      temperatur: Math.round(temp * 10) / 10,
+      hdd: Math.max(0, 17 - temp), cdd: Math.max(0, temp - 20),
+      indstraaling: Math.max(0, 2 + 9 * Math.sin((aarsdag - 80) / 365 * 2 * Math.PI)) + (rnd() - 0.5),
+      modelleret: true,
+    });
+  }
+  return raekker;
+}

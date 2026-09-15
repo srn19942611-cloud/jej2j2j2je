@@ -109,7 +109,7 @@ h3 { font-size: 13px; margin: 0 0 6px; }
 .kpi .kpi-note { color: var(--ink-3); font-size: 12px; }
 
 /* ---- Tables ---- */
-.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
+.tablewrap { overflow-x: auto; max-width: 100%; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
 th { color: var(--ink-3); font-weight: 500; font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; background: var(--panel-2); position: sticky; top: 0; }
@@ -137,7 +137,12 @@ td.wrap { white-space: normal; min-width: 260px; }
 select, input[type="text"], input[type="number"], input[type="date"], textarea {
   background: var(--panel); color: var(--ink); border: 1px solid var(--line);
   border-radius: 8px; padding: 6px 9px; font: inherit; font-size: 13px; min-width: 0;
+  /* En select vokser med sin længste valgmulighed. Uden loftet her skubber
+     en lang tekst hele siden ud over skærmkanten på en telefon. */
+  max-width: 100%;
 }
+.toolbar label { min-width: 0; max-width: 100%; }
+.toolbar label select { flex: 1 1 auto; }
 textarea { width: 100%; font-family: var(--mono); font-size: 12px; line-height: 1.5; }
 input[type="text"] { min-width: 200px; }
 .btn {
@@ -159,7 +164,7 @@ input[type="text"] { min-width: 200px; }
 .legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 10px; font-size: 12px; color: var(--ink-2); }
 
 /* ---- Sparkline / profile chart ---- */
-.chart { width: 100%; height: auto; display: block; }
+.chart { width: 100%; max-width: 100%; height: auto; display: block; }
 .chart .axis { stroke: var(--line); stroke-width: 1; }
 .chart .gridline { stroke: var(--line-2); stroke-width: 1; }
 .chart .lbl { fill: var(--ink-3); font-size: 9px; font-family: var(--mono); }
