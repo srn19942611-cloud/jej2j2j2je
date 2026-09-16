@@ -1,0 +1,188 @@
+:root{
+  color-scheme: light;
+  --bg:#F6F3EC;
+  --surface:#FFFFFF;
+  --surface-2:#ECE8DE;
+  --border:#DBD4C2;
+  --ink:#1B2130;
+  --muted:#6B7385;
+  --accent:#145DA0;
+  --accent-strong:#0D4275;
+  --accent-soft:#E7EEF6;
+  --good:#1E8E5A;
+  --good-soft:#E4F3EA;
+  --warn:#A9670C;
+  --warn-soft:#FBEEDA;
+  --bad:#B23A2E;
+  --bad-soft:#FBE7E4;
+  --lærred:#FFFFFF;
+  --skygge:0 1px 2px rgba(27,33,48,.05), 0 10px 24px -16px rgba(27,33,48,.25);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme: dark;
+    --bg:#0E1219; --surface:#161C26; --surface-2:#1D2531; --border:#2C3646;
+    --ink:#E9ECF3; --muted:#9AA4B8; --accent:#5AA2E8; --accent-strong:#8CC1F5;
+    --accent-soft:#17283A; --good:#4BC08A; --good-soft:#14301F; --warn:#E0A64B;
+    --warn-soft:#332412; --bad:#E8796B; --bad-soft:#331A16; --lærred:#F3F1EA;
+  }
+}
+
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:14px;
+  display:flex; flex-direction:column;
+}
+
+/* ---- topbjælke ---- */
+.top{
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:10px 18px; background:var(--surface); border-bottom:1px solid var(--border);
+  flex-wrap:wrap;
+}
+.mærke{display:flex; align-items:center; gap:12px}
+.logo{
+  width:34px; height:34px; display:grid; place-items:center; border-radius:9px;
+  background:var(--accent); color:#fff; font-size:18px;
+}
+.top h1{font-size:16px; margin:0; letter-spacing:.2px}
+.top p{margin:1px 0 0; color:var(--muted); font-size:12px}
+.top-knapper{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+.adskil{width:1px; height:22px; background:var(--border)}
+
+button{
+  font:inherit; font-size:13px; color:var(--ink); background:var(--surface);
+  border:1px solid var(--border); border-radius:8px; padding:7px 11px; cursor:pointer;
+}
+button:hover{border-color:var(--accent); color:var(--accent)}
+button.primær{background:var(--accent); border-color:var(--accent); color:#fff}
+button.primær:hover{background:var(--accent-strong); color:#fff}
+button.bred{flex:1}
+
+/* ---- layout ---- */
+main{flex:1; display:grid; grid-template-columns:232px minmax(0,1fr) 352px; min-height:0}
+aside{overflow-y:auto; background:var(--surface); min-height:0}
+.venstre{border-right:1px solid var(--border)}
+.hoejre-panel{border-left:1px solid var(--border); display:flex; flex-direction:column}
+
+.blok{padding:14px 16px; border-bottom:1px solid var(--border)}
+.blok h2{font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 10px}
+.blok h3{font-size:12px; color:var(--muted); margin:14px 0 8px; font-weight:600}
+.hjælp{color:var(--muted); font-size:12px; line-height:1.5; margin:8px 0 0}
+.rk{display:flex; gap:8px; margin-top:12px; flex-wrap:wrap}
+
+/* ---- værktøjer ---- */
+.vaerktoejer{display:grid; grid-template-columns:1fr 1fr; gap:6px}
+.vaerktoej{
+  display:flex; align-items:center; gap:6px; justify-content:flex-start;
+  padding:7px 8px; font-size:12px; text-align:left; line-height:1.15;
+}
+.vaerktoej.aktiv{background:var(--accent-soft); border-color:var(--accent); color:var(--accent)}
+.vaerktoej .ikon-t{font-size:14px; width:16px; text-align:center}
+.vaerktoej.lille{font-size:11.5px; padding:6px 7px}
+
+/* ---- lag ---- */
+.lag{border:1px solid var(--border); border-radius:9px; padding:8px; margin-bottom:8px; background:var(--surface-2)}
+.lag-top{display:flex; align-items:center; gap:7px; font-size:12px}
+.lag-navn{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.ikon{border:none; background:none; padding:2px 4px; color:var(--muted)}
+.lag-ctrl{display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px; font-size:11px; color:var(--muted)}
+.lag-ctrl label{display:flex; flex-direction:column; gap:3px; min-width:0}
+.lag-ctrl label:first-child{grid-column:1/-1}
+.lag-ctrl input{width:100%; min-width:0; font:inherit; font-size:12px; color:var(--ink); background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:4px 5px}
+.lag-ctrl input[type=range]{width:100%}
+
+/* ---- lærred ---- */
+.lærred-boks{position:relative; background:var(--lærred); min-width:0; overflow:hidden}
+.lærred-boks.drop{outline:3px dashed var(--accent); outline-offset:-8px}
+#lærred{display:block; width:100%; height:100%; touch-action:none}
+.tom-besked{
+  position:absolute; inset:0; display:grid; place-content:center; justify-items:center; gap:6px;
+  color:#8A8F9C; pointer-events:none; text-align:center;
+}
+.tom-besked strong{font-size:15px; color:#5C6270}
+.tom-besked span{font-size:12.5px}
+.statuslinje{
+  position:absolute; left:0; right:0; bottom:0; display:flex; justify-content:space-between; gap:12px;
+  padding:6px 12px; font-size:11.5px; background:rgba(255,255,255,.88); color:#3B4252;
+  border-top:1px solid rgba(0,0,0,.08); backdrop-filter:blur(4px);
+}
+.statuslinje .hoejre{display:flex; gap:14px; font-family:"IBM Plex Mono",monospace}
+
+/* ---- højre panel ---- */
+.faneblade{display:flex; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); z-index:2}
+.panel-faneblad{flex:1; border:none; border-radius:0; border-bottom:2px solid transparent; background:none; padding:11px 6px; font-size:12.5px; color:var(--muted)}
+.panel-faneblad.aktiv{color:var(--accent); border-bottom-color:var(--accent); font-weight:600}
+.panel-side{min-height:0}
+
+.felt{display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:var(--muted); margin-bottom:10px}
+.felt-par{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.felt input, .felt select{
+  font:inherit; font-size:13px; color:var(--ink); background:var(--surface);
+  border:1px solid var(--border); border-radius:7px; padding:7px 8px; width:100%;
+}
+.felt input:focus, .felt select:focus{outline:2px solid var(--accent-soft); border-color:var(--accent)}
+.afkryds{display:flex; align-items:center; gap:7px; font-size:12.5px; margin:2px 0 8px}
+
+/* ---- nøgletal ---- */
+.noegletal{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.kort{background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:9px 10px; display:flex; flex-direction:column; gap:2px}
+.kort-navn{font-size:11px; color:var(--muted)}
+.kort strong{font-size:17px; font-family:"IBM Plex Mono",monospace; font-weight:600}
+.kort-note{font-size:10.5px; color:var(--muted)}
+.kort.god{background:var(--good-soft); border-color:var(--good)}
+.kort.advarsel{background:var(--warn-soft); border-color:var(--warn)}
+.kort.lav{background:var(--bad-soft); border-color:var(--bad)}
+
+/* ---- stykliste ---- */
+table{width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed}
+td.besk{word-break:break-word}
+th{font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); text-align:left; font-weight:600; padding:0 6px 6px; border-bottom:1px solid var(--border)}
+td{padding:6px; border-bottom:1px solid var(--border); vertical-align:top}
+td.antal{font-family:"IBM Plex Mono",monospace; text-align:right; width:44px; white-space:nowrap}
+td.sym{width:30px; text-align:center}
+td.kilde{width:86px; color:var(--muted); font-size:11px; word-break:break-word}
+tr.gruppe td{background:var(--surface-2); font-weight:600}
+tr.indryk td.besk{padding-left:18px; color:var(--muted)}
+.sub{display:block; color:var(--muted); font-size:10.5px}
+.tom{color:var(--muted); text-align:center; padding:18px 6px}
+.symbol{display:inline-grid; place-items:center; min-width:20px; height:20px; padding:0 3px; border-radius:5px; background:var(--surface-2); font-size:11px}
+.symbol.kode{font-family:"IBM Plex Mono",monospace; font-size:9.5px; color:var(--muted)}
+.s-bricks,.s-spot,.s-panel,.s-triproof,.s-downlight,.s-skinne{color:#E02B20}
+.s-pendel,.s-gobo{color:#C21FA8}
+
+.manuelt{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px}
+.manuel{display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--muted)}
+.manuel input{font:inherit; font-size:12.5px; color:var(--ink); background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:5px 6px}
+summary{cursor:pointer; font-size:12.5px; color:var(--accent)}
+
+/* ---- el ---- */
+.faser{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px}
+.faser li{display:flex; justify-content:space-between; gap:10px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:12px}
+.faser li.over{background:var(--bad-soft); border-color:var(--bad)}
+.faser .tal{font-family:"IBM Plex Mono",monospace; color:var(--muted); font-size:11px; text-align:right}
+.note{font-size:12px; color:var(--muted); line-height:1.55; margin:10px 0 0}
+.trin{margin:0; padding-left:18px; font-size:12.5px; color:var(--muted); line-height:1.6}
+
+/* ---- toast ---- */
+.toast{
+  position:fixed; left:50%; bottom:24px; transform:translate(-50%,16px);
+  background:var(--ink); color:var(--bg); padding:10px 16px; border-radius:10px;
+  font-size:13px; box-shadow:var(--skygge); opacity:0; pointer-events:none; transition:.18s ease;
+  max-width:min(520px,92vw);
+}
+.toast.vis{opacity:1; transform:translate(-50%,0)}
+.toast[data-slags="fejl"]{background:var(--bad); color:#fff}
+
+@media (max-width:1180px){
+  main{grid-template-columns:200px minmax(0,1fr) 312px}
+}
+@media (max-width:920px){
+  main{grid-template-columns:1fr; grid-template-rows:auto 60vh auto}
+  aside{max-height:46vh}
+  .venstre{border-right:none; border-bottom:1px solid var(--border)}
+  .hoejre-panel{border-left:none; border-top:1px solid var(--border); max-height:none}
+}

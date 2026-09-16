@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lysplan – belysningsplan på bygningsindretning</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="mærke">
+    <span class="logo">◧</span>
+    <div>
+      <h1>Lysplan</h1>
+      <p>Læg plantegningen ind, tegn indretningen og få belysningsplan, stykliste og elgrupper</p>
+    </div>
+  </div>
+  <div class="top-knapper">
+    <button id="knap-import" class="primær">Importér tegning</button>
+    <input type="file" id="fil-tegning" accept="image/*,.pdf" multiple hidden>
+    <input type="file" id="fil-projekt" accept=".json,application/json" hidden>
+    <button id="knap-hent">Åbn projekt</button>
+    <button id="knap-gem">Gem projekt</button>
+    <span class="adskil"></span>
+    <button id="knap-csv">Stykliste (CSV)</button>
+    <button id="knap-png">Plan (PNG)</button>
+    <button id="knap-print">Udskriv</button>
+  </div>
+</header>
+
+<main>
+  <aside class="venstre">
+    <section class="blok">
+      <h2>Værktøjer</h2>
+      <div class="vaerktoejer">
+        <button class="vaerktoej" data-vaerktoej="pan"><span class="ikon-t">✥</span><span>Flyt (H)</span></button>
+        <button class="vaerktoej" data-vaerktoej="vaelg"><span class="ikon-t">➚</span><span>Vælg (V)</span></button>
+        <button class="vaerktoej" data-vaerktoej="maalestok"><span class="ikon-t">⟺</span><span>Målestok (M)</span></button>
+        <button class="vaerktoej" data-vaerktoej="omraade"><span class="ikon-t">⬠</span><span>Salgsareal (A)</span></button>
+        <button class="vaerktoej" data-vaerktoej="skinne"><span class="ikon-t">▬</span><span>Lysskinne (S)</span></button>
+        <button class="vaerktoej" data-vaerktoej="slet"><span class="ikon-t">✕</span><span>Slet</span></button>
+      </div>
+      <h3>Armaturer</h3>
+      <div id="armatur-knapper" class="vaerktoejer"></div>
+      <div class="rk">
+        <button id="knap-fortryd">Fortryd</button>
+        <button id="knap-tilpas">Tilpas visning</button>
+      </div>
+    </section>
+
+    <section class="blok">
+      <h2>Tegninger</h2>
+      <p class="hjælp">Træk PNG, JPG, SVG eller PDF ind på tegnefladen. Flere lag kan ligge oven på hinanden, f.eks. plan og inventaropstilling.</p>
+      <div id="lag-liste"></div>
+    </section>
+  </aside>
+
+  <div id="lærred-boks" class="lærred-boks">
+    <canvas id="lærred"></canvas>
+    <div class="tom-besked" id="tom-besked">
+      <strong>Træk en plantegning herind</strong>
+      <span>PNG · JPG · SVG · PDF – eller brug “Importér tegning”</span>
+    </div>
+    <div class="statuslinje">
+      <span id="status-hjælp"></span>
+      <span class="hoejre"><span id="status-valgt"></span><span id="status-koordinat"></span></span>
+    </div>
+  </div>
+
+  <aside class="hoejre-panel">
+    <nav class="faneblade">
+      <button class="panel-faneblad aktiv" data-faneblad="beregn">Belysning</button>
+      <button class="panel-faneblad" data-faneblad="stykliste">Stykliste</button>
+      <button class="panel-faneblad" data-faneblad="el">El &amp; projekt</button>
+    </nav>
+
+    <div class="panel-side" data-side="beregn">
+      <section class="blok">
+        <h2>Koncept</h2>
+        <label class="felt">Butikskoncept
+          <select id="i-preset">
+            <option value="dagli">Dagli'Brugsen / Mini (skinner + Bricks)</option>
+            <option value="superbrugsen">SuperBrugsen / Kvickly (skinner + Bricks)</option>
+            <option value="discount">365discount (LED-paneler i loft)</option>
+            <option value="lager">Lager / bagbutik (Tri-proof)</option>
+          </select>
+        </label>
+        <div class="felt-par">
+          <label class="felt">Opbygning
+            <select data-indst="mode">
+              <option value="track">Lysskinner med armaturer</option>
+              <option value="panel">Armaturer i loftsnet</option>
+            </select>
+          </label>
+          <label class="felt">Retning
+            <select data-indst="retning">
+              <option value="auto">Følg længste væg</option>
+              <option value="vandret">Vandret</option>
+              <option value="lodret">Lodret</option>
+            </select>
+          </label>
+        </div>
+        <div class="felt-par">
+          <label class="felt kun-track">c/c mellem skinnerækker (m)<input type="number" step="0.1" min="0.8" data-indst="ccSkinner"></label>
+          <label class="felt kun-panel">c/c i bredden (m)<input type="number" step="0.1" min="0.5" data-indst="ccX"></label>
+          <label class="felt kun-panel">c/c i dybden (m)<input type="number" step="0.1" min="0.5" data-indst="ccY"></label>
+          <label class="felt">Afstand til væg (m)<input type="number" step="0.1" min="0" data-indst="margin"></label>
+        </div>
+        <label class="afkryds kun-panel"><input type="checkbox" data-indst="autoTaethed"> Lad mål-lux bestemme tætheden</label>
+      </section>
+
+      <section class="blok">
+        <h2>Lyskrav</h2>
+        <div class="felt-par">
+          <label class="felt">Mål (lux)<input type="number" step="25" min="50" data-indst="maalLux"></label>
+          <label class="felt">Loftshøjde (m)<input type="number" step="0.1" min="2" data-indst="loftshoejde"></label>
+        </div>
+        <div class="felt-par">
+          <label class="felt">Nyttevirkning UF<input type="number" step="0.05" min="0.1" max="1" data-indst="uf"></label>
+          <label class="felt">Vedligehold LLMF<input type="number" step="0.05" min="0.4" max="1" data-indst="mf"></label>
+        </div>
+        <div class="felt-par">
+          <label class="felt">Hovedarmatur<select data-indst="primaer" id="i-primaer"></select></label>
+          <label class="felt">Accentarmatur<select data-indst="accent" id="i-accent"></select></label>
+        </div>
+        <div class="felt-par">
+          <label class="felt">Accent pr. hovedarmatur<input type="number" step="0.05" min="0" max="3" data-indst="accentRatio"></label>
+          <label class="felt">Mindste indbyrdes afstand (m)<input type="number" step="0.1" min="0.3" data-indst="minAfstand"></label>
+        </div>
+        <div class="rk">
+          <button id="knap-generer" class="primær bred">Beregn belysningsplan</button>
+          <button id="knap-ryd-auto">Fjern beregnet</button>
+        </div>
+        <p class="hjælp">Beregningen lægger skinnerækker ud i salgsarealet og fordeler armaturer, så den ønskede belysningsstyrke nås. Alt kan derefter rettes i hånden.</p>
+      </section>
+
+      <section class="blok">
+        <h2>Nøgletal</h2>
+        <div id="noegletal" class="noegletal"></div>
+      </section>
+    </div>
+
+    <div class="panel-side" data-side="stykliste" hidden>
+      <section class="blok">
+        <h2>Stykliste</h2>
+        <table id="stykliste">
+          <thead><tr><th>Symbol</th><th>Antal</th><th>Beskrivelse</th><th>Lyskilde</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+      <section class="blok">
+        <h2>Skinnetilbehør</h2>
+        <div class="felt-par">
+          <label class="felt">Montage
+            <select data-indst="wireMontage">
+              <option value="wire">Nedhængt i wire</option>
+              <option value="loft">Direkte på loftet</option>
+            </select>
+          </label>
+          <label class="felt">Wireophæng c/c (m)<input type="number" step="0.1" min="0.5" data-indst="wireCC"></label>
+        </div>
+        <label class="felt">Start/tilslutning pr. skinnerække<input type="number" step="0.5" min="0" data-indst="startPrRaekke"></label>
+        <p class="hjælp">Lige samlinger følger af skinnelængderne, hjørnesamlinger af knækpunkterne, og T-samlinger tælles hvor en række støder ind på en anden.</p>
+      </section>
+      <section class="blok">
+        <details>
+          <summary>Manuelle tillæg</summary>
+          <p class="hjælp">Antal der lægges oven i det tegnede – f.eks. armaturer i lager og bagbutik.</p>
+          <div id="manuelt-liste" class="manuelt"></div>
+        </details>
+      </section>
+      <div class="rk"><button id="knap-ryd">Ryd plan</button></div>
+    </div>
+
+    <div class="panel-side" data-side="el" hidden>
+      <section class="blok">
+        <h2>Gruppeopdeling</h2>
+        <ul id="faser" class="faser"></ul>
+        <p id="el-note" class="note"></p>
+      </section>
+      <section class="blok">
+        <h2>Projekt</h2>
+        <label class="felt">Projektnavn<input type="text" data-projekt="navn" placeholder="f.eks. Brugsen Mønsted"></label>
+        <div class="felt-par">
+          <label class="felt">Adresse<input type="text" data-projekt="adresse"></label>
+          <label class="felt">By<input type="text" data-projekt="by"></label>
+        </div>
+        <div class="felt-par">
+          <label class="felt">Tegner<input type="text" data-projekt="tegner"></label>
+          <label class="felt">Dato<input type="date" data-projekt="dato"></label>
+        </div>
+        <label class="felt">Målforhold<input type="text" data-projekt="maalestok"></label>
+      </section>
+      <section class="blok">
+        <h2>Sådan gør du</h2>
+        <ol class="trin">
+          <li>Importér plantegningen. PDF bliver rastreret til billede og kræver internetforbindelse; ellers brug PNG eller JPG.</li>
+          <li>Sæt målestok: mål en kendt længde på tegningen og indtast målet.</li>
+          <li>Tegn salgsarealet med arealværktøjet – arealet i m² regnes automatisk.</li>
+          <li>Beregn belysningsplanen, eller tegn skinnerækker og placér armaturer selv.</li>
+          <li>Tjek nøgletal og grupper, og hent stykliste, plan og udskrift.</li>
+        </ol>
+      </section>
+    </div>
+  </aside>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script src="catalog.js"></script>
+<script src="geom.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
