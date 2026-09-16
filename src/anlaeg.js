@@ -107,6 +107,16 @@ function slaaOp(tag) {
  * Det dybeste niveau vinder — L4 slår L2, som slår L0/1 — og et L0/1-tag,
  * der kræver underniveau, giver ikke en faggruppe alene.
  */
+/* Komponentrollen ud af L4-tagget. Holdt her, så klassifikationen kan svare
+ * på begge spørgsmål på én gang — hvad slags måler, og hvad den sidder på. */
+const KOMPONENTROLLE = {
+  'Kun ventilation': 'ventilatordrift',
+  'Køleflade': 'køleflade',
+  'Varmeflade': 'varmeflade',
+  'Samlet anlæg': 'samlet',
+  'køl- og varmeflade': 'samlet',
+};
+
 export function klassificerMaalepunkt(meter) {
   const tags = (meter.tags || []).map((t) => String(t).replace(/^custom:/, '').trim());
   let fg = null, rolle = null, konfidens = 0, kilde = null, venter = null, rolleKilde = null;
@@ -144,9 +154,30 @@ export function klassificerMaalepunkt(meter) {
   // Underniveauet er fundet — så er det brede tag ikke længere et problem.
   const uafklaret = venter && !kilde;
 
+  /* To forskellige ting hedder begge "rolle", og det er en fælde.
+   *
+   * Her betyder rolle MÅLERENS type: bimåler, forsyningsmåler, lejermåler.
+   * I kobling.js betyder rolle KOMPONENTEN: køleflade, varmeflade,
+   * ventilatordrift — og det er dén, ejerMedRolle skal bruge for at kunne
+   * skelne en køleflade i et aggregat (Mads) fra en fritstående chiller
+   * (Morten).
+   *
+   * Jeg gik selv i fælden, da de første fund skulle sendes ud: jeg slog
+   * ejeren op med målerrollen, fik "bimaaler", og hver eneste køleflade
+   * havnede hos Morten — også dem, der sidder i et ventilationsaggregat.
+   * Reglen om at ventilationsansvaret også dækker fladerne var implementeret
+   * og fyrede aldrig.
+   *
+   * Derfor svarer denne funktion nu med begge, under navne der ikke kan
+   * forveksles. */
+  const l4 = tags.find((t) => t.startsWith('L4 '));
+  const komponent = l4 ? KOMPONENTROLLE[Object.keys(KOMPONENTROLLE).find((k) => l4.slice(3).trim().startsWith(k)) || ''] || null : null;
+
   return {
     faggruppe: fg || 'oevrigt',
     rolle,
+    maalerrolle: rolle,
+    energirolle: komponent,
     konfidens: fg ? konfidens : 0,
     kilde: kilde ? `tag-L${kilde.niveau}`
       : uafklaret ? 'mangler-underniveau'
