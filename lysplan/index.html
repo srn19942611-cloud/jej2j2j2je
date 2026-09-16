@@ -21,7 +21,7 @@
   </div>
   <div class="top-knapper">
     <button id="knap-import" class="primær">Importér tegning</button>
-    <input type="file" id="fil-tegning" accept="image/*,.pdf" multiple hidden>
+    <input type="file" id="fil-tegning" accept="image/*,.pdf,.dxf,.dwg" multiple hidden>
     <input type="file" id="fil-projekt" accept=".json,application/json" hidden>
     <button id="knap-hent">Åbn projekt</button>
     <button id="knap-gem">Gem projekt</button>
@@ -54,8 +54,13 @@
 
     <section class="blok">
       <h2>Tegninger</h2>
-      <p class="hjælp">Træk PNG, JPG, SVG eller PDF ind på tegnefladen. Flere lag kan ligge oven på hinanden, f.eks. plan og inventaropstilling.</p>
+      <p class="hjælp">Træk DWG, DXF, PDF, PNG eller JPG ind på tegnefladen. DWG og DXF læses som vektor med tegningens egne mål og lag, så målestokken sættes automatisk. Flere lag kan ligge oven på hinanden, f.eks. plan og inventaropstilling.</p>
       <div id="lag-liste"></div>
+      <details class="avanceret">
+        <summary>Avanceret</summary>
+        <label class="felt">Egen DWG-motor (mappe eller URL)<input type="text" data-indst="dwgKilde" placeholder="vendor/libredwg-web/"></label>
+        <p class="hjælp">DWG læses med LibreDWG, der normalt hentes fra nettet første gang. Har du en lokal kopi af pakken, kan stien angives her, så det virker uden internet.</p>
+      </details>
     </section>
   </aside>
 
@@ -63,7 +68,7 @@
     <canvas id="lærred"></canvas>
     <div class="tom-besked" id="tom-besked">
       <strong>Træk en plantegning herind</strong>
-      <span>PNG · JPG · SVG · PDF – eller brug “Importér tegning”</span>
+      <span>DWG · DXF · PDF · PNG · JPG – eller brug “Importér tegning”</span>
     </div>
     <div class="statuslinje">
       <span id="status-hjælp"></span>
@@ -198,8 +203,8 @@
       <section class="blok">
         <h2>Sådan gør du</h2>
         <ol class="trin">
-          <li>Importér plantegningen. PDF bliver rastreret til billede og kræver internetforbindelse; ellers brug PNG eller JPG.</li>
-          <li>Sæt målestok: mål en kendt længde på tegningen og indtast målet.</li>
+          <li>Importér plantegningen. DWG og DXF giver den skarpeste plan og sætter målestokken selv; PDF rastreres til billede.</li>
+          <li>Sæt målestok, hvis den ikke kom med tegningen: mål en kendt længde og indtast målet.</li>
           <li>Tegn salgsarealet med arealværktøjet – arealet i m² regnes automatisk.</li>
           <li>Beregn belysningsplanen, eller tegn skinnerækker og placér armaturer selv.</li>
           <li>Tjek nøgletal og grupper, og hent stykliste, plan og udskrift.</li>
@@ -213,6 +218,7 @@
 
 <script src="catalog.js"></script>
 <script src="geom.js"></script>
+<script src="cad.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

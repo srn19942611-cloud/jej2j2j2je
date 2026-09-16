@@ -23,7 +23,7 @@ const state = {
     maalLux: 800, uf: 0.5, mf: 0.8, loftshoejde: 3.2,
     primaer: 'bricks', accent: 'sirius', accentRatio: 0.35,
     minAfstand: 1.2, wireCC: 1.4, startPrRaekke: 1, wireMontage: 'wire',
-    retning: 'auto', autoTaethed: true
+    retning: 'auto', autoTaethed: true, dwgKilde: ''
   },
   projekt: {
     navn: '', adresse: '', by: '', tegner: '', maalestok: '1:100',
@@ -75,16 +75,91 @@ const harMaalestok = () => !!state.pxPerMeter;
 async function importerFiler(filer) {
   for (const fil of filer) {
     const navn = fil.name || 'tegning';
-    if (/\.pdf$/i.test(navn) || fil.type === 'application/pdf') {
-      await importerPdf(fil, navn);
-    } else if (fil.type.startsWith('image/')) {
-      const src = await læsSomDataUrl(fil);
-      await tilføjLag(navn, src);
-    } else {
-      toast('Filtypen understøttes ikke: ' + navn, 'fejl');
+    try {
+      if (/\.pdf$/i.test(navn) || fil.type === 'application/pdf') {
+        await importerPdf(fil, navn);
+      } else if (/\.dxf$/i.test(navn)) {
+        toast('Læser DXF …');
+        await importerCad(navn, CAD.parseDxf(await fil.text()));
+      } else if (/\.dwg$/i.test(navn)) {
+        toast('Henter DWG-motor og læser tegningen …');
+        await importerCad(navn, await CAD.læsDwg(await fil.arrayBuffer(), state.indst.dwgKilde));
+      } else if (fil.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(navn)) {
+        await tilføjLag(navn, await læsSomDataUrl(fil));
+      } else {
+        toast('Filtypen understøttes ikke: ' + navn, 'fejl');
+      }
+    } catch (e) {
+      console.error(e);
+      toast(navn + ': ' + (e && e.message ? e.message : 'kunne ikke læses'), 'fejl');
     }
   }
   opdater();
+}
+
+/* CAD-tegning (DXF/DWG) lægges ind som vektorlag i tegningens egne mål. */
+async function importerCad(navn, db) {
+  const flad = CAD.fladgør(db);
+  if (!flad.streger.length && !flad.tekster.length) {
+    toast(navn + ': tegningen indeholder ingen linjer der kan vises', 'fejl');
+    return null;
+  }
+  const nyMaalestok = !state.pxPerMeter;
+  const pxPerM = state.pxPerMeter || 100;
+  const k = flad.meterPerEnhed * pxPerM;       // verdens-px pr. CAD-enhed
+  const r = flad.ramme;
+  for (const s of flad.streger) {
+    for (let i = 0; i < s.p.length; i += 2) {
+      s.p[i] = (s.p[i] - r.x0) * k;
+      s.p[i + 1] = (r.y1 - s.p[i + 1]) * k;     // DXF har y opad, lærredet nedad
+    }
+  }
+  for (const t of flad.tekster) {
+    t.x = (t.x - r.x0) * k;
+    t.y = (r.y1 - t.y) * k;
+    t.h = t.h * k;
+    t.v = -t.v;
+  }
+  const lag = {
+    id: nyId(), navn, slags: 'cad', synlig: true, opacitet: 1, x: 0, y: 0, skala: 1,
+    bredde: (r.x1 - r.x0) * k, højde: (r.y1 - r.y0) * k,
+    tegning: { streger: flad.streger, tekster: flad.tekster, lagInfo: flad.lagInfo, meterPerEnhed: flad.meterPerEnhed },
+    egneFarver: false,
+    cadLag: Object.fromEntries(Object.values(flad.lagInfo).map(l => [l.navn, l.synlig !== false]))
+  };
+  byggCadGrupper(lag);
+  state.lag.push(lag);
+  if (nyMaalestok) {
+    state.pxPerMeter = pxPerM;
+    toast(flad.gættetEnhed
+      ? `${navn} indlæst. Enheden stod ikke i filen – der er regnet med ${flad.meterPerEnhed === 0.001 ? 'millimeter' : 'meter'}. Tjek et kendt mål med målestoksværktøjet.`
+      : `${navn} indlæst med målestok fra tegningen (${fmt(1 / flad.meterPerEnhed, 0)} enheder pr. meter).`);
+  } else {
+    toast(`${navn} indlæst. Skalering følger den målestok, der allerede er sat.`);
+  }
+  if (state.lag.length === 1) tilpasVisning();
+  return lag;
+}
+
+/* Linjerne samles i én Path2D pr. CAD-lag og farve, så store tegninger
+   kan tegnes hurtigt ved hver panorering. */
+function byggCadGrupper(lag) {
+  const grupper = new Map();
+  for (const s of lag.tegning.streger) {
+    const nøgle = s.lag + '|' + s.aci;
+    let g = grupper.get(nøgle);
+    if (!g) { g = { lag: s.lag, aci: s.aci, sti: new Path2D() }; grupper.set(nøgle, g); }
+    g.sti.moveTo(s.p[0], s.p[1]);
+    for (let i = 2; i < s.p.length; i += 2) g.sti.lineTo(s.p[i], s.p[i + 1]);
+  }
+  lag.grupper = Array.from(grupper.values());
+}
+
+function lagRamme(lag) {
+  const b = lag.slags === 'cad' ? lag.bredde : lag.img.width * lag.skala;
+  const h = lag.slags === 'cad' ? lag.højde : lag.img.height * lag.skala;
+  const s = lag.slags === 'cad' ? lag.skala : 1;
+  return { x0: lag.x, y0: lag.y, x1: lag.x + b * s, y1: lag.y + h * s };
 }
 
 function læsSomDataUrl(fil) {
@@ -101,7 +176,7 @@ function tilføjLag(navn, src) {
     const img = new Image();
     img.onload = () => {
       const lag = {
-        id: nyId(), navn, src, img,
+        id: nyId(), navn, src, img, slags: 'billede',
         synlig: true, opacitet: 1, x: 0, y: 0, skala: 1
       };
       state.lag.push(lag);
@@ -184,9 +259,9 @@ function tilpasVisning() {
   if (!lag.length) return;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const l of lag) {
-    x0 = Math.min(x0, l.x); y0 = Math.min(y0, l.y);
-    x1 = Math.max(x1, l.x + l.img.width * l.skala);
-    y1 = Math.max(y1, l.y + l.img.height * l.skala);
+    const r = lagRamme(l);
+    x0 = Math.min(x0, r.x0); y0 = Math.min(y0, r.y0);
+    x1 = Math.max(x1, r.x1); y1 = Math.max(y1, r.y1);
   }
   const { b, h } = visningsStørrelse();
   const zoom = Math.min(b / (x1 - x0), h / (y1 - y0)) * 0.96;
@@ -230,7 +305,8 @@ function tegn() {
   for (const lag of state.lag) {
     if (!lag.synlig) continue;
     ctx.globalAlpha = lag.opacitet;
-    ctx.drawImage(lag.img, lag.x, lag.y, lag.img.width * lag.skala, lag.img.height * lag.skala);
+    if (lag.slags === 'cad') tegnCadLag(lag);
+    else ctx.drawImage(lag.img, lag.x, lag.y, lag.img.width * lag.skala, lag.img.height * lag.skala);
   }
   ctx.globalAlpha = 1;
 
@@ -249,6 +325,45 @@ function tegn() {
 function linjebredde(meter, min = 1.2) {
   const z = state.visning.zoom;
   return Math.max(min / z, harMaalestok() ? mToPx(meter) : 2 / z);
+}
+
+function cadStregFarve(lag, aci) {
+  if (!lag.egneFarver) return '#3A4150';
+  const f = CAD.aciFarve(aci);
+  return (f === '#000000' || f === '#FFFFFF') ? '#1B2130' : f;
+}
+
+function tegnCadLag(lag) {
+  ctx.save();
+  ctx.translate(lag.x, lag.y);
+  ctx.scale(lag.skala, lag.skala);
+  // stregtykkelsen holdes på knap en skærm-pixel, også ved eksport i høj opløsning
+  const t = ctx.getTransform();
+  const enhed = Math.hypot(t.a, t.b) || 1;
+  ctx.lineWidth = 0.9 / enhed;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (const g of lag.grupper) {
+    if (lag.cadLag[g.lag] === false) continue;
+    ctx.strokeStyle = cadStregFarve(lag, g.aci);
+    ctx.stroke(g.sti);
+  }
+  const tekster = lag.tegning.tekster;
+  if (tekster.length) {
+    ctx.textBaseline = 'alphabetic';
+    for (const t of tekster) {
+      if (lag.cadLag[t.lag] === false) continue;
+      if (t.h * enhed < 7) continue;           // for småt til at kunne læses
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      ctx.rotate(t.v || 0);
+      ctx.fillStyle = cadStregFarve(lag, t.aci);
+      ctx.font = `${t.h}px "IBM Plex Sans", sans-serif`;
+      ctx.fillText(t.t, 0, 0);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
 }
 
 function tegnOmraade() {
@@ -876,8 +991,42 @@ function visLag() {
     el.querySelector('[data-h="fjern"]').onclick = () => {
       state.lag.splice(idx, 1); visLag(); tegn();
     };
+    if (lag.slags === 'cad') el.appendChild(cadLagPanel(lag));
     liste.appendChild(el);
   });
+}
+
+/* Lagene inde i CAD-tegningen kan slukkes hver for sig - f.eks. møblering
+   eller målsætning, der ellers støjer under lysplanen. */
+function cadLagPanel(lag) {
+  const boks = document.createElement('div');
+  boks.className = 'cad-lag';
+  const navne = Object.keys(lag.cadLag).sort((a, b) => a.localeCompare(b, 'da'));
+  boks.innerHTML = `
+    <label class="afkryds lille"><input type="checkbox" ${lag.egneFarver ? 'checked' : ''} data-h="farver"> Tegningens egne farver</label>
+    <details>
+      <summary>Lag i tegningen (<span data-h="tal"></span>)</summary>
+      <div class="cad-lag-liste">
+        ${navne.map(n => `<label><input type="checkbox" data-cadlag="${encodeURIComponent(n)}"><span title="${n}">${n || '(uden navn)'}</span></label>`).join('')}
+      </div>
+      <div class="rk lille"><button data-h="alle">Vis alle</button><button data-h="ingen">Skjul alle</button></div>
+    </details>`;
+  const afkryds = Array.from(boks.querySelectorAll('[data-cadlag]'));
+  const tal = boks.querySelector('[data-h="tal"]');
+  // panelet opdateres på stedet, så listen ikke klapper sammen ved hvert klik
+  const synk = () => {
+    afkryds.forEach(inp => { inp.checked = lag.cadLag[decodeURIComponent(inp.dataset.cadlag)] !== false; });
+    tal.textContent = `${navne.filter(n => lag.cadLag[n] !== false).length}/${navne.length}`;
+    tegn();
+  };
+  boks.querySelector('[data-h="farver"]').onchange = e => { lag.egneFarver = e.target.checked; tegn(); };
+  afkryds.forEach(inp => {
+    inp.onchange = () => { lag.cadLag[decodeURIComponent(inp.dataset.cadlag)] = inp.checked; synk(); };
+  });
+  boks.querySelector('[data-h="alle"]').onclick = () => { navne.forEach(n => { lag.cadLag[n] = true; }); synk(); };
+  boks.querySelector('[data-h="ingen"]').onclick = () => { navne.forEach(n => { lag.cadLag[n] = false; }); synk(); };
+  synk();
+  return boks;
 }
 
 function opdater() {
@@ -1065,7 +1214,8 @@ function sceneRamme() {
   const tag = (x, y) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); };
   for (const l of state.lag) {
     if (!l.synlig) continue;
-    tag(l.x, l.y); tag(l.x + l.img.width * l.skala, l.y + l.img.height * l.skala);
+    const r = lagRamme(l);
+    tag(r.x0, r.y0); tag(r.x1, r.y1);
   }
   for (const s of state.skinner) for (const p of s.pts) tag(p[0], p[1]);
   for (const p of state.omraade) tag(p[0], p[1]);
@@ -1153,7 +1303,12 @@ function gemProjekt() {
     skinner: state.skinner,
     armaturer: state.armaturer,
     manuelt: state.manuelt,
-    lag: state.lag.map(l => ({ navn: l.navn, src: l.src, synlig: l.synlig, opacitet: l.opacitet, x: l.x, y: l.y, skala: l.skala }))
+    lag: state.lag.map(l => (l.slags === 'cad'
+      ? {
+        navn: l.navn, slags: 'cad', synlig: l.synlig, opacitet: l.opacitet, x: l.x, y: l.y, skala: l.skala,
+        bredde: l.bredde, højde: l.højde, egneFarver: l.egneFarver, cadLag: l.cadLag, tegning: l.tegning
+      }
+      : { navn: l.navn, slags: 'billede', src: l.src, synlig: l.synlig, opacitet: l.opacitet, x: l.x, y: l.y, skala: l.skala }))
   };
   download(projektNavn() + '.lysplan.json', JSON.stringify(data), 'application/json');
 }
@@ -1172,8 +1327,14 @@ async function hentProjekt(fil) {
   state.manuelt = d.manuelt || {};
   state.lag = [];
   for (const l of d.lag || []) {
-    const lag = await tilføjLag(l.navn, l.src);
-    if (lag) Object.assign(lag, { synlig: l.synlig, opacitet: l.opacitet, x: l.x, y: l.y, skala: l.skala });
+    if (l.slags === 'cad') {
+      const lag = { ...l, id: nyId(), slags: 'cad' };
+      byggCadGrupper(lag);
+      state.lag.push(lag);
+    } else {
+      const lag = await tilføjLag(l.navn, l.src);
+      if (lag) Object.assign(lag, { synlig: l.synlig, opacitet: l.opacitet, x: l.x, y: l.y, skala: l.skala });
+    }
   }
   nextId = 1 + Math.max(0, ...[...state.skinner, ...state.armaturer].map(o => parseInt(String(o.id).slice(1), 10) || 0));
   visIndstillinger();
