@@ -715,6 +715,7 @@ export const AARSAGER = [
   },
   {
     id: 'kompressor_nedbrud', navn: 'Anlægget står — kompressorsvigt',
+    direkte: true,
     faggrupper: ['koel_frys', 'koeleflader'], prior: 0.06, klasse: 'ingen', hastende: true,
     signatur: { form: ['spring', 'nul'], retning: 'ned', vejrrespons: ['brudt'], restniveau: [0.02, 0.35] },
     forklaring: 'Forbruget er faldet til det, styring og ventilatorer trækker, og anlægget reagerer ikke '
@@ -759,6 +760,7 @@ export const AARSAGER = [
      * ventilationsaggregat har ingen varer. Det har til gengæld et lovkrav om
      * luftskifte, og det er dét, der haster, når det står. */
     id: 'ventilation_stoppet', navn: 'Aggregatet står',
+    direkte: true,
     faggrupper: ['ventilation'], prior: 0.10, klasse: 'ingen', hastende: true,
     signatur: { form: ['spring', 'nul'], retning: 'ned', restniveau: [0.02, 0.35] },
     forklaring: 'Forbruget er faldet til det, styring og spjæld trækker. Aggregatet flytter ikke luft. '
@@ -809,6 +811,7 @@ export const AARSAGER = [
   },
   {
     id: 'maaler_doed', navn: 'Måleren leverer ikke længere data',
+    direkte: true,
     faggrupper: null, prior: 0.10, klasse: 'blindt', hastende: false,
     signatur: { form: ['nul'], retning: 'ned', restniveau: [0, 0.015] },
     forklaring: 'Målepunktet er holdt op med at tælle. Anlægget kører efter alt at dømme videre — det er '
@@ -918,6 +921,7 @@ export const AARSAGER = [
   /* ---- Solceller ---------------------------------------------------------- */
   {
     id: 'inverter_ude', navn: 'En inverter eller streng er ude af drift',
+    direkte: true,
     faggrupper: ['solceller'], prior: 0.24, klasse: 'ingen', hastende: true,
     signatur: { form: ['spring'], retning: 'ned', vejrrespons: ['brudt', 'uændret'] },
     forklaring: 'Produktionen faldt fra den ene dag til den anden og fulgte ikke et fald i indstrålingen. '
@@ -970,12 +974,106 @@ export const AARSAGER = [
 
 export const AARSAG = Object.fromEntries(AARSAGER.map((a) => [a.id, a]));
 
+/* ---- Målere, der ikke kan bære en komponentdiagnose ------------------------
+ *
+ * En forsyningsmåler er en SUM. Ændrer den sig, er ændringen lige så virkelig
+ * som på enhver anden måler — men den kan ikke henføres til en komponent, for
+ * måleren dækker dem alle. Det samme gælder en intern hovedmåler og en
+ * lejermåler, hvor forbruget slet ikke er vores.
+ *
+ * Det stod ikke i motoren før, og det gav to forkerte svar i kørslen på de
+ * rigtige tal: "El forsyningsmåler 2" og "El total" fik begge stillet en
+ * diagnose om henholdsvis en tilsmudset kondensator og manglende
+ * varmegenvinding. Grunden var, at en ukendt faggruppe var det MEST
+ * tilladelige, motoren kendte: uden faggruppe blev ingen årsager sorteret
+ * fra, og så vandt den, der tilfældigvis passede bedst på formen.
+ *
+ * Det er vendt om her. Kan måleren ikke bære en diagnose, siges det — og
+ * svaret er stadig brugbart, for en sum, der flytter sig, er netop dét, der
+ * skal brydes ned på bimålerne.
+ */
+export const IKKE_DIAGNOSTICERBAR = {
+  forsyning: {
+    id: 'sum_flytter_sig', navn: 'Afvigelse på en samlemåler — skal brydes ned',
+    klasse: 'blindt', hastende: false,
+    forklaring: 'Måleren er en forsyningsmåler og dækker hele butikken. Afvigelsen er reel, men den kan '
+      + 'ikke henføres til et anlæg, for måleren ser dem alle på én gang. Den skal findes på bimålerne, '
+      + 'før nogen sendes ud.',
+    tjek: [
+      'Læg butikkens bimålere sammen for samme periode og se, hvor forskellen ligger.',
+      'Er summen af bimålerne uændret, sidder ændringen i noget umålt — eller i afregningen.',
+      'Tjek om en lejermåler eller et solcelleanlæg er faldet ud; begge slår igennem på forsyningen.',
+    ],
+    grundlag: 'Ikke en diagnose, men en afvisning af at stille en. En samlemåler kan ikke pege på en komponent.',
+  },
+  hovedmaaler_intern: null, // samme svar som forsyning; sættes nedenfor
+  lejer: {
+    id: 'lejerforbrug', navn: 'Lejerforbrug — ikke vores anlæg',
+    klasse: 'ingen', hastende: false,
+    forklaring: 'Måleren dækker et lejemål. Forbruget er lejerens eget, og en ændring er ikke en driftsfejl '
+      + 'hos os. Den skal kun følges, hvis den har betydning for afregningen.',
+    tjek: [
+      'Kontrollér at forbruget afregnes videre til lejeren.',
+      'Er der tale om et tomt lejemål, bør forbruget være faldet, ikke steget.',
+    ],
+    grundlag: 'Afgrænsning. Uden den ender lejerens fejl i vores opgavekø.',
+  },
+  ukendt_faggruppe: {
+    id: 'mangler_klassifikation', navn: 'Måleren mangler klassifikation',
+    klasse: 'blindt', hastende: false,
+    forklaring: 'Måleren er ikke tagget godt nok til, at vi ved, hvad den sidder på. Afvigelsen er målt, '
+      + 'men uden at vide om det er køl, ventilation eller lys, kan der ikke stilles en diagnose — og et '
+      + 'gæt ville lyde lige så sikkert som en rigtig.',
+    tjek: [
+      'Find måleren i Enity og sæt det rigtige L2- eller L4-tag på.',
+      'Er tavlen blandet, skal den enten deles op eller tagges som blandet, så den holdes ude af analysen.',
+    ],
+    grundlag: 'Det er billigere at tagge en måler end at sende en montør ud på en gætteri-diagnose.',
+  },
+};
+IKKE_DIAGNOSTICERBAR.hovedmaaler_intern = IKKE_DIAGNOSTICERBAR.forsyning;
 /* ---- 3 · Afvejningen ·------------------------------------------------------ */
 
 /* Hvor meget et bevis rykker. Udtrykt i log-odds, så de kan lægges sammen.
  * Tallene er sat, så ét stærkt bevis kan løfte en kandidat forbi en anden med
  * dobbelt så høj prior — men så to svage beviser ikke kan. */
 const VÆGT = { staerk: 1.4, middel: 0.8, svag: 0.4 };
+
+/* Hvor stor en del af de fejl, der faktisk sker i en faggruppe, kataloget
+ * dækker. Det er et skøn, og det skal være et skøn: det første forsøg brugte
+ * antallet af årsager på listen, og det gav den modsatte rangorden af den
+ * rigtige — lys fik 84 % og en køleflade 29 % på nøjagtig samme signatur,
+ * alene fordi der står færre årsager under lys.
+ *
+ * Længden af listen siger ikke, hvor færdig den er. Solceller har fire
+ * årsager og er nogenlunde udtømmende, for et solcelleanlæg kan ikke fejle på
+ * ret mange måder. Lys har fire og dækker meget lidt: en lysgruppe kan ændre
+ * sig, fordi et armatur er skiftet, fordi en sensor er klistret til, fordi
+ * nogen har sat en timer om, eller fordi butikken har flyttet en afdeling.
+ *
+ * Tallene her er sat af os og kan diskuteres. Det er meningen. De skal
+ * revideres, når tilbagemeldingerne fra lukkede opgaver viser, hvor tit
+ * "ingen af de kendte årsager" bliver svaret. */
+export const KATALOGDAEKNING = {
+  koel_frys:      0.85,  // gennemarbejdet grundigst; scenarierne er bygget her
+  koeleflader:    0.80,
+  ventilation:    0.75,
+  solceller:      0.70,  // få fejlmåder, og de er kendte
+  varme_fjern:    0.65,
+  varme_el:       0.60,
+  lys_ude:        0.55,
+  overskudsvarme: 0.55,
+  lys_inde:       0.50,  // mange måder at ændre en lysgruppe på, som vi ikke kender
+  cts:            0.40,
+  produktion:     0.35,  // ovne, friture, kipstegere — vi har næsten intet her
+};
+const DAEKNING_UKENDT = 0.45;
+
+/* Hvornår et udslag er stort nok til at stå alene, og hvor langt konfidensen
+ * må falde, når det ikke er. Gulvet er der, fordi en lille afvigelse på et
+ * stort anlæg stadig er mange kroner og skal kunne komme igennem. */
+const TYDELIGT_UDSLAG = 20;
+const SVAGT_UDSLAG_GULV = 0.45;
 
 const logit = (p) => Math.log(p / (1 - p));
 const sigmoid = (x) => 1 / (1 + Math.exp(-x));
@@ -986,9 +1084,26 @@ const sigmoid = (x) => 1 / (1 + Math.exp(-x));
  * Returnerer altid mindst én kandidat — og hellere "kan ikke afgøres" end en
  * diagnose, tallene ikke bærer.
  */
-export function diagnosticer(signatur, { faggruppe, kobling, gentagneOpgaver = 0, priors = null } = {}) {
+export function diagnosticer(signatur, { faggruppe, maalerrolle = null, kobling, gentagneOpgaver = 0, priors = null } = {}) {
   if (!signatur || !signatur.brugbar) {
     return { brugbar: false, grund: signatur?.grund || 'Ingen signatur at gå ud fra.' };
+  }
+
+  /* Først: kan denne måler overhovedet bære en diagnose? Spørgsmålet skal
+   * stilles før rangordningen, ikke efter — ellers findes der altid en årsag,
+   * der passer på formen, og den bliver præsenteret som et fund. */
+  const spaerre = IKKE_DIAGNOSTICERBAR[maalerrolle]
+    || (!faggruppe ? IKKE_DIAGNOSTICERBAR.ukendt_faggruppe : null);
+  if (spaerre) {
+    const bedste = { ...spaerre, faggrupper: null, prior: null, andel: 1, score: 0, sandsynlighed: 1, beviser: [
+      { for: true, vaegt: 'stærk', tekst: `Afvigelsen er målt til ${signatur.afvigPct} % af det forventede. ${spaerre.navn}.` },
+    ] };
+    return {
+      brugbar: true, diagnoserbar: false,
+      bedste, naest: null, margin: 1, konfidens: null, entydig: true,
+      rangeret: [bedste],
+      forbehold: [spaerre.forklaring],
+    };
   }
 
   const kandidater = AARSAGER
@@ -1123,6 +1238,26 @@ export function diagnosticer(signatur, { faggruppe, kobling, gentagneOpgaver = 0
   if (signatur.mangler.length) loft -= 0.12 * signatur.mangler.length;
   if (signatur.modelleret) loft -= 0.15;
   if (signatur.doegn < 21) loft -= 0.15;
+
+  /* Andelen siger, hvor godt årsagen passer SAMMENLIGNET MED de andre på
+   * listen. Konfidensen skal også tage højde for, at den rigtige forklaring
+   * kan mangle på listen — og det afhænger af, hvor færdigt kataloget er i
+   * netop den faggruppe. */
+  /* Det gælder ikke de årsager, hvor signaturen ER fundet. En måler, der leverer
+   * nul, er ikke ét bud blandt fire — den er en aflæsning. Kataloget kan være
+   * nok så tyndt, uden at det gør den observation mere usikker. Uden den
+   * undtagelse faldt "måleren leverer ikke længere data" på en måler med
+   * restniveau 0,00 til 31 %, og det er forkert den anden vej. */
+  if (!bedste.direkte) loft *= (KATALOGDAEKNING[faggruppe] ?? DAEKNING_UKENDT);
+
+  /* Udslagets størrelse skal også tælle med.
+   *
+   * Uden det giver 3,5 % og 96 % afvigelse nøjagtig samme konfidens, for
+   * formen er den samme. Men på en døgnmodel uden timedata er nogle få
+   * procent inden for det, modellen selv kan tage fejl med, og dér kan flere
+   * årsager passe lige godt. Et tydeligt udslag udelukker nogle af dem. */
+  const udslag = Math.abs(signatur.afvigPct ?? 0);
+  if (!bedste.direkte) loft *= Math.max(SVAGT_UDSLAG_GULV, Math.min(1, udslag / TYDELIGT_UDSLAG));
 
   const konfidens = Math.max(5, Math.min(95, Math.round(100 * Math.min(bedste.andel + margin, 0.95) * Math.max(0.3, loft))));
   const entydig = margin > 0.10;

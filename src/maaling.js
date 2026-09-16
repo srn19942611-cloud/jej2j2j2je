@@ -180,7 +180,7 @@ export function signaturFraMaaling(m) {
  * `opgaver` er valgfri. Uden Dalux-opgaver på anlægget bliver koblingen
  * "uledsaget", og det er et ærligt svar — ikke en mangel, der skal skjules.
  */
-export function diagnosticerMaaling(m, { faggruppe, opgaver = [], priors = null, gentagneOpgaver = 0 } = {}) {
+export function diagnosticerMaaling(m, { faggruppe, maalerrolle = null, opgaver = [], priors = null, gentagneOpgaver = 0 } = {}) {
   const signatur = signaturFraMaaling(m);
   if (!signatur.brugbar) return { brugbar: false, grund: signatur.grund, fejl: signatur.fejl };
 
@@ -188,7 +188,7 @@ export function diagnosticerMaaling(m, { faggruppe, opgaver = [], priors = null,
     ? samtidighed({ dato: signatur.segmentStart }, opgaver, { faggruppe, relevante: FG_FAGOMRAADER[faggruppe] })
     : null;
 
-  const diagnose = diagnosticer(signatur, { faggruppe, kobling, priors, gentagneOpgaver });
+  const diagnose = diagnosticer(signatur, { faggruppe, maalerrolle, kobling, priors, gentagneOpgaver });
   return { brugbar: true, signatur, kobling, diagnose };
 }
 
@@ -201,13 +201,23 @@ export function diagnosticerMaaling(m, { faggruppe, opgaver = [], priors = null,
 export function diagnosticerTabel(raekker, { priors = {}, opgaverPrEnhed = {} } = {}) {
   const fund = [];
   const afvist = [];
+  const udenDiagnose = [];
   for (const m of raekker) {
     const r = diagnosticerMaaling(m, {
       faggruppe: m.faggruppe,
+      maalerrolle: m.maalerrolle,
       opgaver: opgaverPrEnhed[m.maalerId] || [],
       priors: priors[m.faggruppe] || null,
     });
     if (!r.brugbar) { afvist.push({ ...m, grund: r.grund }); continue; }
+    /* En måler, der ikke kan bære en diagnose, er hverken et fund eller en
+     * målefejl. Den holdes for sig, så den ikke tælles med som et fund og
+     * heller ikke forsvinder i afvisningerne sammen med de forkerte tal. */
+    if (r.diagnose.diagnoserbar === false) {
+      udenDiagnose.push({ ...m, signatur: r.signatur, grundId: r.diagnose.bedste.id,
+        grund: r.diagnose.bedste.navn, forklaring: r.diagnose.bedste.forklaring, tjek: r.diagnose.bedste.tjek });
+      continue;
+    }
     fund.push({
       ...m,
       signatur: r.signatur,
@@ -223,7 +233,7 @@ export function diagnosticerTabel(raekker, { priors = {}, opgaverPrEnhed = {} } 
       hastende: !!r.diagnose.bedste.hastende,
     });
   }
-  return { fund, afvist };
+  return { fund, afvist, udenDiagnose };
 }
 
 /* ---- Indlæsning af en måletabel -------------------------------------------

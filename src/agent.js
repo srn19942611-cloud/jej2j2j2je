@@ -77,11 +77,25 @@ export const AFVIS_GRUND = Object.fromEntries(AFVIS_GRUNDE.map((g) => [g.id, g])
  * ingenting på elregningen — det bruger jo mindre — og er alligevel det mest
  * hastende, der findes i en butik. Derfor slår "varer i fare" alt andet.
  */
+/* Hvor sikker diagnosen skal være, før et stort beløb alene løfter sagen op.
+ *
+ * Stod på 55, dengang konfidensen blev regnet over et filtreret katalog og
+ * derfor lå kunstigt højt — næsten halvdelen af diagnoserne lå over. Da
+ * skalaen blev rettet, ville de samme 55 have betydet noget helt andet: kun
+ * hver femte ville komme igennem. Grænsen er flyttet med skalaen, så den
+ * slipper omtrent lige så mange igennem som før. Politikken er uændret; det
+ * er målestokken, der er skiftet.
+ *
+ * Bemærk, at beløbet er MÅLT og årsagen er GÆTTET. Derfor er det kun P2, en
+ * lav konfidens koster — sagen forsvinder ikke, den bliver til et besøg, der
+ * skal afgøre hvad det er, i stedet for en bestilling på et stykke arbejde. */
+const KONFIDENSPORT = 40;
+
 export function prioriter(aarsag, kr, konfidens) {
   if (aarsag.hastende && aarsag.klasse === 'ingen') return 'P1';   // anlægget kører ikke som det skal
   if (aarsag.hastende) return kr > 40000 ? 'P1' : 'P2';
   if (aarsag.klasse === 'blindt') return 'P3';
-  if (kr > 60000 && konfidens >= 55) return 'P2';
+  if (kr > 60000 && konfidens >= KONFIDENSPORT) return 'P2';
   if (kr > 15000) return 'P3';
   return 'P4';
 }
@@ -149,11 +163,20 @@ export function byggVarsel(enhed, raekker, {
     : null;
 
   const diagnose = diagnosticer(signatur, {
-    faggruppe: enhed.faggruppe, kobling, gentagneOpgaver,
+    faggruppe: enhed.faggruppe, maalerrolle: enhed.maalerrolle, kobling, gentagneOpgaver,
     // Det, lukkede opgaver har lært os om netop denne faggruppe.
     priors: laering ? justeredePriors(laering, enhed.faggruppe) : null,
   });
   if (!diagnose.brugbar) return null;
+
+  /* Kan måleren ikke bære en diagnose, bliver det ikke et varsel. Det ville
+   * sende en montør ud på en samlemåler. Det bliver i stedet et datapunkt,
+   * som koerAgent samler op — for en forsyningsmåler, der flytter sig, er
+   * stadig værd at vide, og en utagget måler skal tagges. */
+  if (diagnose.diagnoserbar === false) {
+    return { ikkeDiagnoserbar: true, enhed, signatur, diagnose,
+      grundId: diagnose.bedste.id, grund: diagnose.bedste.navn };
+  }
 
   const aarsag = diagnose.bedste;
   const beloeb = prissaet(signatur, aarsag, priser, enhed.energienhed || 'el');
@@ -225,6 +248,7 @@ const dansk = (iso) => {
 /** Kører agenten over en række analyseenheder. */
 export function koerAgent(enheder, { priser = PRISER, laering = null, nu = new Date() } = {}) {
   const varsler = [];
+  const ikkeDiagnoserbare = [];
   for (const e of enheder) {
     if (!e.raekker || e.raekker.length < 60) continue;
     if (undertrykt(e, laering, nu)) continue;
@@ -232,9 +256,15 @@ export function koerAgent(enheder, { priser = PRISER, laering = null, nu = new D
       opgaver: e.opgaver, priser, referenceSlut: e.referenceSlut,
       gentagneOpgaver: e.gentagneOpgaver || 0, laering, nu,
     });
-    if (v) varsler.push(v);
+    if (!v) continue;
+    if (v.ikkeDiagnoserbar) ikkeDiagnoserbare.push(v);
+    else varsler.push(v);
   }
-  return varsler.sort((a, b) => RANG[a.prioritet] - RANG[b.prioritet] || b.kr - a.kr);
+  varsler.sort((a, b) => RANG[a.prioritet] - RANG[b.prioritet] || b.kr - a.kr);
+  /* Bagudkompatibelt: kaldere, der bare itererer over svaret, får varslerne
+   * som før. De, der spørger efter afvisningerne, kan finde dem på listen. */
+  varsler.ikkeDiagnoserbare = ikkeDiagnoserbare;
+  return varsler;
 }
 
 const RANG = { P1: 0, P2: 1, P3: 2, P4: 3 };
