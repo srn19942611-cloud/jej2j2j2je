@@ -80,6 +80,7 @@
     <nav class="faneblade">
       <button class="panel-faneblad aktiv" data-faneblad="beregn">Belysning</button>
       <button class="panel-faneblad" data-faneblad="stykliste">Stykliste</button>
+      <button class="panel-faneblad" data-faneblad="krav">Krav</button>
       <button class="panel-faneblad" data-faneblad="el">El &amp; projekt</button>
     </nav>
 
@@ -92,6 +93,12 @@
             <option value="superbrugsen">SuperBrugsen / Kvickly (skinner + Bricks)</option>
             <option value="discount">365discount (LED-paneler i loft)</option>
             <option value="lager">Lager / bagbutik (Tri-proof)</option>
+          </select>
+        </label>
+        <label class="felt">Loftstype
+          <select data-indst="lofttype">
+            <option value="skinne">Øvrige lofttyper – 3-faset skinnesystem</option>
+            <option value="system">Nedsænket loft / systemloft – LED-paneler</option>
           </select>
         </label>
         <div class="felt-par">
@@ -119,10 +126,26 @@
       </section>
 
       <section class="blok">
+        <h2>Zoner</h2>
+        <label class="felt">Zonetype der tegnes
+          <select data-indst="zoneType">
+            <option value="salg">Salgsareal – 700 lux</option>
+            <option value="betjent">Betjent område (kasse, bager, slagter, delikatesse, kiosk, pakkepost) – 1000 lux</option>
+            <option value="vindfang">Vindfang og indgang – 1000 lux</option>
+            <option value="lager">Lager og bagbutik – 300 lux</option>
+            <option value="personale">Personale og kontor – 500 lux</option>
+            <option value="ude">Udvendigt areal</option>
+          </select>
+        </label>
+        <div id="zoneliste" class="zoneliste"></div>
+        <p class="hjælp">Vælg type, tag arealværktøjet (A) og tegn zonen. Lux-kravene for salgsareal, betjente områder og vindfang kommer fra Coops byggeprogram og kan rettes pr. zone.</p>
+      </section>
+
+      <section class="blok">
         <h2>Lyskrav</h2>
         <div class="felt-par">
-          <label class="felt">Mål (lux)<input type="number" step="25" min="50" data-indst="maalLux"></label>
           <label class="felt">Loftshøjde (m)<input type="number" step="0.1" min="2" data-indst="loftshoejde"></label>
+          <label class="felt">Mindste indbyrdes afstand (m)<input type="number" step="0.1" min="0.3" data-indst="minAfstand"></label>
         </div>
         <div class="felt-par">
           <label class="felt">Nyttevirkning UF<input type="number" step="0.05" min="0.1" max="1" data-indst="uf"></label>
@@ -132,10 +155,7 @@
           <label class="felt">Hovedarmatur<select data-indst="primaer" id="i-primaer"></select></label>
           <label class="felt">Accentarmatur<select data-indst="accent" id="i-accent"></select></label>
         </div>
-        <div class="felt-par">
-          <label class="felt">Accent pr. hovedarmatur<input type="number" step="0.05" min="0" max="3" data-indst="accentRatio"></label>
-          <label class="felt">Mindste indbyrdes afstand (m)<input type="number" step="0.1" min="0.3" data-indst="minAfstand"></label>
-        </div>
+        <label class="felt">Accent pr. hovedarmatur<input type="number" step="0.05" min="0" max="3" data-indst="accentRatio"></label>
         <div class="rk">
           <button id="knap-generer" class="primær bred">Beregn belysningsplan</button>
           <button id="knap-ryd-auto">Fjern beregnet</button>
@@ -181,6 +201,23 @@
       <div class="rk"><button id="knap-ryd">Ryd plan</button></div>
     </div>
 
+    <div class="panel-side" data-side="krav" hidden>
+      <section class="blok">
+        <h2>Kontrol mod byggeprogrammet</h2>
+        <p class="hjælp" id="krav-kilde"></p>
+        <ul id="kravliste" class="kravliste"></ul>
+      </section>
+      <section class="blok">
+        <h2>Krav til lyskilder</h2>
+        <ul id="lyskildekrav" class="krav-data"></ul>
+      </section>
+      <section class="blok">
+        <h2>Belysningsplanen skal indeholde</h2>
+        <ul id="dokumentation" class="krav-data"></ul>
+        <p class="hjælp">Indretningsplanen skal foreligge inden belysningsplanen udarbejdes, og plan og dokumentation skal godkendes af teknisk ansvarlige i Coop inden bestilling.</p>
+      </section>
+    </div>
+
     <div class="panel-side" data-side="el" hidden>
       <section class="blok">
         <h2>Gruppeopdeling</h2>
@@ -205,9 +242,9 @@
         <ol class="trin">
           <li>Importér plantegningen. DWG og DXF giver den skarpeste plan og sætter målestokken selv; PDF rastreres til billede.</li>
           <li>Sæt målestok, hvis den ikke kom med tegningen: mål en kendt længde og indtast målet.</li>
-          <li>Tegn salgsarealet med arealværktøjet – arealet i m² regnes automatisk.</li>
+          <li>Tegn zonerne: salgsareal, betjente områder, vindfang, lager. Hver zone får lux-kravet fra byggeprogrammet.</li>
           <li>Beregn belysningsplanen, eller tegn skinnerækker og placér armaturer selv.</li>
-          <li>Tjek nøgletal og grupper, og hent stykliste, plan og udskrift.</li>
+          <li>Tjek fanen Krav, og hent stykliste, plan og udskrift med kontrollen.</li>
         </ol>
       </section>
     </div>

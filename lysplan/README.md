@@ -17,10 +17,12 @@ tegninger og projekter forlader aldrig maskinen.
    CAD-tegning kan slukkes enkeltvis, så målsætning og møblering ikke støjer.
 2. **Målestok** – kom den ikke med tegningen: klik to punkter med kendt
    indbyrdes afstand og indtast målet. Derefter regnes alt i meter og m².
-3. **Salgsareal** – tegn polygonen om salgslokalet. Arealet vises løbende.
-4. **Beregn belysningsplan** – vælg koncept, c/c-afstand og mål-lux. Værktøjet
-   lægger skinnerækker ud i arealet, klipper dem mod væggene og fordeler
-   armaturer, til lyskravet er dækket.
+3. **Zoner** – vælg zonetype og tegn polygonen. Salgsareal, betjente områder,
+   vindfang, lager og personale har hver sit lux-krav, og arealet vises løbende.
+4. **Beregn belysningsplan** – vælg koncept, loftstype og c/c-afstand.
+   Værktøjet lægger skinnerækker ud i hver zone, klipper dem mod væggene og
+   fordeler armaturer, til zonens lux-krav er dækket af grundbelysningen alene.
+   Rækker den valgte c/c-afstand ikke, rykkes rækkerne tættere, og det siges.
 5. **Ret til i hånden** – tegn ekstra skinnerækker, placér enkeltarmaturer
    (de snapper til nærmeste skinne), flyt og slet. Ctrl+Z fortryder.
 6. **Ud af huset** – stykliste som CSV, plan som PNG, samlet udskrift med
@@ -48,6 +50,25 @@ Alt-tasten slår vinkellåsen fra under optegning og snap fra ved placering.
   12 pr. fase; fase 2 til spot, bast lamper og wall washer, maks. 30 pr. fase;
   fase 3 til fast strøm. Antal 3-polede grupper er det største krav af de to.
 
+## Kontrol mod byggeprogrammet
+
+Fanen **Krav** holder planen op mod Coops byggeprogram for belysningsanlæg
+(EL – Belysningsanlæg 1.3):
+
+| Krav | Sådan kontrolleres det |
+| --- | --- |
+| Salgsareal 700 lux, betjente områder og vindfang 1000 lux | pr. zone, med ±10 % tolerance som i programmets målekrav |
+| Spots må ikke være grundbelysning | zonens krav skal kunne nås af grundbelysningen alene – accentlys tæller ikke med |
+| ≥ 130 lm/W grundbelysning, ≥ 100 lm/W spots | pr. anvendt armaturtype ud fra katalogets W og lm |
+| 3500K inde, 3000K ude, Ra > 85 | pr. anvendt armaturtype |
+| Systemloft → paneler og tilt-spots, øvrige lofter → 3-fasede skinner | loftstypen sammenholdes med det, der er tegnet |
+| Ra ≥ 90 og R9 ≥ 90 ved slagter, delikatesse og kød/pålæg | vist som krav; armaturet `ferskspot` opfylder det |
+| 3-polede grupper, maks. 12 Bricks og 30 spots pr. fase | beregnes af antallet |
+
+Kontrollen kommer med i både CSV-eksporten og udskriften. Den erstatter ikke
+den lysberegning, lysspredning, UGR-dokumentation og måling i butikken, som
+programmet kræver før bestilling – den fanger de fejl, man kan se af planen.
+
 ## Armaturdata
 
 Kataloget i `catalog.js` er bygget på armaturteksterne fra lysplanerne
@@ -56,6 +77,11 @@ Premium 22W/3300 lm og 30W/4500 lm, Tri-proof 33-40W, Pan Max downlight 28W,
 Bricks scan 40W, SJOC Park 2 23W). Hvor et datablad ikke angiver lysstrømmen,
 er den sat til et realistisk niveau for armaturtypen – ret værdien i
 `catalog.js`, hvis du har producentens tal, så følger lux- og lm/m²-tallene med.
+
+Armaturer fra byggeprogrammet er også med: tilt-spot til systemlofter,
+fersk­vare-spot med Ra ≥ 90/R9 ≥ 90, Park One-mast, Floodlight IP65 til
+varegården, LED LINEAR XOOLINE til facade og udhæng samt wallwasher til
+bannere.
 
 Butikskoncepterne (c/c-afstande og lysniveauer) er udgangspunkter aflæst af
 eksisterende planer for Dagli'Brugsen, SuperBrugsen/Kvickly, 365discount og

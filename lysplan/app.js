@@ -7,11 +7,11 @@ const state = {
   lag: [],            // importerede tegninger
   pxPerMeter: null,   // målestok, sat via kalibrering
   kalibrering: null,  // {a, b, meter}
-  omraade: [],        // polygon for salgsareal
+  zoner: [],          // {id, type, navn, pts, maalLux} - salgsareal, betjent område osv.
   skinner: [],        // {id, pts:[[x,y]...], montage:'wire'|'loft'}
   armaturer: [],      // {id, type, x, y, vinkel, skinneId}
   manuelt: {},        // manuelle tillæg til styklisten, pr. katalognøgle
-  valgt: null,        // {slags:'skinne'|'armatur'|'omraade', id}
+  valgt: null,        // {slags:'skinne'|'armatur'|'zone', id}
   vaerktoej: 'pan',
   kladde: [],         // punkter under tegning
   muse: null,         // sidste musepunkt i verdenskoordinater
@@ -20,7 +20,7 @@ const state = {
     preset: 'superbrugsen',
     mode: 'track',
     ccSkinner: 2.5, margin: 1.0, ccX: 2.4, ccY: 2.4,
-    maalLux: 800, uf: 0.5, mf: 0.8, loftshoejde: 3.2,
+    lofttype: 'skinne', zoneType: 'salg', uf: 0.5, mf: 0.8, loftshoejde: 3.2,
     primaer: 'bricks', accent: 'sirius', accentRatio: 0.35,
     minAfstand: 1.2, wireCC: 1.4, startPrRaekke: 1, wireMontage: 'wire',
     retning: 'auto', autoTaethed: true, dwgKilde: ''
@@ -51,7 +51,7 @@ function toast(besked, slags = 'info') {
 /* ---------- historik (fortryd) ---------- */
 function gem() {
   historik.push(JSON.stringify({
-    omraade: state.omraade, skinner: state.skinner,
+    zoner: state.zoner, skinner: state.skinner,
     armaturer: state.armaturer, manuelt: state.manuelt
   }));
   if (historik.length > 60) historik.shift();
@@ -60,7 +60,7 @@ function fortryd() {
   const s = historik.pop();
   if (!s) { toast('Intet at fortryde'); return; }
   const d = JSON.parse(s);
-  state.omraade = d.omraade; state.skinner = d.skinner;
+  state.zoner = d.zoner; state.skinner = d.skinner;
   state.armaturer = d.armaturer; state.manuelt = d.manuelt;
   state.valgt = null;
   opdater();
@@ -310,7 +310,7 @@ function tegn() {
   }
   ctx.globalAlpha = 1;
 
-  tegnOmraade();
+  tegnZoner();
   for (const s of state.skinner) tegnSkinne(s);
   for (const a of state.armaturer) tegnArmatur(a);
   tegnKladde();
@@ -366,20 +366,37 @@ function tegnCadLag(lag) {
   ctx.restore();
 }
 
-function tegnOmraade() {
-  if (state.omraade.length < 2) return;
+const zoneFarve = z => (ZONETYPER[z.type] || {}).farve || FARVER.omraade;
+const zoneKrav = z => (z.maalLux != null ? z.maalLux : ((ZONETYPER[z.type] || {}).lux || 500));
+const zoneNavn = z => z.navn || (ZONETYPER[z.type] || {}).navn || 'Zone';
+
+function tegnZoner() {
   const z = state.visning.zoom;
-  ctx.beginPath();
-  ctx.moveTo(state.omraade[0][0], state.omraade[0][1]);
-  for (const p of state.omraade.slice(1)) ctx.lineTo(p[0], p[1]);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(11,123,212,0.07)';
-  ctx.fill();
-  ctx.strokeStyle = FARVER.omraade;
-  ctx.setLineDash([8 / z, 6 / z]);
-  ctx.lineWidth = 1.6 / z;
-  ctx.stroke();
-  ctx.setLineDash([]);
+  for (const zone of state.zoner) {
+    if (zone.pts.length < 3) continue;
+    const valgt = state.valgt && state.valgt.slags === 'zone' && state.valgt.id === zone.id;
+    const farve = zoneFarve(zone);
+    ctx.beginPath();
+    ctx.moveTo(zone.pts[0][0], zone.pts[0][1]);
+    for (const p of zone.pts.slice(1)) ctx.lineTo(p[0], p[1]);
+    ctx.closePath();
+    ctx.fillStyle = farve + '12';
+    ctx.fill();
+    ctx.strokeStyle = farve;
+    ctx.setLineDash(valgt ? [] : [8 / z, 6 / z]);
+    ctx.lineWidth = (valgt ? 2.6 : 1.6) / z;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (harMaalestok()) {
+      const r = Geom.bbox(zone.pts);
+      const areal = Geom.polygonArea(zone.pts) / (state.pxPerMeter ** 2);
+      ctx.fillStyle = farve;
+      ctx.font = `${12 / z}px "IBM Plex Sans", sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.fillText(`${zoneNavn(zone)} · ${fmt(areal, 0)} m² · krav ${fmt(zoneKrav(zone))} lux`,
+        r.x0 + 6 / z, r.y0 - 6 / z);
+    }
+  }
 }
 
 function tegnSkinne(s) {
@@ -486,7 +503,8 @@ function tegnKladde() {
   ctx.beginPath();
   ctx.moveTo(pts[0][0], pts[0][1]);
   for (const p of pts.slice(1)) ctx.lineTo(p[0], p[1]);
-  ctx.strokeStyle = state.vaerktoej === 'omraade' ? FARVER.omraade : FARVER.skinne;
+  ctx.strokeStyle = state.vaerktoej === 'omraade'
+    ? ((ZONETYPER[state.indst.zoneType] || {}).farve || FARVER.omraade) : FARVER.skinne;
   ctx.setLineDash([6 / z, 4 / z]);
   ctx.lineWidth = 1.8 / z;
   ctx.stroke();
@@ -660,7 +678,13 @@ function snapHvisOrtho(e, p) {
 function afslutKladde() {
   if (state.vaerktoej === 'omraade' && state.kladde.length >= 3) {
     gem();
-    state.omraade = state.kladde.slice();
+    const type = state.indst.zoneType;
+    const antal = state.zoner.filter(z => z.type === type).length;
+    state.zoner.push({
+      id: nyId(), type, pts: state.kladde.slice(),
+      navn: (ZONETYPER[type] || {}).navn + (antal ? ' ' + (antal + 1) : ''),
+      maalLux: (ZONETYPER[type] || {}).lux
+    });
     state.kladde = [];
     opdater();
   } else if (state.vaerktoej === 'skinne' && state.kladde.length >= 2) {
@@ -700,9 +724,10 @@ function ramtObjekt(p) {
     const pr = Geom.projectOnPolyline(p, s.pts);
     if (pr && pr.afstand <= tol) return { slags: 'skinne', id: s.id };
   }
-  if (state.omraade.length > 2 && Geom.pointInPolygon(p, state.omraade)) {
-    const kant = Geom.projectOnPolyline(p, state.omraade.concat([state.omraade[0]]));
-    if (kant && kant.afstand <= tol) return { slags: 'omraade', id: 'omraade' };
+  for (let i = state.zoner.length - 1; i >= 0; i--) {
+    const zone = state.zoner[i];
+    const kant = Geom.projectOnPolyline(p, zone.pts.concat([zone.pts[0]]));
+    if (kant && kant.afstand <= tol) return { slags: 'zone', id: zone.id };
   }
   return null;
 }
@@ -712,7 +737,7 @@ function fjernObjekt(ref) {
   else if (ref.slags === 'skinne') {
     state.skinner = state.skinner.filter(s => s.id !== ref.id);
     state.armaturer = state.armaturer.filter(a => a.skinneId !== ref.id);
-  } else if (ref.slags === 'omraade') state.omraade = [];
+  } else if (ref.slags === 'zone') state.zoner = state.zoner.filter(z => z.id !== ref.id);
 }
 
 function flytObjekt(ref, dx, dy) {
@@ -726,8 +751,9 @@ function flytObjekt(ref, dx, dy) {
     for (const a of state.armaturer) {
       if (a.skinneId === s.id) { a.x += dx; a.y += dy; }
     }
-  } else if (ref.slags === 'omraade') {
-    state.omraade = state.omraade.map(p => [p[0] + dx, p[1] + dy]);
+  } else if (ref.slags === 'zone') {
+    const zone = state.zoner.find(z => z.id === ref.id);
+    if (zone) zone.pts = zone.pts.map(p => [p[0] + dx, p[1] + dy]);
   }
 }
 
@@ -765,7 +791,7 @@ function vælgVærktøj(v) {
     pan: 'Træk for at flytte tegningen. Scroll for at zoome.',
     vaelg: 'Klik for at vælge. Træk for at flytte. Delete sletter.',
     maalestok: 'Klik to punkter med kendt indbyrdes afstand, og indtast målet.',
-    omraade: 'Klik hjørnerne i salgsarealet. Enter eller dobbeltklik lukker polygonen.',
+    omraade: 'Klik hjørnerne i zonen. Enter eller dobbeltklik lukker den. Zonetypen vælges i panelet til højre.',
     skinne: 'Klik skinnens knækpunkter. Enter eller dobbeltklik afslutter rækken. Alt = fri vinkel.',
     slet: 'Klik på et objekt for at slette det.'
   }[v] || 'Klik i planen for at placere armaturet. Det snapper til nærmeste skinne (Alt = fri placering).';
@@ -776,8 +802,6 @@ function vælgVærktøj(v) {
 /* ---------- beregning af stykliste og nøgletal ---------- */
 function beregn() {
   const i = state.indst;
-  const areal = (state.omraade.length > 2 && harMaalestok())
-    ? Geom.polygonArea(state.omraade) / (state.pxPerMeter ** 2) : 0;
 
   const skinne = { stykker: {}, antal: 0, laengde: 0, lige: 0, hjoerne: 0, wire: 0, raekker: 0 };
   const ender = [];
@@ -834,6 +858,36 @@ function beregn() {
     pr_fase[f.fase] = (pr_fase[f.fase] || 0) + n;
   }
 
+  // zoner: lysstrøm regnes af de armaturer, der ligger inde i zonen
+  const zoner = state.zoner.map(z => {
+    const areal = harMaalestok() && z.pts.length > 2
+      ? Geom.polygonArea(z.pts) / (state.pxPerMeter ** 2) : 0;
+    let lm = 0, w = 0, lmGrund = 0, lmAccent = 0, stk = 0;
+    const typer = {};
+    for (const a of state.armaturer) {
+      const f = FIXTURES[a.type];
+      if (!f || !Geom.pointInPolygon([a.x, a.y], z.pts)) continue;
+      lm += f.lm; w += f.w; stk++;
+      typer[a.type] = (typer[a.type] || 0) + 1;
+      if (f.rolle === 'grund') lmGrund += f.lm;
+      else if (f.rolle === 'accent') lmAccent += f.lm;
+    }
+    const faktor = i.uf * i.mf;
+    const krav = zoneKrav(z);
+    const lux = areal > 0 ? (lm * faktor) / areal : 0;
+    const luxGrund = areal > 0 ? (lmGrund * faktor) / areal : 0;
+    return {
+      id: z.id, navn: zoneNavn(z), type: z.type, farve: zoneFarve(z), krav,
+      areal, lm, w, stk, typer, lux, luxGrund,
+      wattPrM2: areal > 0 ? w / areal : 0,
+      iProgram: !!(ZONETYPER[z.type] || {}).iProgram,
+      opfyldt: areal > 0 && lux >= krav,
+      indenforTolerance: areal > 0 && lux >= krav * (1 - KRAV.tolerance)
+    };
+  });
+  const arealInde = zoner.filter(z => z.type !== 'ude').reduce((a, z) => a + z.areal, 0);
+  const areal = arealInde;
+
   const lux = areal > 0 ? (lumen * i.uf * i.mf) / areal : 0;
   const grupper = Math.max(
     pr_fase.bricks ? Math.ceil(pr_fase.bricks / FASE_REGLER.bricks.maks) : 0,
@@ -842,12 +896,86 @@ function beregn() {
   );
 
   return {
-    areal, skinne, start, endestykke, tee, frieEnder, antal, watt, lumen, lux,
+    areal, zoner, skinne, start, endestykke, tee, frieEnder, antal, watt, lumen, lux,
     wattPrM2: areal > 0 ? watt / areal : 0,
     lumenPrM2: areal > 0 ? lumen / areal : 0,
     pr_fase, grupper,
-    manglerLux: areal > 0 ? Math.max(0, i.maalLux - lux) : 0
+    zonerOpfyldt: zoner.filter(z => z.opfyldt).length
   };
+}
+
+/* ---------- kontrol mod byggeprogrammet ---------- */
+function kravTjek(b) {
+  const punkter = [];
+  const tilføj = (status, emne, tekst) => punkter.push({ status, emne, tekst });
+
+  if (!b.zoner.length) {
+    tilføj('info', 'Zoner', 'Tegn zonerne (salgsareal, betjente områder, vindfang) for at få kontrolleret lux-kravene.');
+  }
+  for (const z of b.zoner) {
+    if (!z.areal) continue;
+    if (z.type === 'ude') {
+      tilføj('info', z.navn, 'Udvendigt areal dimensioneres efter DS/EN 12464-2: klasse E-1 ved bygning og E-3 på P-plads. Lyskilder 3000K.');
+      continue;
+    }
+    const status = z.lux >= z.krav ? 'ok' : (z.indenforTolerance ? 'advarsel' : 'fejl');
+    tilføj(status, z.navn,
+      `${fmt(z.lux, 0)} lux mod krav ${fmt(z.krav)} lux${z.iProgram ? ' (byggeprogram)' : ' (eget krav)'}` +
+      ` – ${fmt(z.areal, 0)} m², ${z.stk} armaturer, ${fmt(z.wattPrM2, 1)} W/m².`);
+    if (z.lux > 0 && z.luxGrund < z.krav) {
+      tilføj(z.luxGrund >= z.krav * (1 - KRAV.tolerance) ? 'advarsel' : 'fejl', z.navn + ': grundbelysning',
+        `Grundbelysningen alene giver ${fmt(z.luxGrund, 0)} lux. Spots må ikke anvendes som grundbelysning, kun til fremhævning af ${KRAV.spotOmraader.slice(0, 4).join(', ').toLowerCase()} m.fl.`);
+    }
+  }
+
+  // armaturdata mod kravene til lyskilder
+  for (const [nøgle, antal] of Object.entries(b.antal)) {
+    const f = FIXTURES[nøgle];
+    if (!f || !antal || !f.w) continue;
+    const ude = f.rolle === 'ude';
+    const lmw = lmPrW(f);
+    const grænse = f.rolle === 'grund' ? KRAV.lmwGrund : (f.rolle === 'accent' ? KRAV.lmwSpot : 0);
+    if (grænse && lmw < grænse) {
+      tilføj('advarsel', f.navn,
+        `${fmt(lmw, 0)} lm/W mod krav ≥ ${grænse} lm/W for ${f.rolle === 'grund' ? 'grundbelysning' : 'spots'}. Tallet stammer fra kataloget – kontrollér databladet.`);
+    }
+    const kravCct = ude ? KRAV.ude.cct : KRAV.inde.cct;
+    if (f.cct && f.cct !== kravCct) {
+      tilføj('advarsel', f.navn, `Farvetemperatur ${f.cct}K mod krav ${kravCct}K ${ude ? 'udvendigt' : 'indvendigt'}.`);
+    }
+    if (!ude && f.ra && f.ra < KRAV.inde.ra) {
+      tilføj('advarsel', f.navn, `Farvegengivelse Ra ${f.ra} mod krav > ${KRAV.inde.ra}.`);
+    }
+  }
+
+  // opbygning mod lofttype
+  const loft = LOFTTYPER[state.indst.lofttype] || LOFTTYPER.skinne;
+  const harSkinner = state.skinner.length > 0;
+  const harPaneler = state.armaturer.some(a => (FIXTURES[a.type] || {}).symbol === 'panel');
+  if (state.indst.lofttype === 'system' && harSkinner) {
+    tilføj('advarsel', 'Loftstype',
+      'Ved nedsænket loft skal der bruges LED-paneler i loftets dimensioner og indbyggede tilt-spots, ikke 3-fasede skinner.');
+  } else if (state.indst.lofttype === 'skinne' && harPaneler && !harSkinner) {
+    tilføj('advarsel', 'Loftstype',
+      'Ved øvrige lofttyper skal der bruges universelle 3-fasede skinnesystemer med skinnespots og nedhængte lysskinner.');
+  } else if (b.antal && (harSkinner || harPaneler)) {
+    tilføj('ok', 'Loftstype', loft.navn + '.');
+  }
+
+  if (b.grupper) {
+    const brickPrGruppe = b.pr_fase.bricks / b.grupper;
+    const spotPrGruppe = b.pr_fase.spot / b.grupper;
+    const over = brickPrGruppe > FASE_REGLER.bricks.maks + 0.001 || spotPrGruppe > FASE_REGLER.spot.maks + 0.001;
+    tilføj(over ? 'fejl' : 'ok', 'Gruppeopdeling',
+      `${b.grupper} stk. 3-polede grupper: ${fmt(brickPrGruppe, 1)} Bricks og ${fmt(spotPrGruppe, 1)} spot pr. gruppe (maks. ${FASE_REGLER.bricks.maks} og ${FASE_REGLER.spot.maks}).`);
+  }
+
+  tilføj('info', 'Måling',
+    `Lux måles på gulv (${KRAV.maalehoejde}) med ±${Math.round(KRAV.tolerance * 100)} % tolerance. Programmets tal her er et overslag efter lumenmetoden – den endelige dokumentation kræver lysberegning og måling i butikken.`);
+  tilføj('info', 'Fersk­varer',
+    `Ved slagter, delikatesse og kølemøbler til kød og pålæg kræves spots med Ra ≥ ${KRAV.fersk.ra} og R9 ≥ ${KRAV.fersk.r9}.`);
+
+  return punkter;
 }
 
 /* ---------- stykliste ---------- */
@@ -923,16 +1051,16 @@ function symbolMærkat(s, tekst) {
 
 function visNøgletal(b) {
   const i = state.indst;
+  const zoneStatus = b.zoner.length
+    ? (b.zonerOpfyldt === b.zoner.length ? 'god' : (b.zonerOpfyldt ? 'advarsel' : 'lav')) : '';
   const kort = [
-    { navn: 'Salgsareal', vaerdi: b.areal ? fmt(b.areal, 0) + ' m²' : '–', note: b.areal ? 'af tegnet polygon' : 'tegn arealet' },
+    { navn: 'Areal i alt', vaerdi: b.areal ? fmt(b.areal, 0) + ' m²' : '–',
+      note: b.zoner.length ? `${b.zoner.length} zone${b.zoner.length > 1 ? 'r' : ''}` : 'tegn zonerne' },
     { navn: 'Skinne i alt', vaerdi: fmt(b.skinne.laengde, 0) + ' m', note: `${b.skinne.antal} stk. i ${b.skinne.raekker} rækker` },
     { navn: 'Installeret effekt', vaerdi: fmt(b.watt, 0) + ' W', note: b.areal ? fmt(b.wattPrM2, 1) + ' W/m²' : '' },
     { navn: 'Lysstrøm', vaerdi: fmt(b.lumen / 1000, 1) + ' klm', note: b.areal ? fmt(b.lumenPrM2, 0) + ' lm/m²' : '' },
-    {
-      navn: 'Overslag belysningsstyrke', vaerdi: b.areal ? fmt(b.lux, 0) + ' lux' : '–',
-      note: `mål ${fmt(i.maalLux)} lux · UF ${i.uf} · LLMF ${i.mf}`,
-      slags: b.areal ? (b.lux >= i.maalLux ? 'god' : (b.lux >= i.maalLux * 0.85 ? 'advarsel' : 'lav')) : ''
-    },
+    { navn: 'Zoner med opfyldt krav', vaerdi: b.zoner.length ? `${b.zonerOpfyldt}/${b.zoner.length}` : '–',
+      note: `UF ${i.uf} · LLMF ${i.mf}`, slags: zoneStatus },
     { navn: '3-polede grupper', vaerdi: fmt(b.grupper), note: `${b.pr_fase.bricks} Bricks · ${b.pr_fase.spot} spot/pendel` }
   ];
   $('#noegletal').innerHTML = kort.map(k => `
@@ -959,6 +1087,84 @@ function visNøgletal(b) {
   $('#el-note').textContent = b.grupper
     ? `Der skal bruges ${b.grupper} stk. 3-polede grupper til belysningen. Der udføres tilslutning i alle S./start samt mulighed for tilslutning i alle H.S./hjørnesamlinger.`
     : 'Tegn skinner og placér armaturer for at få gruppeopdelingen.';
+}
+
+/* Zoneliste med beregnet lux over for kravet. */
+function visZoner(b) {
+  const boks = $('#zoneliste');
+  if (!b.zoner.length) {
+    boks.innerHTML = '<p class="tom">Ingen zoner tegnet endnu.</p>';
+    return;
+  }
+  boks.innerHTML = '';
+  for (const z of b.zoner) {
+    const ude = z.type === 'ude';
+    const status = !z.areal ? 'info' : ude ? 'info'
+      : (z.lux >= z.krav ? 'ok' : (z.indenforTolerance ? 'advarsel' : 'fejl'));
+    const el = document.createElement('div');
+    el.className = 'zone';
+    el.style.borderLeftColor = z.farve;
+    el.innerHTML = `
+      <div class="zone-top">
+        <span class="prik ${status}"></span>
+        <input class="zone-navn" value="${z.navn}" data-h="navn">
+        <button class="ikon" data-h="slet" title="Slet zone">✕</button>
+      </div>
+      <div class="zone-tal">
+        <span><strong>${fmt(z.areal, 0)}</strong> m²</span>
+        <span><strong>${fmt(z.lux, 0)}</strong> lux${ude ? '' : ` af ${fmt(z.krav)}`}</span>
+        <span>${z.stk} armaturer</span>
+        <span class="krav">krav <input type="number" step="50" min="0" value="${z.krav}" data-h="krav"></span>
+      </div>`;
+    el.querySelector('[data-h="navn"]').onchange = e => {
+      const zone = state.zoner.find(x => x.id === z.id);
+      if (zone) { zone.navn = e.target.value; opdater(); }
+    };
+    el.querySelector('[data-h="krav"]').onchange = e => {
+      const zone = state.zoner.find(x => x.id === z.id);
+      if (zone) { zone.maalLux = Math.max(0, +e.target.value || 0); opdater(); }
+    };
+    el.querySelector('[data-h="slet"]').onclick = () => {
+      gem();
+      state.zoner = state.zoner.filter(x => x.id !== z.id);
+      state.armaturer = state.armaturer.filter(a => !(a.auto && a.zoneId === z.id));
+      state.skinner = state.skinner.filter(sk => !(sk.auto && sk.zoneId === z.id));
+      opdater();
+    };
+    el.onclick = e => {
+      if (e.target.dataset.h) return;
+      state.valgt = { slags: 'zone', id: z.id };
+      tegn();
+    };
+    boks.appendChild(el);
+  }
+}
+
+/* Kontrolfanen: punkterne fra kravTjek samt kravene til lyskilder. */
+function visKrav(b) {
+  const punkter = kravTjek(b);
+  $('#krav-kilde').textContent = `${KRAV.kilde}. Lux-tallene er overslag efter lumenmetoden med UF ${state.indst.uf} og LLMF ${state.indst.mf} – ikke en lysberegning.`;
+  $('#kravliste').innerHTML = punkter.map(p => `
+    <li class="${p.status}"><span class="prik ${p.status}"></span>
+      <span><b>${p.emne}</b>${p.tekst}</span></li>`).join('');
+
+  const rækker = [
+    ['Salgsareal', '700 lux på gulvet'],
+    ['Betjente områder', '1000 lux på gulvet'],
+    ['Vindfang og indgang', '1000 lux på gulvet'],
+    ['Farvetemperatur', `${KRAV.inde.cct}K inde · ${KRAV.ude.cct}K ude`],
+    ['Farvegengivelse', `Ra > ${KRAV.inde.ra} · fersk Ra ≥ ${KRAV.fersk.ra} og R9 ≥ ${KRAV.fersk.r9}`],
+    ['Farvekonsistens', `SDCM ≤ ${KRAV.inde.sdcm} inde · ≤ ${KRAV.ude.sdcm} ude`],
+    ['Blænding', `UGR < ${KRAV.inde.ugr}`],
+    ['Systemeffektivitet', `≥ ${KRAV.lmwGrund} lm/W grundbelysning · ≥ ${KRAV.lmwSpot} lm/W spots`],
+    ['Flimmer', 'PstLM ≤ 1,0 (EN 61000-3-3)'],
+    ['Levetid', KRAV.inde.levetid],
+    ['Net', `THD ≤ ${KRAV.inde.thd} % · PF ≥ ${String(KRAV.inde.pf).replace('.', ',')}`],
+    ['Spots', 'kun som accent: ' + KRAV.spotOmraader.join(', ')]
+  ];
+  $('#lyskildekrav').innerHTML = rækker.map(([a, v]) => `<li><span>${a}</span><span>${v}</span></li>`).join('');
+  $('#dokumentation').innerHTML = KRAV.dokumentation
+    .map(d => `<li><span>${d}</span><span>${/LUX/i.test(d) ? 'beregnes her' : 'fra datablad'}</span></li>`).join('');
 }
 
 function visLag() {
@@ -1033,35 +1239,40 @@ function opdater() {
   const b = beregn();
   visStykliste(b);
   visNøgletal(b);
+  visZoner(b);
+  visKrav(b);
   visLag();
   $('#status-valgt').textContent = state.valgt
-    ? { skinne: 'Skinnerække valgt', armatur: 'Armatur valgt', omraade: 'Salgsareal valgt' }[state.valgt.slags]
+    ? { skinne: 'Skinnerække valgt', armatur: 'Armatur valgt', zone: 'Zone valgt' }[state.valgt.slags]
     : '';
   tegn();
   return b;
 }
 
 /* ---------- automatisk belysningsplan ---------- */
-function nødvendigLumen(areal) {
+function nødvendigLumen(areal, maalLux) {
   const i = state.indst;
-  return areal > 0 ? (i.maalLux * areal) / (i.uf * i.mf) : 0;
+  return areal > 0 ? (maalLux * areal) / (i.uf * i.mf) : 0;
 }
 
 function generer() {
   if (!harMaalestok()) { toast('Sæt målestok først (værktøjet "Målestok")', 'fejl'); return; }
-  if (state.omraade.length < 3) { toast('Tegn salgsarealet først', 'fejl'); return; }
+  const zoner = state.zoner.filter(z => z.type !== 'ude' && z.pts.length > 2);
+  if (!zoner.length) { toast('Tegn mindst én zone – f.eks. salgsarealet – først', 'fejl'); return; }
   gem();
   state.skinner = state.skinner.filter(s => !s.auto);
   state.armaturer = state.armaturer.filter(a => !a.auto);
-  const antal = state.indst.mode === 'track' ? genererSkinner() : genererPaneler();
+  let antal = 0;
+  for (const zone of zoner) {
+    antal += state.indst.mode === 'track' ? genererSkinner(zone) : genererPaneler(zone);
+  }
   const b = opdater();
-  toast(`Belysningsplan beregnet: ${antal} armaturer, overslag ${fmt(b.lux, 0)} lux`);
+  toast(`Belysningsplan beregnet: ${antal} armaturer i ${zoner.length} zone${zoner.length > 1 ? 'r' : ''} – ${b.zonerOpfyldt} af ${b.zoner.length} opfylder lux-kravet`);
 }
 
-/* Roterer polygonen så rækkerne bliver vandrette, lægger rækker med c/c-afstand
-   og klipper dem mod arealets kanter. */
-function rækkerIAreal(cc, margin, retning) {
-  const poly = state.omraade;
+/* Roterer zonen så rækkerne bliver vandrette, lægger rækker med c/c-afstand
+   og klipper dem mod zonens kanter. */
+function rækkerIAreal(poly, cc, margin, retning) {
   const c = poly.reduce((a, p) => [a[0] + p[0] / poly.length, a[1] + p[1] / poly.length], [0, 0]);
   const v = retning === 'auto' ? Geom.longestEdgeAngle(poly)
     : (retning === 'vandret' ? 0 : Math.PI / 2);
@@ -1070,7 +1281,7 @@ function rækkerIAreal(cc, margin, retning) {
   const ccPx = mToPx(cc), mPx = mToPx(margin);
   const linjer = [];
   const højde = bb.y1 - bb.y0 - 2 * mPx;
-  if (højde <= 0) return { linjer, vinkel: v, center: c };
+  if (højde <= 0) return linjer;
   const antal = Math.max(1, Math.round(højde / ccPx) + 1);
   const trin = antal > 1 ? højde / (antal - 1) : 0;
   for (let k = 0; k < antal; k++) {
@@ -1081,45 +1292,73 @@ function rækkerIAreal(cc, margin, retning) {
       linjer.push([[a, y], [b, y]].map(p => Geom.rotate(p, c, v)));
     }
   }
-  return { linjer, vinkel: v, center: c };
+  return linjer;
 }
 
-function genererSkinner() {
+function genererSkinner(zone) {
   const i = state.indst;
-  const { linjer } = rækkerIAreal(i.ccSkinner, i.margin, i.retning || 'auto');
-  if (!linjer.length) { toast('Arealet er for lille til den valgte c/c-afstand', 'fejl'); return 0; }
-  for (const pts of linjer) {
-    state.skinner.push({ id: nyId(), pts, montage: i.wireMontage, auto: true });
-  }
-
-  const areal = Geom.polygonArea(state.omraade) / (state.pxPerMeter ** 2);
+  const areal = Geom.polygonArea(zone.pts) / (state.pxPerMeter ** 2);
   const primær = FIXTURES[i.primaer];
   const accent = i.accent ? FIXTURES[i.accent] : null;
-  const pr_sæt = primær.lm + (accent ? accent.lm * i.accentRatio : 0);
-  const behov = nødvendigLumen(areal);
-  let antalPrimær = Math.max(linjer.length, Math.ceil(behov / Math.max(1, pr_sæt)));
+  // kravet skal kunne dækkes af grundbelysningen alene; accentlys lægges oven i
+  const behov = nødvendigLumen(areal, zoneKrav(zone));
+  const ønsketIAlt = Math.ceil(behov / Math.max(1, primær.lm));
 
-  const længder = state.skinner.filter(s => s.auto).map(s => pxToM(Geom.polylineLength(s.pts)));
-  const total = længder.reduce((a, b) => a + b, 0);
-  // respektér mindsteafstand mellem armaturer på samme skinne
-  const maks = Math.floor(total / Math.max(0.3, i.minAfstand));
-  if (antalPrimær > maks) antalPrimær = maks;
+  let cc = i.ccSkinner, nye = [], længder = [], antalPrimær = 0, ønsket = 0;
+  for (let forsøg = 0; forsøg < 6; forsøg++) {
+    state.skinner = state.skinner.filter(s => !(s.auto && s.zoneId === zone.id));
+    const linjer = rækkerIAreal(zone.pts, cc, i.margin, i.retning || 'auto');
+    if (!linjer.length) {
+      toast(`${zoneNavn(zone)}: for lille til c/c ${fmt(cc, 1)} m og ${fmt(i.margin, 1)} m til væg`, 'fejl');
+      return 0;
+    }
+    nye = linjer.map(pts => {
+      const s = { id: nyId(), pts, montage: i.wireMontage, auto: true, zoneId: zone.id };
+      state.skinner.push(s);
+      return s;
+    });
+    længder = nye.map(s => pxToM(Geom.polylineLength(s.pts)));
+    const total = længder.reduce((a, b) => a + b, 0);
+    ønsket = Math.max(nye.length, ønsketIAlt);
+    // der kan ikke sidde flere armaturer på skinnen end mindsteafstanden tillader
+    antalPrimær = Math.min(ønsket, Math.floor(total / Math.max(0.3, i.minAfstand)));
+    if (antalPrimær >= ønsket || cc <= 1.2001) break;
+    // skinnerækkerne rykkes tættere, så lyskravet kan nås. Rækkeantallet er
+    // heltal, så der tvinges mindst én række mere pr. forsøg.
+    const efterBehov = cc * Math.sqrt(Math.max(0.4, antalPrimær / ønsket));
+    const énRækkeMere = (cc * nye.length) / (nye.length + 1);
+    cc = Math.max(1.2, Math.min(efterBehov, énRækkeMere));
+  }
+  if (antalPrimær < ønsket) {
+    toast(`${zoneNavn(zone)}: ${fmt(zoneKrav(zone))} lux kan ikke nås med ${kortNavn(i.primaer)} alene – vælg et kraftigere armatur eller mindre mindsteafstand`, 'fejl');
+  } else if (Math.abs(cc - i.ccSkinner) > 0.05) {
+    toast(`${zoneNavn(zone)}: skinnerækkerne er rykket til c/c ${fmt(cc, 1)} m for at nå ${fmt(zoneKrav(zone))} lux`);
+  }
 
-  const auto = state.skinner.filter(s => s.auto);
-  let placeret = 0, placeretAccent = 0;
   const antalAccent = accent ? Math.round(antalPrimær * i.accentRatio) : 0;
-  auto.forEach((s, idx) => {
-    const andel = total > 0 ? længder[idx] / total : 0;
-    const nP = idx === auto.length - 1 ? antalPrimær - placeret : Math.round(antalPrimær * andel);
-    const nA = idx === auto.length - 1 ? antalAccent - placeretAccent : Math.round(antalAccent * andel);
-    placeret += nP; placeretAccent += nA;
-    fordelPåSkinne(s, i.primaer, Math.max(0, nP), 0);
-    if (accent && nA > 0) fordelPåSkinne(s, i.accent, nA, 0.5);
+  const prRække = fordelAntal(antalPrimær, længder);
+  const accentPrRække = fordelAntal(antalAccent, længder);
+  nye.forEach((s, idx) => {
+    fordelPåSkinne(s, i.primaer, prRække[idx], 0, zone.id);
+    if (accent && accentPrRække[idx] > 0) fordelPåSkinne(s, i.accent, accentPrRække[idx], 0.5, zone.id);
   });
-  return state.armaturer.filter(a => a.auto).length;
+  return antalPrimær + antalAccent;
 }
 
-function fordelPåSkinne(s, type, antal, forskydning) {
+/* Fordeler et antal armaturer på rækkerne efter længde, uden at miste
+   stykker til afrunding (største rest får det overskydende). */
+function fordelAntal(total, vægte) {
+  const sum = vægte.reduce((a, b) => a + b, 0);
+  if (!(total > 0) || !(sum > 0)) return vægte.map(() => 0);
+  const eksakt = vægte.map(v => (total * v) / sum);
+  const antal = eksakt.map(Math.floor);
+  let rest = total - antal.reduce((a, b) => a + b, 0);
+  const orden = eksakt.map((v, i) => [v - antal[i], i]).sort((a, b) => b[0] - a[0]);
+  for (let k = 0; rest > 0 && orden.length; k++, rest--) antal[orden[k % orden.length][1]]++;
+  return antal;
+}
+
+function fordelPåSkinne(s, type, antal, forskydning, zoneId) {
   if (antal <= 0) return;
   const L = Geom.polylineLength(s.pts);
   const trin = L / antal;
@@ -1127,33 +1366,33 @@ function fordelPåSkinne(s, type, antal, forskydning) {
     const d = trin * (k + 0.5 + forskydning * 0.5);
     if (d > L) continue;
     const { punkt, vinkel } = Geom.pointAtLength(s.pts, d);
-    state.armaturer.push({ id: nyId(), type, x: punkt[0], y: punkt[1], vinkel, skinneId: s.id, auto: true });
+    state.armaturer.push({ id: nyId(), type, x: punkt[0], y: punkt[1], vinkel, skinneId: s.id, zoneId, auto: true });
   }
 }
 
-function genererPaneler() {
+function genererPaneler(zone) {
   const i = state.indst;
-  const areal = Geom.polygonArea(state.omraade) / (state.pxPerMeter ** 2);
+  const areal = Geom.polygonArea(zone.pts) / (state.pxPerMeter ** 2);
   const f = FIXTURES[i.primaer];
-  if (!i.autoTaethed) return læggUdNet(i.ccX, i.ccY);
+  if (!i.autoTaethed) return læggUdNet(zone, i.ccX, i.ccY);
 
-  // Mål-lux styrer tætheden. Randafstanden koster armaturer, så nettet
-  // strammes indtil det placerede antal rammer behovet.
-  const behov = Math.max(1, Math.ceil(nødvendigLumen(areal) / Math.max(1, f.lm)));
+  // Lux-kravet styrer tætheden. Randafstanden koster armaturer, så nettet
+  // strammes indtil det placerede antal dækker behovet.
+  const behov = Math.max(1, Math.ceil(nødvendigLumen(areal, zoneKrav(zone)) / Math.max(1, f.lm)));
   let cc = Math.max(0.6, Math.sqrt(areal / behov));
   let n = 0;
   for (let forsøg = 0; forsøg < 4; forsøg++) {
-    state.armaturer = state.armaturer.filter(a => !a.auto);
-    n = læggUdNet(cc, cc);
+    state.armaturer = state.armaturer.filter(a => !(a.auto && a.zoneId === zone.id));
+    n = læggUdNet(zone, cc, cc);
     if (n >= behov || n === 0) break;
     cc = Math.max(0.6, cc * Math.sqrt(Math.max(0.5, n / behov)));
   }
   return n;
 }
 
-function læggUdNet(ccX, ccY) {
+function læggUdNet(zone, ccX, ccY) {
   const i = state.indst;
-  const poly = state.omraade;
+  const poly = zone.pts;
   const f = FIXTURES[i.primaer];
   const c = poly.reduce((a, p) => [a[0] + p[0] / poly.length, a[1] + p[1] / poly.length], [0, 0]);
   const v = (i.retning === 'vandret') ? 0 : (i.retning === 'lodret' ? Math.PI / 2 : Geom.longestEdgeAngle(poly));
@@ -1169,11 +1408,11 @@ function læggUdNet(ccX, ccY) {
       if (!Geom.pointInPolygon(p, poly)) continue;
       const afstand = Geom.projectOnPolyline(p, kant);
       if (afstand && afstand.afstand < mToPx(Math.min(i.margin, f.laengde / 2))) continue;
-      state.armaturer.push({ id: nyId(), type: i.primaer, x: p[0], y: p[1], vinkel: v, skinneId: null, auto: true });
+      state.armaturer.push({ id: nyId(), type: i.primaer, x: p[0], y: p[1], vinkel: v, skinneId: null, zoneId: zone.id, auto: true });
       n++;
     }
   }
-  if (!n) toast('Ingen armaturer kunne placeres - prøv mindre c/c eller margin', 'fejl');
+  if (!n) toast(`${zoneNavn(zone)}: ingen armaturer kunne placeres – prøv mindre c/c eller margin`, 'fejl');
   return n;
 }
 
@@ -1199,12 +1438,20 @@ function eksporterCsv() {
     linjer.push([r.antal === '' ? '' : String(r.antal), String(r.navn).replace(/\n/g, ' - '), r.lyskilde || '', r.farve || '']);
   }
   linjer.push([]);
-  linjer.push(['Salgsareal', fmt(b.areal, 1) + ' m2']);
+  linjer.push(['Zone', 'Areal m2', 'Krav lux', 'Beregnet lux', 'Heraf grundbelysning', 'Armaturer', 'W/m2']);
+  for (const z of b.zoner) {
+    linjer.push([z.navn, fmt(z.areal, 1), fmt(z.krav), fmt(z.lux, 0), fmt(z.luxGrund, 0), String(z.stk), fmt(z.wattPrM2, 2)]);
+  }
+  linjer.push([]);
+  linjer.push(['Areal i alt', fmt(b.areal, 1) + ' m2']);
   linjer.push(['Skinne i alt', fmt(b.skinne.laengde, 1) + ' m']);
   linjer.push(['Installeret effekt', fmt(b.watt, 0) + ' W', fmt(b.wattPrM2, 2) + ' W/m2']);
   linjer.push(['Lysstrøm', fmt(b.lumen, 0) + ' lm', fmt(b.lumenPrM2, 0) + ' lm/m2']);
-  linjer.push(['Overslag belysningsstyrke', fmt(b.lux, 0) + ' lux', `UF ${state.indst.uf} / LLMF ${state.indst.mf}`]);
+  linjer.push(['Beregningsforudsætning', `UF ${state.indst.uf} / LLMF ${state.indst.mf}`, 'lumenmetoden, overslag']);
   linjer.push(['3-polede grupper', String(b.grupper)]);
+  linjer.push([]);
+  linjer.push(['Kontrol mod ' + KRAV.kilde]);
+  for (const p of kravTjek(b)) linjer.push([p.status.toUpperCase(), p.emne, p.tekst]);
   const csv = '﻿' + linjer.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
   download(projektNavn() + '-stykliste.csv', csv, 'text/csv;charset=utf-8');
 }
@@ -1218,7 +1465,7 @@ function sceneRamme() {
     tag(r.x0, r.y0); tag(r.x1, r.y1);
   }
   for (const s of state.skinner) for (const p of s.pts) tag(p[0], p[1]);
-  for (const p of state.omraade) tag(p[0], p[1]);
+  for (const z of state.zoner) for (const p of z.pts) tag(p[0], p[1]);
   for (const a of state.armaturer) tag(a.x, a.y);
   if (!isFinite(x0)) return null;
   const m = 40;
@@ -1263,13 +1510,19 @@ function udskriv() {
     <tr><td>${r.antal === '' ? '' : fmt(r.antal)}</td>
         <td>${String(r.navn).replace(/\n/g, ' – ')}</td>
         <td>${r.lyskilde || ''}</td><td>${r.farve || ''}</td></tr>`).join('');
+  const zoneRækker = b.zoner.map(z => `
+    <tr><td style="text-align:left">${z.navn}</td><td>${fmt(z.areal, 0)}</td><td>${fmt(z.krav)}</td>
+        <td>${fmt(z.lux, 0)}</td><td>${fmt(z.luxGrund, 0)}</td><td>${z.stk}</td><td>${fmt(z.wattPrM2, 1)}</td></tr>`).join('');
+  const kravRækker = kravTjek(b).map(p =>
+    `<tr><td style="text-align:left">${{ ok: 'OK', advarsel: 'OBS', fejl: 'AFVIGER', info: 'NOTE' }[p.status]}</td>
+         <td style="text-align:left">${p.emne}</td><td style="text-align:left">${p.tekst}</td></tr>`).join('');
   const w = window.open('', '_blank');
   if (!w) { toast('Tillad pop op-vinduer for at udskrive', 'fejl'); return; }
   w.document.write(`<!doctype html><html lang="da"><head><meta charset="utf-8">
     <title>${p.navn || 'Lysplan'} – lysplan</title>
     <style>
       body{font:12px/1.45 "Helvetica Neue",Arial,sans-serif;margin:16mm;color:#111}
-      h1{font-size:18px;margin:0 0 2px} .meta{color:#555;margin-bottom:12px}
+      h1{font-size:18px;margin:0 0 2px} h2{font-size:13px;margin:16px 0 4px} .meta{color:#555;margin-bottom:12px}
       img{width:100%;border:1px solid #ccc}
       table{border-collapse:collapse;width:100%;margin-top:12px;font-size:11px}
       th,td{border:1px solid #bbb;padding:4px 6px;text-align:left;vertical-align:top}
@@ -1280,9 +1533,15 @@ function udskriv() {
     <h1>${p.navn || 'Lysplan'}</h1>
     <div class="meta">${[p.adresse, p.by].filter(Boolean).join(', ')} · Lysplan · Mål ${p.maalestok} · ${p.dato}${p.tegner ? ' · ' + p.tegner : ''}</div>
     ${data ? `<img src="${data}" alt="Lysplan">` : ''}
+    <h2>Zoner og beregnet lysniveau</h2>
+    <table><thead><tr><th style="text-align:left">Zone</th><th>Areal m²</th><th>Krav lux</th><th>Beregnet lux</th><th>Heraf grundbelysning</th><th>Armaturer</th><th>W/m²</th></tr></thead><tbody>${zoneRækker}</tbody></table>
+    <h2>Stykliste</h2>
     <table><thead><tr><th>Antal</th><th>Beskrivelse</th><th>Lyskilde</th><th>Farve</th></tr></thead><tbody>${rækker}</tbody></table>
-    <div class="noter">Salgslokalet er på ${fmt(b.areal, 0)} kvm.
-Installeret effekt ${fmt(b.watt, 0)} W (${fmt(b.wattPrM2, 1)} W/m²) · lysstrøm ${fmt(b.lumenPrM2, 0)} lm/m² · overslag ${fmt(b.lux, 0)} lux (UF ${state.indst.uf}, LLMF ${state.indst.mf}).
+    <h2>Kontrol mod ${KRAV.kilde}</h2>
+    <table><thead><tr><th style="text-align:left">Status</th><th style="text-align:left">Emne</th><th style="text-align:left">Bemærkning</th></tr></thead><tbody>${kravRækker}</tbody></table>
+    <div class="noter">Areal i alt ${fmt(b.areal, 0)} kvm.
+Installeret effekt ${fmt(b.watt, 0)} W (${fmt(b.wattPrM2, 1)} W/m²) · lysstrøm ${fmt(b.lumenPrM2, 0)} lm/m².
+Lux-tallene er overslag efter lumenmetoden med UF ${state.indst.uf} og LLMF ${state.indst.mf} og erstatter ikke lysberegning og måling i butikken. Lux måles på gulv (${KRAV.maalehoejde}) med ±${Math.round(KRAV.tolerance * 100)} % tolerance.
 Der skal bruges ${b.grupper} stk. 3-pol grupper til belysningen.
 Fase 1 bruges til Bricks, maks. 12 stk. pr. fase. Fase 2 bruges til spot, bast lamper og wall washer maks. 30 stk. pr. fase. Fase 3 er til fast strøm (nødbelysning).
 Der udføres tilslutninger i alle S./start samt mulighed for tilslutning i alle H.S./hjørnesamlinger.</div>
@@ -1299,7 +1558,7 @@ function gemProjekt() {
     indst: state.indst,
     pxPerMeter: state.pxPerMeter,
     kalibrering: state.kalibrering,
-    omraade: state.omraade,
+    zoner: state.zoner,
     skinner: state.skinner,
     armaturer: state.armaturer,
     manuelt: state.manuelt,
@@ -1321,7 +1580,9 @@ async function hentProjekt(fil) {
   state.indst = Object.assign(state.indst, d.indst || {});
   state.pxPerMeter = d.pxPerMeter || null;
   state.kalibrering = d.kalibrering || null;
-  state.omraade = d.omraade || [];
+  state.zoner = d.zoner || (d.omraade && d.omraade.length > 2
+    ? [{ id: nyId(), type: 'salg', pts: d.omraade, navn: ZONETYPER.salg.navn, maalLux: ZONETYPER.salg.lux }]
+    : []);
   state.skinner = d.skinner || [];
   state.armaturer = d.armaturer || [];
   state.manuelt = d.manuelt || {};
@@ -1412,6 +1673,13 @@ function bindIndstillinger() {
       else if (el.type === 'number' || el.type === 'range') state.indst[n] = parseFloat(String(el.value).replace(',', '.')) || 0;
       else state.indst[n] = el.value;
       if (n === 'mode') visTilstand();
+      if (n === 'lofttype') {
+        const loft = LOFTTYPER[el.value];
+        if (loft) {
+          Object.assign(state.indst, { mode: loft.mode, primaer: loft.grund, accent: loft.accent });
+          visIndstillinger();
+        }
+      }
       opdater();
     });
   });
@@ -1438,9 +1706,9 @@ function bindKnapper() {
   $('#knap-print').onclick = udskriv;
   $('#knap-gem').onclick = gemProjekt;
   $('#knap-ryd').onclick = () => {
-    if (!confirm('Slet alle skinner, armaturer og salgsarealet? Tegningerne beholdes.')) return;
+    if (!confirm('Slet alle zoner, skinner og armaturer? Tegningerne beholdes.')) return;
     gem();
-    state.skinner = []; state.armaturer = []; state.omraade = []; state.valgt = null;
+    state.skinner = []; state.armaturer = []; state.zoner = []; state.valgt = null;
     opdater();
   };
   $('#knap-ryd-auto').onclick = () => {
