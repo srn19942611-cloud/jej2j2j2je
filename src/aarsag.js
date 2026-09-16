@@ -1039,6 +1039,34 @@ IKKE_DIAGNOSTICERBAR.hovedmaaler_intern = IKKE_DIAGNOSTICERBAR.forsyning;
  * dobbelt så høj prior — men så to svage beviser ikke kan. */
 const VÆGT = { staerk: 1.4, middel: 0.8, svag: 0.4 };
 
+/* ---- Når to instrumenter ser det samme ------------------------------------
+ *
+ * Døgnmodellen og kvartersdetektoren måler ikke det samme. Døgnmodellen ser
+ * et anlæg, der bruger mere end vejret kan forklare. Kvartersdetektoren ser
+ * et anlæg, der kører lige så mange timer lørdag som onsdag. Det er to
+ * forskellige spor efter én og samme ting: en tidsplan, ingen har sat.
+ *
+ * Rammer de den SAMME måler hver for sig, er det et stærkt bevis — stærkere
+ * end noget enkelt tal i signaturen, for de to metoder deler hverken model,
+ * periode eller fejlkilder. Det skete på rigtige data: 05020 564597
+ * Ventilation Slagter ligger 166 % over sin normal i døgnmodellen OG kører
+ * 2.715 kWh weekenddrift uden nedsættelse. Samme anlæg, to instrumenter.
+ *
+ * Bekræftelsen gør to ting. Den lægger vægt på den årsag, detektoren peger
+ * på — og den fjerner forbeholdet om manglende timedata, for dem har vi så. */
+export const KVARTERSBEKRAEFTELSE = {
+  weekenddrift:   { aarsager: ['ventilation_konstant_drift', 'setpunkt_aendret'],
+                    tekst: 'Kvartersdata viser samme driftstimer i weekenden som på hverdage i et område uden weekendaktivitet.' },
+  natforbrug:     { aarsager: ['dagslysstyring_defekt', 'setpunkt_aendret'],
+                    tekst: 'Kvartersdata viser, at anlægget ikke slukker om natten.' },
+  afrimning:      { aarsager: ['afrimning_haenger'],
+                    tekst: 'Kvartersdata viser afrimninger, der ikke afsluttes.' },
+  kortcykling:    { aarsager: ['kompressor_delvist', 'koelemiddel_laekage'],
+                    tekst: 'Kvartersdata viser kortcykling — kompressoren starter og stopper for tit.' },
+  samtidig_koel_varme: { aarsager: ['genvinding_bortkoeles', 'ventil_utaet'],
+                    tekst: 'Kvartersdata viser køl og varme over deres eget normalniveau på samme time.' },
+};
+
 /* Hvor stor en del af de fejl, der faktisk sker i en faggruppe, kataloget
  * dækker. Det er et skøn, og det skal være et skøn: det første forsøg brugte
  * antallet af årsager på listen, og det gav den modsatte rangorden af den
@@ -1164,6 +1192,19 @@ export function diagnosticer(signatur, { faggruppe, maalerrolle = null, kobling,
         } else {
           score -= VÆGT.middel;
           beviser.push({ for: false, vaegt: 'middel', tekst: `${vejrresponsOrd(signatur)} Det passer ikke på denne årsag.` });
+        }
+      }
+
+      /* Bekræftelse fra kvartersdata. Vejer stærkt, netop fordi den kommer
+       * fra en anden måling end alt det andet i signaturen. */
+      const bek = signatur.bekraeftelse ? KVARTERSBEKRAEFTELSE[signatur.bekraeftelse] : null;
+      if (bek) {
+        if (bek.aarsager.includes(a.id)) {
+          score += VÆGT.staerk;
+          beviser.push({ for: true, vaegt: 'stærk', tekst: `${bek.tekst} Det er set på den samme måler med et andet instrument end døgnmodellen.` });
+        } else if (a.id !== 'ukendt') {
+          score -= VÆGT.middel;
+          beviser.push({ for: false, vaegt: 'middel', tekst: `${bek.tekst} Denne årsag ville ikke give det mønster.` });
         }
       }
 

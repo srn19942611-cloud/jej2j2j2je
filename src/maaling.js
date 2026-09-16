@@ -164,9 +164,13 @@ export function signaturFraMaaling(m) {
     // Målt et andet sted — det skal følge med, så det kan ses i forbeholdene.
     modelleret: false,
     maaltEksternt: true,
+    /* Har en kvartersdetektor set det samme på den samme måler, er
+     * timedata ikke længere noget, vi mangler — vi har dem, de er bare
+     * målt med et andet instrument. Se `bekraeftelse` nedenfor. */
+    bekraeftelse: m.bekraeftelse || null,
     mangler: [
       m.vejrforhold == null ? 'vejrafhængighed er ikke målt' : null,
-      'timedata — døgnprofil og natandel kan ikke ses',
+      m.bekraeftelse ? null : 'timedata — døgnprofil og natandel kan ikke ses',
       Number.isFinite(m.r2) && m.r2 < 0.25 && !(Number.isFinite(m.restniveau) && (m.restniveau <= 0.05 || m.restniveau >= 3))
         ? `normallastmodellen forklarer kun ${Math.round(m.r2 * 100)} % af variationen` : null,
     ].filter(Boolean),
