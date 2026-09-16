@@ -381,3 +381,97 @@ export function laesOpgavetabel(tekst) {
   }
   return { raekker, fejl };
 }
+
+
+/* ---- Tilbagefald: en rettelse, der ikke holdt -------------------------------
+ *
+ * Dalux-opslaget gav ét fund, der er vigtigere end alle de andre.
+ *
+ * 02020 Aarhus C, 25. marts 2019, opgave 30386, 30387 og 30388:
+ * "Anlæg skal køre efter ur funktionen — har et konstant forbrug. Butikken er
+ * ikke klar over hvordan anlægget bliver styret." Tre energispareforslag, på
+ * VE.05 Kiosk køkken, VE.03 Bager og teknik-tavlen for butiksventilationen.
+ *
+ * Alle tre blev lukket som UDFØRT.
+ *
+ * Syv år senere flager kvartersdetektoren to af de samme tre målere for
+ * nøjagtig det samme mønster. Rettelsen blev lavet, og den er væk igen.
+ *
+ * Det ændrer sagen fuldstændigt. Uden den historik hedder diagnosen "der er
+ * aldrig sat et ugeprogram", og handlingen er at sætte et. Men det ER sat, og
+ * det holdt ikke. Så det, der skal findes, er hvad der nulstiller det: en
+ * CTS-opdatering, et strømsvigt, der genskaber fabriksindstillingen, en
+ * tekniker der har sat anlægget i håndstilling under service og glemt at
+ * sætte det tilbage. At sætte programmet igen uden at finde dét, er at
+ * bestille den samme opgave en tredje gang.
+ *
+ * Det er også grunden til, at en tilbagemelding på en lukket opgave ikke er
+ * nok. "Udført" betyder, at nogen gjorde noget — ikke at det virker endnu.
+ */
+
+/** Tekster, der betyder "nogen har rettet en indstilling", ikke "nogen har skiftet en del". */
+const INDSTILLINGSORD = [
+  /* Det, styringen hedder. */
+  'ur funktion', 'urfunktion', 'ugeprogram', 'tidsprogram', 'tidsstyring', 'urstyring',
+  'driftstid', 'natsænk', 'natsaenk', 'weekendprogram', 'køretid', 'koeretid',
+  'skal køre efter', 'programmering', 'omprogrammer', 'cts', 'setpunkt', 'indregulering',
+  /* Og det, symptomet hedder, når nogen melder det ind. De to lister er ikke
+   * den samme: forslaget fra 2020 i Thisted brugte ikke ét af ordene ovenfor
+   * — der stod "står til at køre i døgndrift" og "slukkes ned i lukketiden".
+   * Uden disse ord fandt søgningen kun de meldinger, der allerede talte vores
+   * sprog, og det er netop dem, der er lettest at finde i forvejen. */
+  'døgndrift', 'doegndrift', 'konstant drift', 'konstant forbrug', 'lukketiden',
+  'slukkes ned', 'kører hele tiden', 'kører døgnet rundt', 'slukker ikke',
+  'kører i weekenden', 'kører om natten', 'står og kører',
+];
+
+const LUKKET = ['completed', 'lukket', 'udført', 'udfoert', 'closed', 'done', 'afsluttet'];
+const AFVIST = ['rejected', 'afvist', 'afslået', 'afslaaet', 'cancelled', 'annulleret'];
+
+/**
+ * Er det her set og rettet før — og er det kommet tilbage?
+ *
+ * `opgaver` skal være HELE historikken på enheden, ikke kun vinduet omkring
+ * bruddet. Pointen er netop de gamle.
+ *
+ * Svarer med `{ tilbagefald, afvistTidligere, ... }`. De to er forskellige
+ * fund og skal ikke blandes sammen: en rettelse, der ikke holdt, er et
+ * teknisk problem. Et forslag, der blev afvist, er en beslutning — og den
+ * skal genbesøges med tal, ikke omgås.
+ */
+export function tilbagefald(opgaver, { foer, minAlderDage = 180, nu = new Date() } = {}) {
+  const graense = new Date(foer || nu);
+  const relevante = (opgaver || [])
+    .filter((o) => o.dato && INDSTILLINGSORD.some((w) => String(o.tekst || '').toLowerCase().includes(w)))
+    .map((o) => ({ ...o, alderDage: Math.round((graense - new Date(o.dato)) / 86400000) }))
+    .filter((o) => o.alderDage >= minAlderDage)
+    .sort((a, b) => b.alderDage - a.alderDage);
+
+  const st = (o) => String(o.status || '').toLowerCase();
+  const udfoert = relevante.filter((o) => LUKKET.some((x) => st(o).includes(x)));
+  const afvist = relevante.filter((o) => AFVIST.some((x) => st(o).includes(x)));
+
+  if (udfoert.length) {
+    const o = udfoert[0];
+    const aar = (o.alderDage / 365).toFixed(1).replace('.', ',');
+    return {
+      tilbagefald: true, afvistTidligere: false, opgave: o, alderDage: o.alderDage, antal: udfoert.length,
+      tekst: `Det samme blev meldt og RETTET for ${aar} år siden: "${kort(o.tekst)}" (${o.dato}, lukket som udført). `
+        + 'Mønstret er tilbage. Så indstillingen er sat før, og den holdt ikke — det, der skal findes, er hvad '
+        + 'der nulstiller den. Sættes den bare igen, bestilles den samme opgave en tredje gang.',
+    };
+  }
+
+  if (afvist.length) {
+    const o = afvist[0];
+    const aar = (o.alderDage / 365).toFixed(1).replace('.', ',');
+    return {
+      tilbagefald: false, afvistTidligere: true, opgave: o, alderDage: o.alderDage, antal: afvist.length,
+      tekst: `Det samme blev foreslået for ${aar} år siden og AFVIST: "${kort(o.tekst)}" (${o.dato}). `
+        + 'Nu er der en måling på det. Beslutningen skal tages om på tallene — ikke omgås med en ny opgave, '
+        + 'der ligner den, nogen sagde nej til.',
+    };
+  }
+
+  return { tilbagefald: false, afvistTidligere: false, opgave: null, tekst: null };
+}

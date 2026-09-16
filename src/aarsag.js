@@ -956,6 +956,28 @@ export const AARSAGER = [
   },
 
   {
+    id: 'indstilling_falder_tilbage', navn: 'Indstillingen er sat før og holder ikke',
+    faggrupper: ['ventilation', 'cts', 'koeleflader', 'koel_frys', 'varme_el', 'lys_inde'],
+    prior: 0.05, klasse: 'besparelse', hastende: false,
+    signatur: {},
+    forklaring: 'Det samme mønster er meldt og rettet på dette anlæg før, og det er tilbage. Så indstillingen '
+      + 'ER sat, og den holdt ikke. Det, der skal findes, er derfor ikke hvilken indstilling der mangler — '
+      + 'det er hvad der nulstiller den. Sættes den bare igen, bestilles den samme opgave en tredje gang.',
+    tjek: [
+      'Læs den gamle opgave først. Hvad blev der præcist gjort, og af hvem?',
+      'Står anlægget i håndstilling på panelet? Det er den hyppigste: sat i hånd under service, aldrig sat tilbage.',
+      'Er CTS\'en opdateret eller udskiftet siden? En opdatering kan skrive tidsprogrammet tilbage til fabrik.',
+      'Har der været strømsvigt? Nogle automatikker genskaber fabriksindstilling og ikke sidste indstilling.',
+      'Sammenhold med sommer-/vintertidsskiftet — et ur, der ikke følger med, flytter hele programmet en time.',
+      'Skriv i opgaven, hvordan indstillingen sikres mod at falde tilbage. Ellers er vi her igen om to år.',
+    ],
+    typiskFund: 'Oftest håndstilling efter service, eller en automatik der er nulstillet uden at nogen så det.',
+    grundlag: 'Fundet i data: en opgave fra 2019 om netop dette blev lukket som udført, og mønstret er tilbage på '
+      + 'de samme målere. Uden den historik ville diagnosen have været "der er aldrig sat et program", og '
+      + 'handlingen ville have været at sætte et — altså den samme rettelse, der allerede er bevist ikke at holde.',
+  },
+
+  {
     id: 'ukendt', navn: 'Årsagen kan ikke afgøres på de data, vi har',
     faggrupper: null, prior: 0.12, klasse: 'potentiale', hastende: false,
     signatur: {},
@@ -1055,9 +1077,15 @@ const VÆGT = { staerk: 1.4, middel: 0.8, svag: 0.4 };
  * Bekræftelsen gør to ting. Den lægger vægt på den årsag, detektoren peger
  * på — og den fjerner forbeholdet om manglende timedata, for dem har vi så. */
 export const KVARTERSBEKRAEFTELSE = {
-  weekenddrift:   { aarsager: ['ventilation_konstant_drift', 'setpunkt_aendret'],
+  /* `indstilling_falder_tilbage` står med i begge de to første, og det er
+   * ikke en detalje. Weekenddrift og natforbrug er OBSERVATIONER — de siger,
+   * at anlægget kører uden for tiden, ikke hvorfor. En indstilling, der er
+   * faldet tilbage, giver nøjagtig det samme billede som en, der aldrig blev
+   * sat. Uden den linje trak bekræftelsen FRA på tilbagefaldet, og så kunne
+   * historikken aldrig vinde over den forklaring, den modbeviser. */
+  weekenddrift:   { aarsager: ['ventilation_konstant_drift', 'setpunkt_aendret', 'indstilling_falder_tilbage'],
                     tekst: 'Kvartersdata viser samme driftstimer i weekenden som på hverdage i et område uden weekendaktivitet.' },
-  natforbrug:     { aarsager: ['dagslysstyring_defekt', 'setpunkt_aendret'],
+  natforbrug:     { aarsager: ['dagslysstyring_defekt', 'setpunkt_aendret', 'indstilling_falder_tilbage'],
                     tekst: 'Kvartersdata viser, at anlægget ikke slukker om natten.' },
   afrimning:      { aarsager: ['afrimning_haenger'],
                     tekst: 'Kvartersdata viser afrimninger, der ikke afsluttes.' },
@@ -1112,7 +1140,7 @@ const sigmoid = (x) => 1 / (1 + Math.exp(-x));
  * Returnerer altid mindst én kandidat — og hellere "kan ikke afgøres" end en
  * diagnose, tallene ikke bærer.
  */
-export function diagnosticer(signatur, { faggruppe, maalerrolle = null, kobling, gentagneOpgaver = 0, priors = null } = {}) {
+export function diagnosticer(signatur, { faggruppe, maalerrolle = null, kobling, historik = null, gentagneOpgaver = 0, priors = null } = {}) {
   if (!signatur || !signatur.brugbar) {
     return { brugbar: false, grund: signatur?.grund || 'Ingen signatur at gå ud fra.' };
   }
@@ -1193,6 +1221,23 @@ export function diagnosticer(signatur, { faggruppe, maalerrolle = null, kobling,
           score -= VÆGT.middel;
           beviser.push({ for: false, vaegt: 'middel', tekst: `${vejrresponsOrd(signatur)} Det passer ikke på denne årsag.` });
         }
+      }
+
+      /* Historikken på anlægget. Den vejer stærkt, for den siger noget, ingen
+       * måling kan: om det her er set før, og hvad der skete med det. */
+      if (historik?.tilbagefald) {
+        if (a.id === 'indstilling_falder_tilbage') {
+          score += VÆGT.staerk * 1.5;
+          beviser.push({ for: true, vaegt: 'stærk', tekst: historik.tekst });
+        } else if (a.id === 'setpunkt_aendret' || a.id === 'ventilation_konstant_drift') {
+          /* De to er stadig en rigtig beskrivelse af tilstanden — men de
+           * fører til den rettelse, der allerede er prøvet. */
+          score -= VÆGT.middel;
+          beviser.push({ for: false, vaegt: 'middel', tekst: 'Den rettelse er lavet før på dette anlæg og holdt ikke.' });
+        }
+      } else if (historik?.afvistTidligere && a.id === 'ukendt') {
+        score -= VÆGT.svag;
+        beviser.push({ for: false, vaegt: 'svag', tekst: 'Nogen har set det her før og beskrevet det — det er ikke uforklarligt.' });
       }
 
       /* Bekræftelse fra kvartersdata. Vejer stærkt, netop fordi den kommer
@@ -1334,6 +1379,7 @@ export function diagnosticer(signatur, { faggruppe, maalerrolle = null, kobling,
       ...signatur.mangler.map((m) => `Mangler ${m}.`),
       signatur.modelleret ? 'Døgnserien er modelleret, ikke aflæst — tallene viser, at metoden virker, ikke hvad anlægget faktisk brugte.' : null,
       !entydig ? `${bedste.navn} og ${naest.navn} passer næsten lige godt. Servicebesøget skal skille dem ad, før der bestilles arbejde.` : null,
+      historik?.afvistTidligere ? historik.tekst : null,
     ].filter(Boolean),
   };
 }

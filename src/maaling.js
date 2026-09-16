@@ -16,7 +16,7 @@
  */
 
 import { diagnosticer } from './aarsag.js';
-import { samtidighed, FG_FAGOMRAADER } from './korrelation.js';
+import { samtidighed, tilbagefald, FG_FAGOMRAADER } from './korrelation.js';
 import { median } from './statistik.js';
 
 /* ---- Efterprøvning -------------------------------------------------------- */
@@ -184,7 +184,7 @@ export function signaturFraMaaling(m) {
  * `opgaver` er valgfri. Uden Dalux-opgaver på anlægget bliver koblingen
  * "uledsaget", og det er et ærligt svar — ikke en mangel, der skal skjules.
  */
-export function diagnosticerMaaling(m, { faggruppe, maalerrolle = null, opgaver = [], priors = null, gentagneOpgaver = 0 } = {}) {
+export function diagnosticerMaaling(m, { faggruppe, maalerrolle = null, opgaver = [], historik = [], priors = null, gentagneOpgaver = 0 } = {}) {
   const signatur = signaturFraMaaling(m);
   if (!signatur.brugbar) return { brugbar: false, grund: signatur.grund, fejl: signatur.fejl };
 
@@ -192,8 +192,12 @@ export function diagnosticerMaaling(m, { faggruppe, maalerrolle = null, opgaver 
     ? samtidighed({ dato: signatur.segmentStart }, opgaver, { faggruppe, relevante: FG_FAGOMRAADER[faggruppe] })
     : null;
 
-  const diagnose = diagnosticer(signatur, { faggruppe, maalerrolle, kobling, priors, gentagneOpgaver });
-  return { brugbar: true, signatur, kobling, diagnose };
+  /* Historikken er ikke de samme opgaver som koblingen bruger. Koblingen ser
+   * på vinduet omkring bruddet; historikken ser bevidst LANGT tilbage — det
+   * er de gamle, der kan fortælle, om det her er prøvet rettet før. */
+  const hist = tilbagefald(historik.length ? historik : opgaver, { foer: signatur.segmentStart });
+  const diagnose = diagnosticer(signatur, { faggruppe, maalerrolle, kobling, historik: hist, priors, gentagneOpgaver });
+  return { brugbar: true, signatur, kobling, historik: hist, diagnose };
 }
 
 /**
