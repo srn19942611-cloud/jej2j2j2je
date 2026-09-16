@@ -1228,11 +1228,28 @@ export function diagnosticer(signatur, { faggruppe, maalerrolle = null, kobling,
           score -= VÆGT.staerk;
           beviser.push({ for: false, vaegt: 'stærk', tekst: 'Der er ingen opgave i Dalux på anlægget i perioden. En ombygning ville have efterladt mindst én.' });
         } else if (kobling.klasse === 'bekraeftet' || kobling.klasse === 'varsel') {
+          /* En fejlmelding fra butikken siger, at NOGET er galt. Den siger
+           * ikke HVAD, og derfor må den ikke lægges som en bonus på hver
+           * eneste årsag.
+           *
+           * Første udgave gjorde netop det, og resultatet var bagvendt: da
+           * butikken bekræftede fejlen på Ventilation Slagter, faldt
+           * konfidensen fra 48 % til 41 %. Bonussen løftede både den bedste
+           * og den næstbedste årsag, afstanden imellem dem blev mindre, og
+           * konfidensen måler netop den afstand. En bekræftelse gjorde os
+           * altså mere i tvivl.
+           *
+           * Et bevis, der rammer alle kandidater lige hårdt, indeholder
+           * ingen oplysning om, hvilken af dem der er den rigtige. Det hører
+           * derfor ikke til i afvejningen mellem årsagerne, men i loftet over
+           * konfidensen — se `bekraeftetAfButik` nedenfor.
+           *
+           * Tilbage her står kun dét, der FAKTISK skiller årsagerne ad: en
+           * fejlmelding taler imod en idriftsættelse. */
           if (a.id === 'ombygning') {
             score -= VÆGT.middel;
             beviser.push({ for: false, vaegt: 'middel', tekst: 'Opgaven i Dalux er en fejlmelding, ikke en idriftsættelse.' });
           } else if (a.id !== 'maaler_doed') {
-            score += VÆGT.middel;
             beviser.push({ for: true, vaegt: 'middel', tekst: kobling.tekst });
           }
         }
@@ -1290,6 +1307,12 @@ export function diagnosticer(signatur, { faggruppe, maalerrolle = null, kobling,
    * undtagelse faldt "måleren leverer ikke længere data" på en måler med
    * restniveau 0,00 til 31 %, og det er forkert den anden vej. */
   if (!bedste.direkte) loft *= (KATALOGDAEKNING[faggruppe] ?? DAEKNING_UKENDT);
+
+  /* Har butikken meldt fejlen ind, eller kom meldingen efter, at måleren så
+   * den, ved vi med langt større sikkerhed, at afvigelsen er virkelig og
+   * ikke en modelfejl. Det løfter loftet — ikke den enkelte årsag. */
+  const bekraeftetAfButik = kobling && (kobling.klasse === 'bekraeftet' || kobling.klasse === 'varsel');
+  if (bekraeftetAfButik && !bedste.direkte) loft = Math.min(1, loft * 1.35);
 
   /* Udslagets størrelse skal også tælle med.
    *

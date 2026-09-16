@@ -86,6 +86,11 @@ const FEJLORD = [
   'står', 'stoppet', 'virker ikke', 'kører ikke', 'alarm', 'fejl', 'nedbrud', 'defekt',
   'for varm', 'for høj temperatur', 'kan ikke holde', 'lækage', 'utæt', 'rim', 'dug',
   'støjer', 'larmer', 'haster', 'løber', 'drypper', 'kondens', 'går i stå', 'udkoblet',
+  /* Tilføjet efter kvarterskørslen: det er præcis de ord, et fund om drift
+   * uden for tiden bliver meldt ind med, og uden dem læses de som "ukendt". */
+  'kører konstant', 'kører hele tiden', 'kører i weekenden', 'kører om natten',
+  'slukker ikke', 'går ikke i stå', 'mangler ugeprogram', 'ingen ugeprogram',
+  'står og kører', 'kører døgnet rundt', 'for koldt', 'trækker', 'træk i',
 ];
 
 /** 'arbejde' | 'fejlmelding' | 'ukendt' — læst ud af opgavens tekst. */
@@ -147,12 +152,28 @@ export function samtidighed(haendelse, opgaver, { faggruppe, vinduer = VINDUER, 
   /* En fejlmelding samme dag eller få dage efter: butikken og måleren så det
    * samme. Vinduet er med vilje skævt — en fejlmelding kommer efter fejlen,
    * ikke før den. */
-  const samme = kandidater.filter((o) => o.dage >= -1 && o.dage <= vinduer.samtidig)
+  /* Hvor langt før hændelsen en opgave må ligge og stadig regnes som en
+   * bekræftelse, afhænger af, om teksten siger hvad den er.
+   *
+   * Siger den tydeligt fejl — "aggregatet står", "kan ikke holde temperatur"
+   * — så er de to-tre døgn ikke et problem, men det normale: butikken mærker
+   * symptomet, før forbrugssignaturen har flyttet sig nok til at blive fundet,
+   * og vores egen bruddato har selv et par døgns usikkerhed. Teksten afgør
+   * dét, datoen ikke kan.
+   *
+   * Siger teksten ingenting, står tvetydigheden ved magt, og så er vinduet
+   * kun ét døgn — resten falder igennem til den ærlige "kan ikke afgøres"
+   * nedenfor. */
+  const samme = kandidater
+    .filter((o) => o.dage <= vinduer.samtidig
+      && o.dage >= (o.karakter === 'fejlmelding' ? -vinduer.samtidig : -1))
     .sort((a, b) => Math.abs(a.dage) - Math.abs(b.dage))[0];
   if (samme) {
     return {
       klasse: 'bekraeftet', ...SAMTIDIGHED.bekraeftet, opgave: samme, dage: samme.dage, faggruppe,
-      tekst: `Butikken meldte fejlen ind ${samme.dage === 0 ? 'samme dag' : beskrivDage(samme.dage)}: "${kort(samme.tekst)}".`,
+      tekst: `Butikken meldte fejlen ind ${samme.dage === 0 ? 'samme dag' : beskrivDage(samme.dage)}: "${kort(samme.tekst)}".`
+        + (samme.dage < -1 ? ' Den ligger lidt før vores bruddato, og det er det forventede: butikken mærker'
+          + ' symptomet, før forbruget har flyttet sig nok til at blive fundet.' : ''),
     };
   }
 
@@ -231,4 +252,132 @@ export function varslingsstatistik(koblinger) {
     mindstDage: v.length ? v[0] : null,
     mestDage: v.length ? v[v.length - 1] : null,
   };
+}
+
+/* ---- Opgaver udefra ---------------------------------------------------------
+ *
+ * Dalux kan ikke nås herindefra — egress-proxyen afviser værten på
+ * gateway-niveau, og det er en politik, ikke en indstilling. Opgaverne må
+ * derfor hentes dér, hvor der er adgang, og læses ind her.
+ *
+ * Det gør fordelingen til det svære led. En opgave peger på et ANLÆG ("VE.02
+ * Slagter", "Ventilation bageri"), og analysen kører på en MÅLER. Imellem dem
+ * står koblingen, og den er kun sikker, hvor anlægskoden går igen.
+ *
+ * Reglen herunder er derfor mistroisk med vilje: en opgave hænges kun på en
+ * enhed, når koblingen kan begrundes. Kan den ikke, bliver opgaven liggende
+ * på butikken som ufordelt. Det er et dårligere svar og et ærligt et — for en
+ * opgave, der hænges på den forkerte måler, gør ikke diagnosen tom, den gør
+ * den forkert. En "uledsaget" måler, der i virkeligheden har en opgave, er et
+ * hul vi kan se; en forkert kobling ligner et fund.
+ */
+
+/* Anlægskoden læses med den samme regel som koblingen anlæg↔måler bruger.
+ * kobling.js henter kun fra anlaeg.js, så der er ingen ring her. */
+import { udtraekKoder } from './kobling.js';
+
+/** Ord, der findes i næsten alle målernavne og derfor ikke kan skille noget ad. */
+const GENERISKE_ORD = new Set([
+  'ventilation', 'vent', 'anlæg', 'anlaeg', 'tavle', 'butik', 'lys', 'el', 'måler', 'maaler',
+  'klima', 'køl', 'koel', 'varme', 'total', 'hoved', 'udv', 'udvendig', 'indedel', 'kompressor',
+]);
+
+const ord = (s) => String(s || '').toLowerCase().split(/[^a-zæøå0-9.]+/)
+  .filter((o) => o.length > 2 && !GENERISKE_ORD.has(o));
+
+/**
+ * Fordeler opgaver ud på analyseenheder.
+ *
+ * `enheder` er dem, koblButik leverer: hver med `anlaeg: [{id, navn}]`,
+ * `meterNavn` og `butiksnummer`. `opgaver` skal have `butiksnummer`, `dato`
+ * og `anlaeg` (fritekst fra Dalux).
+ *
+ * Returnerer `{ prEnhed, ufordelt, begrundelser }`. `prEnhed` kan sendes
+ * direkte til diagnosticerTabel som `opgaverPrEnhed`.
+ */
+export function fordelOpgaver(enheder, opgaver, { kunSammeButik = true } = {}) {
+  const prEnhed = {};
+  const ufordelt = [];
+  const begrundelser = [];
+
+  for (const o of opgaver || []) {
+    const mulige = (enheder || []).filter((e) =>
+      !kunSammeButik || String(e.butiksnummer) === String(o.butiksnummer));
+
+    /* En blandet tavle eller en samlemåler kan aldrig bære en opgave. Den
+     * dækker både butik og produktion, så et navnesammenfald er netop dét —
+     * et sammenfald. Fælden er reel: 02020 548524 "Teknik Tavle (Butik V)"
+     * ville ellers optage enhver ventilationsopgave i butikken. */
+    const kandidater = mulige.filter((e) =>
+      !/teknik.?tavle|tavle uden|blandet|alt i butikken|el total|hovedmåler|forsynings/i.test(e.meterNavn || ''));
+
+    /* 1 · Anlægs-id. Det eneste, der er sikkert. */
+    let traf = kandidater.filter((e) => (e.anlaeg || []).some((a) => o.anlaegId && String(a.id) === String(o.anlaegId)));
+    let hvordan = 'anlægs-id';
+
+    /* 2 · Anlægskoden. "VE.02 Slagter" og "VE02.1" er den samme kode. */
+    if (!traf.length && o.anlaeg) {
+      const koder = udtraekKoder(o.anlaeg);
+      if (koder.size) {
+        traf = kandidater.filter((e) => (e.anlaeg || []).some((a) => [...udtraekKoder(a.navn)].some((k) => koder.has(k)))
+          || [...udtraekKoder(e.meterNavn || '')].some((k) => koder.has(k)));
+        hvordan = 'anlægskode';
+      }
+    }
+
+    /* 3 · Særegne ord i navnet — slagter, bageri, parkering. Generiske ord
+     * tæller ikke, for "ventilation" findes i hver anden måler. */
+    if (!traf.length && o.anlaeg) {
+      const oo = new Set(ord(o.anlaeg));
+      if (oo.size) {
+        traf = kandidater.filter((e) => {
+          const eo = [...ord(e.meterNavn), ...(e.anlaeg || []).flatMap((a) => ord(a.navn))];
+          return eo.some((x) => oo.has(x));
+        });
+        hvordan = 'særegent ord i navnet';
+      }
+    }
+
+    if (traf.length === 1) {
+      const id = traf[0].id;
+      (prEnhed[id] = prEnhed[id] || []).push(o);
+      begrundelser.push({ opgave: o, enhedId: id, hvordan });
+    } else {
+      /* Nul træf er lige så meget et svar som for mange. Begge ender samme
+       * sted, men grunden skal med, for den siger hvad der skal rettes:
+       * ingen kobling betyder manglende anlægsdata, flere betyder en måler,
+       * der dækker mere end ét anlæg. */
+      ufordelt.push({
+        ...o,
+        grund: traf.length === 0
+          ? 'ingen enhed i butikken kunne kobles til anlægget'
+          : `${traf.length} enheder passer lige godt (${traf.map((e) => e.meterNavn).join(', ')}) — koblingen ville være et gæt`,
+      });
+    }
+  }
+
+  return { prEnhed, ufordelt, begrundelser };
+}
+
+/**
+ * Læser en opgavetabel med rør som skilletegn.
+ * Forventede kolonner: butik, anlæg, dato, fagområde, titel, status.
+ */
+export function laesOpgavetabel(tekst) {
+  const linjer = String(tekst || '').split('\n').map((l) => l.trim()).filter((l) => l.includes('|'));
+  const raekker = [];
+  const fejl = [];
+  for (const l of linjer) {
+    const d = l.replace(/^\|/, '').replace(/\|$/, '').split('|').map((x) => x.trim());
+    if (d.length < 4) { fejl.push(`for få felter: ${l}`); continue; }
+    if (/^[-: ]+$/.test(d.join(''))) continue;                       // skillelinje
+    if (/butik/i.test(d[0]) && /anl(æ|ae)g/i.test(d[1])) continue;   // overskrift
+    const [butiksnummer, anlaeg, dato, fagomraade, titel, status] = d;
+    if (!/^\d{4}-\d{2}-\d{2}/.test(dato)) { fejl.push(`ikke en dato: "${dato}" i ${l}`); continue; }
+    raekker.push({
+      butiksnummer, anlaeg, dato: dato.slice(0, 10), fagomraade: fagomraade || null,
+      tekst: titel || '', titel: titel || '', status: status || null,
+    });
+  }
+  return { raekker, fejl };
 }
