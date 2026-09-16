@@ -533,7 +533,59 @@ export function samtidigKoelOgVarme(koel, varme, { minTimer = 20 } = {}) {
  * resten af anlæggets levetid. Ingen døgnsum kan vise det; det kræver, at man
  * lægger lørdagens profil oven på tirsdagens.
  */
-export function weekendnedsaettelse(punkter, { minForskelPct = 12 } = {}) {
+/* ---- Har området overhovedet weekendaktivitet? ----------------------------
+ *
+ * Det her er den vigtigste linje i hele weekenddetektoren, og den manglede.
+ *
+ * En dansk dagligvarebutik har åbent i weekenden. Kører butiksventilationen
+ * lige så mange timer lørdag som onsdag, er det ikke et fund — det er
+ * anlægget, der gør sit arbejde. Uden den skelnen melder detektoren hver
+ * eneste butiksmåler i porteføljen, og så er den værdiløs.
+ *
+ * Det, der ER et fund, er de områder uden weekendaktivitet: bageriets og
+ * slagterens PRODUKTION, kontoret, kantinen, mødelokaler. Der er ingen på
+ * kontoret lørdag, og kantinen serverer ikke. Kører ventilationen der
+ * alligevel 13 timer i døgnet, er det en tidsplan, ingen har sat.
+ *
+ * Kørslen på kvartersdata ramte lige ned i det: ni målere blev flaget, og
+ * otte af dem var netop bageri, slagter, køkken, kontor og kantine. Den
+ * niende var en blandet teknik-tavle, som slet ikke kan bruges — se nedenfor.
+ */
+export const WEEKENDFORVENTNING = [
+  /* Blandede tavler først: de kan hverken be- eller afkræfte noget, for de
+   * dækker både butik og produktion, og weekendforbruget kan ikke skilles ad. */
+  { proev: /teknik.?tavle|tavle uden|blandet|alt i butikken|el total|hovedmåler|forsynings/i,
+    weekenddrift: 'kan ikke afgøres',
+    note: 'Blandet tavle — dækker både butik og produktion. Weekendforbruget kan ikke henføres.' },
+
+  /* Områder uden weekendaktivitet. */
+  { proev: /kontor|kantine|mødelokal|personale|velfærd|administration/i,
+    weekenddrift: 'uventet',
+    note: 'Kontor og personaleområder er tomme i weekenden.' },
+  { proev: /bager|bageri|slagter|køkken|produktion|kiosk køkken|opskær/i,
+    weekenddrift: 'uventet',
+    note: 'Produktionen kører ikke i weekenden, selv om disken er åben.' },
+
+  /* Områder MED weekendaktivitet — butikken har åbent. */
+  { proev: /butik|salgsområde|indgang|kasse|frugt|grønt|parking|p-plads|udv/i,
+    weekenddrift: 'forventet',
+    note: 'Butikken har åbent i weekenden. Drift på samme tid er det rigtige.' },
+];
+
+/**
+ * Hvad vi forventer af området i weekenden, læst på målerens navn og tags.
+ * Svarer 'ukendt', når teksten ikke rækker — og det er et bedre svar end at
+ * gætte, for det afgør, om et fund overhovedet er et fund.
+ */
+export function weekendforventning(tekst) {
+  const t = String(tekst || '');
+  for (const r of WEEKENDFORVENTNING) {
+    if (r.proev.test(t)) return { weekenddrift: r.weekenddrift, note: r.note };
+  }
+  return { weekenddrift: 'ukendt', note: 'Målerens navn siger ikke, hvilket område den dækker.' };
+}
+
+export function weekendnedsaettelse(punkter, { minForskelPct = 12, omraade = null } = {}) {
   const pr = doegnprofil(punkter);
   if (!pr.brugbar) return { brugbar: false, opløsning: pr.opløsning, grund: pr.grund };
 
@@ -558,6 +610,33 @@ export function weekendnedsaettelse(punkter, { minForskelPct = 12 } = {}) {
   const tWe = timerOver(pr.weekend);
 
   const sammeTider = Math.abs(tHv - tWe) <= 1;
+  const ingenNedsaettelse = sammeTider && forskel < minForskelPct;
+
+  /* Og så det afgørende spørgsmål: BURDE der være en nedsættelse? */
+  const forventning = weekendforventning(omraade);
+  const taeller = ingenNedsaettelse && forventning.weekenddrift === 'uventet';
+
+  let tolkning;
+  if (!ingenNedsaettelse) {
+    tolkning = sammeTider
+      ? `Samme driftstimer i weekenden som på hverdage, men ${forskel} % lavere forbrug — anlægget skruer ned uden at slukke.`
+      : `${tWe} driftstimer i weekenden mod ${tHv} på hverdage — der er en nedsættelse.`;
+  } else if (forventning.weekenddrift === 'forventet') {
+    tolkning = `Anlægget kører ${tWe} timer i weekenden mod ${tHv} på hverdage. ${forventning.note} `
+      + 'Det er ikke et fund.';
+  } else if (forventning.weekenddrift === 'kan ikke afgøres') {
+    tolkning = `Anlægget kører ${tWe} timer i weekenden mod ${tHv} på hverdage. ${forventning.note} `
+      + 'Tallet er rigtigt, men det kan ikke bruges, før måleren er delt op.';
+  } else if (forventning.weekenddrift === 'ukendt') {
+    tolkning = `Anlægget kører ${tWe} timer i weekenden mod ${tHv} på hverdage, og forbruget er kun `
+      + `${forskel} % lavere. Om det er for meget afhænger af, hvad måleren dækker, og det ved vi ikke. `
+      + 'Sæt området på måleren, så kan spørgsmålet besvares.';
+  } else {
+    tolkning = `Anlægget kører ${tWe} timer i weekenden mod ${tHv} på hverdage, og forbruget er kun `
+      + `${forskel} % lavere. ${forventning.note} Der er reelt ingen weekendnedsættelse — det er en `
+      + 'tidsplan, der aldrig er sat efter, hvornår området bruges, og den koster hver weekend året rundt.';
+  }
+
   return {
     brugbar: true,
     hverdagKwh: Math.round(hv * 10) / 10,
@@ -566,14 +645,13 @@ export function weekendnedsaettelse(punkter, { minForskelPct = 12 } = {}) {
     driftstimerHverdag: tHv,
     driftstimerWeekend: tWe,
     sammeTider,
-    mistanke: sammeTider && forskel < minForskelPct,
-    tolkning: sammeTider && forskel < minForskelPct
-      ? `Anlægget kører ${tWe} timer i weekenden mod ${tHv} på hverdage, og forbruget er kun ${forskel} % lavere. `
-        + 'Der er reelt ingen weekendnedsættelse. Det er en tidsplan, der aldrig er sat efter butikkens '
-        + 'åbningstid — og den koster hver weekend, året rundt.'
-      : sammeTider
-        ? `Samme driftstimer i weekenden som på hverdage, men ${forskel} % lavere forbrug — anlægget skruer ned uden at slukke.`
-        : `${tWe} driftstimer i weekenden mod ${tHv} på hverdage — der er en nedsættelse.`,
+    ingenNedsaettelse,
+    weekenddrift: forventning.weekenddrift,
+    /* `mistanke` er nu kun sandt, hvor det både ser forkert ud OG burde være
+     * anderledes. Før var det nok, at tallene var ens — og så meldte den hele
+     * butiksventilationen i en portefølje, der har åbent om lørdagen. */
+    mistanke: taeller,
+    tolkning,
   };
 }
 
