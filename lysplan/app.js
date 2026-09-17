@@ -159,9 +159,13 @@ async function importerCad(navn, db) {
     t.h = t.h * k;
     t.v = -t.v;
   }
+  const kerne = flad.kerne ? {
+    x0: (flad.kerne.x0 - r.x0) * k, x1: (flad.kerne.x1 - r.x0) * k,
+    y0: (r.y1 - flad.kerne.y1) * k, y1: (r.y1 - flad.kerne.y0) * k
+  } : null;
   const lag = {
     id: nyId(), navn, slags: 'cad', synlig: true, opacitet: 1, x: 0, y: 0, skala: 1,
-    diagnose: flad.diagnose,
+    diagnose: flad.diagnose, kerne,
     bredde: (r.x1 - r.x0) * k, højde: (r.y1 - r.y0) * k,
     tegning: { streger: flad.streger, tekster: flad.tekster, lagInfo: flad.lagInfo, meterPerEnhed: flad.meterPerEnhed },
     egneFarver: false,
@@ -341,7 +345,11 @@ function tilpasVisning() {
   if (!lag.length) return;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const l of lag) {
-    const r = lagRamme(l);
+    // kerneområdet, hvis tegningen har udløbere langt væk
+    const k = l.kerne;
+    const r = k
+      ? { x0: l.x + k.x0 * l.skala, y0: l.y + k.y0 * l.skala, x1: l.x + k.x1 * l.skala, y1: l.y + k.y1 * l.skala }
+      : lagRamme(l);
     x0 = Math.min(x0, r.x0); y0 = Math.min(y0, r.y0);
     x1 = Math.max(x1, r.x1); y1 = Math.max(y1, r.y1);
   }
@@ -1162,14 +1170,17 @@ function findZonerITegning(stille) {
     }
   }
   if (!fundet) {
-    // ingen rumnavne - så tages det største lukkede omrids som salgsareal
-    const største = størsteOmrids(cadLag);
+    // Ingen rumnavne. Så lægges salgsarealet der hvor møblerne står, og er der
+    // heller ikke inventar, tages det største lukkede omrids.
+    const fraInventar = salgsarealFraInventar();
+    const største = fraInventar || størsteOmrids(cadLag);
     if (største) {
       state.zoner.push({
         id: nyId(), type: 'salg', navn: ZONETYPER.salg.navn, maalLux: ZONETYPER.salg.lux,
-        pts: største, fraTegning: true
+        pts: største, fraTegning: true, fraInventar: !!fraInventar
       });
       fundet = 1;
+      if (fraInventar) afvigelser.push('salgsarealet er lagt om møblerne, fordi tegningen ikke har et rum med navn');
     }
   }
   opdater();
@@ -1183,18 +1194,209 @@ function findZonerITegning(stille) {
   return fundet;
 }
 
+/* Tekst der fortæller at et areal ikke er butik - fx den tomme hal
+   "Ikke udnyttet Br. areal ca. 259 m2" ved siden af salgslokalet. */
+const IKKE_BUTIK = /ikke udnyttet|ikke i brug|udlejning|fremtidig|option|reserve/i;
+
 function størsteOmrids(cadLag) {
   let bedst = null, areal = 0;
   for (const lag of cadLag) {
+    const tekster = (lag.tegning.tekster || [])
+      .filter(t => t.t && IKKE_BUTIK.test(t.t))
+      .map(t => [lag.x + t.x * lag.skala, lag.y + t.y * lag.skala]);
     for (const s of lag.tegning.streger) {
       if (!s.lukket || s.p.length < 8) continue;
       const pts = [];
       for (let i = 0; i < s.p.length; i += 2) pts.push([lag.x + s.p[i] * lag.skala, lag.y + s.p[i + 1] * lag.skala]);
+      // et areal der er mærket "ikke udnyttet", er ikke salgsareal
+      if (tekster.some(t => Geom.pointInPolygon(t, pts))) continue;
       const a2 = Geom.polygonArea(pts);
       if (a2 > areal) { areal = a2; bedst = pts; }
     }
   }
   return bedst;
+}
+
+/* Rum på tegningen der ikke er salgsareal: lager, personale, terræn og alt
+   der er mærket "ikke udnyttet". De trækkes fra, så salgsarealet ikke løber
+   ind i baglokalerne. */
+function ikkeSalgsOmraader(cadLag) {
+  const ude = [];
+  for (const lag of cadLag) {
+    const omrids = [];
+    for (const st of lag.tegning.streger) {
+      if (!st.lukket || st.p.length < 8) continue;
+      const pts = [];
+      for (let i = 0; i < st.p.length; i += 2) pts.push([lag.x + st.p[i] * lag.skala, lag.y + st.p[i + 1] * lag.skala]);
+      const areal = Geom.polygonArea(pts) / (state.pxPerMeter ** 2);
+      if (areal >= 5) omrids.push({ pts, areal });
+    }
+    if (!omrids.length) continue;
+    omrids.sort((a, b) => a.areal - b.areal);
+    for (const t of (lag.tegning.tekster || [])) {
+      if (!t.t) continue;
+      const navn = t.t.trim();
+      let ud = IKKE_BUTIK.test(navn);
+      if (!ud) {
+        for (const [mønster, ty] of Inventar.RUMNAVNE) {
+          if (mønster.test(navn)) { ud = ty === 'lager' || ty === 'personale' || ty === 'ude'; break; }
+        }
+      }
+      if (!ud) continue;
+      const pkt = [lag.x + t.x * lag.skala, lag.y + t.y * lag.skala];
+      const rum = omrids.find(o => Geom.pointInPolygon(pkt, o.pts));
+      if (rum && !ude.includes(rum.pts)) ude.push(rum.pts);
+    }
+  }
+  return ude;
+}
+
+/* Salgsarealet der hvor møblerne står.
+   Mange tegninger har ikke salgslokalet som ét lukket omrids - butikken er
+   tegnet med vægge, søjler og reoler hver for sig. Derfor lægges gulvet
+   omkring hvert møbel ud på et net, de sammenhængende felter samles, og
+   kanten trækkes rundt om dem. Tomme haller og baglokaler kommer ikke med,
+   fordi der ikke står inventar. */
+function salgsarealFraInventar(rækkevidde = 3.2) {
+  const inv = state.inventar.filter(i => i.laengde > 0.4);
+  if (inv.length < 4) return null;
+  const celle = mToPx(0.75);
+  const stykker = inv.map(i => {
+    const halv = mToPx(i.laengde) / 2;
+    const c = Math.cos(i.vinkel), sn = Math.sin(i.vinkel);
+    return {
+      ax: i.centrum[0] - c * halv, ay: i.centrum[1] - sn * halv,
+      bx: i.centrum[0] + c * halv, by: i.centrum[1] + sn * halv,
+      r: mToPx(rækkevidde + i.dybde / 2)
+    };
+  });
+  const b = Geom.bbox(inv.flatMap(i => i.hjørner));
+  const kant = mToPx(rækkevidde) + celle;
+  const x0 = b.x0 - kant, y0 = b.y0 - kant;
+  const nx = Math.ceil((b.x1 + kant - x0) / celle), ny = Math.ceil((b.y1 + kant - y0) / celle);
+  if (nx < 3 || ny < 3 || nx * ny > 250000) return null;
+
+  // 1. felter der ligger tæt nok på et møbel
+  const sat = new Uint8Array(nx * ny);
+  for (const s of stykker) {
+    const dx = s.bx - s.ax, dy = s.by - s.ay;
+    const len2 = dx * dx + dy * dy;
+    const gx0 = Math.max(0, Math.floor((Math.min(s.ax, s.bx) - s.r - x0) / celle));
+    const gx1 = Math.min(nx - 1, Math.ceil((Math.max(s.ax, s.bx) + s.r - x0) / celle));
+    const gy0 = Math.max(0, Math.floor((Math.min(s.ay, s.by) - s.r - y0) / celle));
+    const gy1 = Math.min(ny - 1, Math.ceil((Math.max(s.ay, s.by) + s.r - y0) / celle));
+    for (let gy = gy0; gy <= gy1; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        if (sat[gy * nx + gx]) continue;
+        const px = x0 + (gx + 0.5) * celle, py = y0 + (gy + 0.5) * celle;
+        let t = len2 ? ((px - s.ax) * dx + (py - s.ay) * dy) / len2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const ex = px - (s.ax + t * dx), ey = py - (s.ay + t * dy);
+        if (ex * ex + ey * ey <= s.r * s.r) sat[gy * nx + gx] = 1;
+      }
+    }
+  }
+
+  // 1b. rum tegningen selv kalder lager, personale eller "ikke udnyttet"
+  const udenfor = ikkeSalgsOmraader(state.lag.filter(l => l.slags === 'cad' && l.synlig));
+  if (udenfor.length) {
+    for (let gy = 0; gy < ny; gy++) {
+      for (let gx = 0; gx < nx; gx++) {
+        const i = gy * nx + gx;
+        if (!sat[i]) continue;
+        const px = x0 + (gx + 0.5) * celle, py = y0 + (gy + 0.5) * celle;
+        if (udenfor.some(o => Geom.pointInPolygon([px, py], o))) sat[i] = 0;
+      }
+    }
+  }
+
+  // 2. største sammenhængende område
+  const mærke = new Int32Array(nx * ny).fill(-1);
+  let bedstNr = -1, bedstAntal = 0, nr = 0;
+  const stak = [];
+  for (let i = 0; i < sat.length; i++) {
+    if (!sat[i] || mærke[i] >= 0) continue;
+    let antal = 0;
+    stak.push(i); mærke[i] = nr;
+    while (stak.length) {
+      const j = stak.pop(); antal++;
+      const jx = j % nx, jy = (j - jx) / nx;
+      if (jx > 0 && sat[j - 1] && mærke[j - 1] < 0) { mærke[j - 1] = nr; stak.push(j - 1); }
+      if (jx < nx - 1 && sat[j + 1] && mærke[j + 1] < 0) { mærke[j + 1] = nr; stak.push(j + 1); }
+      if (jy > 0 && sat[j - nx] && mærke[j - nx] < 0) { mærke[j - nx] = nr; stak.push(j - nx); }
+      if (jy < ny - 1 && sat[j + nx] && mærke[j + nx] < 0) { mærke[j + nx] = nr; stak.push(j + nx); }
+    }
+    if (antal > bedstAntal) { bedstAntal = antal; bedstNr = nr; }
+    nr++;
+  }
+  if (bedstAntal < 6) return null;
+  const med = new Uint8Array(nx * ny);
+  for (let i = 0; i < med.length; i++) med[i] = mærke[i] === bedstNr ? 1 : 0;
+
+  // 3. huller inde i området lukkes - gangarealet midt i butikken hører med
+  const ude = new Uint8Array(nx * ny);
+  for (let i = 0; i < nx * ny; i++) {
+    const ix = i % nx, iy = (i - ix) / nx;
+    if (!med[i] && (ix === 0 || iy === 0 || ix === nx - 1 || iy === ny - 1) && !ude[i]) { ude[i] = 1; stak.push(i); }
+  }
+  while (stak.length) {
+    const j = stak.pop();
+    const jx = j % nx, jy = (j - jx) / nx;
+    const naboer = [];
+    if (jx > 0) naboer.push(j - 1);
+    if (jx < nx - 1) naboer.push(j + 1);
+    if (jy > 0) naboer.push(j - nx);
+    if (jy < ny - 1) naboer.push(j + nx);
+    for (const n of naboer) if (!med[n] && !ude[n]) { ude[n] = 1; stak.push(n); }
+  }
+  for (let i = 0; i < med.length; i++) if (!med[i] && !ude[i]) med[i] = 1;
+
+  return kantOmNet(med, nx, ny, x0, y0, celle);
+}
+
+/* Kanten rundt om et sæt netfelter: hver feltside uden nabo bliver en
+   kant, og kanterne sættes sammen ende mod ende til en lukket polygon. */
+function kantOmNet(med, nx, ny, x0, y0, celle) {
+  const nøgle = (gx, gy) => gy * (nx + 1) + gx;
+  const fra = new Map();
+  const læg = (a, b) => {
+    if (!fra.has(nøgle(a[0], a[1]))) fra.set(nøgle(a[0], a[1]), []);
+    fra.get(nøgle(a[0], a[1])).push(b);
+  };
+  for (let gy = 0; gy < ny; gy++) {
+    for (let gx = 0; gx < nx; gx++) {
+      if (!med[gy * nx + gx]) continue;
+      if (gy === 0 || !med[(gy - 1) * nx + gx]) læg([gx, gy], [gx + 1, gy]);
+      if (gx === nx - 1 || !med[gy * nx + gx + 1]) læg([gx + 1, gy], [gx + 1, gy + 1]);
+      if (gy === ny - 1 || !med[(gy + 1) * nx + gx]) læg([gx + 1, gy + 1], [gx, gy + 1]);
+      if (gx === 0 || !med[gy * nx + gx - 1]) læg([gx, gy + 1], [gx, gy]);
+    }
+  }
+  let bedst = null;
+  while (fra.size) {
+    const start = fra.keys().next().value;
+    const løkke = [];
+    let her = start;
+    while (fra.has(her)) {
+      const ud = fra.get(her);
+      const næste = ud.pop();
+      if (!ud.length) fra.delete(her);
+      const hx = her % (nx + 1), hy = (her - hx) / (nx + 1);
+      løkke.push([hx, hy]);
+      her = nøgle(næste[0], næste[1]);
+      if (her === start) break;
+    }
+    if (!bedst || løkke.length > bedst.length) bedst = løkke;
+  }
+  if (!bedst || bedst.length < 4) return null;
+  // lige stykker samles til ét, så polygonen ikke bliver en trappe af småpunkter
+  const pts = [];
+  for (let i = 0; i < bedst.length; i++) {
+    const f = bedst[(i - 1 + bedst.length) % bedst.length], m = bedst[i], e = bedst[(i + 1) % bedst.length];
+    const retning = (a, b) => (b[0] - a[0]) + ',' + (b[1] - a[1]);
+    if (retning(f, m) !== retning(m, e)) pts.push([x0 + m[0] * celle, y0 + m[1] * celle]);
+  }
+  return pts.length >= 4 ? pts : null;
 }
 
 function tilføjInventarRekt(a, b) {
@@ -1788,15 +1990,30 @@ function visLag() {
 /* Lagene inde i CAD-tegningen kan slukkes hver for sig - f.eks. møblering
    eller målsætning, der ellers støjer under lysplanen. */
 function cadLagPanel(lag) {
+  if (!lag.lagAntal) {
+    const n = {};
+    for (const s of lag.tegning.streger) n[s.lag] = (n[s.lag] || 0) + 1;
+    for (const t of lag.tegning.tekster) n[t.lag] = (n[t.lag] || 0) + 1;
+    lag.lagAntal = n;
+  }
   const boks = document.createElement('div');
   boks.className = 'cad-lag';
-  const navne = Object.keys(lag.cadLag).sort((a, b) => a.localeCompare(b, 'da'));
+  // de lag med mest på sig står øverst - de tomme nederst
+  const navne = Object.keys(lag.cadLag).sort((a, b) =>
+    (lag.lagAntal[b] || 0) - (lag.lagAntal[a] || 0) || a.localeCompare(b, 'da'));
   boks.innerHTML = `
     <label class="afkryds lille"><input type="checkbox" ${lag.egneFarver ? 'checked' : ''} data-h="farver"> Tegningens egne farver</label>
     <details>
       <summary>Lag i tegningen (<span data-h="tal"></span>)</summary>
+      <input type="search" class="lag-soeg" data-h="soeg" placeholder="Søg i ${navne.length} lag …">
       <div class="cad-lag-liste">
-        ${navne.map(n => `<label><input type="checkbox" data-cadlag="${encodeURIComponent(n)}"><span title="${n}">${n || '(uden navn)'}</span></label>`).join('')}
+        ${navne.map(n => `
+          <label data-navn="${encodeURIComponent(n)}">
+            <input type="checkbox" data-cadlag="${encodeURIComponent(n)}">
+            <span class="navn" title="${n}">${n || '(uden navn)'}</span>
+            <span class="antal">${fmt(lag.lagAntal[n] || 0)}</span>
+            <button class="ikon" data-kun="${encodeURIComponent(n)}" title="Vis kun dette lag">◉</button>
+          </label>`).join('')}
       </div>
       <div class="rk lille"><button data-h="alle">Vis alle</button><button data-h="ingen">Skjul alle</button></div>
     </details>`;
@@ -1812,6 +2029,20 @@ function cadLagPanel(lag) {
   afkryds.forEach(inp => {
     inp.onchange = () => { lag.cadLag[decodeURIComponent(inp.dataset.cadlag)] = inp.checked; synk(); };
   });
+  boks.querySelectorAll('[data-kun]').forEach(knap => {
+    knap.onclick = e => {
+      e.preventDefault();
+      const kun = decodeURIComponent(knap.dataset.kun);
+      navne.forEach(n => { lag.cadLag[n] = n === kun; });
+      synk();
+    };
+  });
+  boks.querySelector('[data-h="soeg"]').oninput = e => {
+    const q = e.target.value.trim().toLowerCase();
+    boks.querySelectorAll('.cad-lag-liste label').forEach(l => {
+      l.hidden = q ? !decodeURIComponent(l.dataset.navn).toLowerCase().includes(q) : false;
+    });
+  };
   boks.querySelector('[data-h="alle"]').onclick = () => { navne.forEach(n => { lag.cadLag[n] = true; }); synk(); };
   boks.querySelector('[data-h="ingen"]').onclick = () => { navne.forEach(n => { lag.cadLag[n] = false; }); synk(); };
   synk();
@@ -2009,7 +2240,8 @@ function diagnoseTekst(lag) {
     `Blokke: ${fmt(d.blokke || 0)}${d.xref ? ` · eksterne referencer (xref): ${d.xref}` : ''}`,
     `Tegnet: ${fmt(lag.tegning.streger.length)} streger, ${fmt(lag.tegning.tekster.length)} tekster, ${Object.keys(lag.cadLag).length} lag`,
     `Enhed: ${d.enhed === 0.001 ? 'millimeter' : d.enhed === 1 ? 'meter' : d.enhed + ' m pr. enhed'}${d.gættet ? ' (gættet – stod ikke i filen)' : ''}`,
-    `Størrelse: ${fmt(lag.bredde / (state.pxPerMeter || 100), 1)} × ${fmt(lag.højde / (state.pxPerMeter || 100), 1)} m`
+    `Størrelse: ${fmt(lag.bredde / (state.pxPerMeter || 100), 1)} × ${fmt(lag.højde / (state.pxPerMeter || 100), 1)} m` +
+      (lag.kerne ? ` (selve planen: ${fmt((lag.kerne.x1 - lag.kerne.x0) / (state.pxPerMeter || 100), 1)} × ${fmt((lag.kerne.y1 - lag.kerne.y0) / (state.pxPerMeter || 100), 1)} m)` : '')
   ];
   if (sprunget.length) {
     linjer.push('Sprunget over: ' + sprunget.map(([t, n]) => `${n} ${t}`).join(', '));
@@ -2141,22 +2373,6 @@ function klipModPolygon(a, b, poly) {
     ]);
   }
   return stykker;
-}
-
-/* Skinnerækker lagt oven på møblerne: én skinne pr. reol-, køle- eller frostrække. */
-function skinnerOverInventar(zone) {
-  const forlæng = mToPx(0.15);
-  const linjer = [];
-  for (const inv of inventarIZone(zone)) {
-    const halv = mToPx(inv.laengde) / 2 + forlæng;
-    const c = Math.cos(inv.vinkel), sn = Math.sin(inv.vinkel);
-    const a = [inv.centrum[0] - c * halv, inv.centrum[1] - sn * halv];
-    const b = [inv.centrum[0] + c * halv, inv.centrum[1] + sn * halv];
-    for (const stk of klipModPolygon(a, b, zone.pts)) {
-      if (pxToM(Geom.dist(stk[0], stk[1])) >= 1.2) linjer.push({ pts: stk, inventarId: inv.id });
-    }
-  }
-  return samlCollinear(linjer);
 }
 
 /* En gondolrække kan være delt i flere varegrupper. Skinnerne over dem

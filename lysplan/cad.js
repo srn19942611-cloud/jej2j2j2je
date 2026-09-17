@@ -385,15 +385,26 @@ const CAD = (() => {
     const springOver = {};
     const blokke = db.blocks || {};
 
-    const tilføjStreg = (e, p, lukket) => {
-      if (p.length < 4) return;
-      const lag = e.layer || '0';
+    /* Geometri på lag 0 inde i en blok hører til blokreferencens lag, og
+       farven BYBLOCK (0) arves på samme måde. Ellers ender alt på lag "0",
+       og lagknapperne gør ingenting. */
+    const løsLag = (e, arv) => {
+      const eget = e.layer || '0';
+      const lag = (eget === '0' && arv && arv.lag) ? arv.lag : eget;
       if (!lagInfo[lag]) lagInfo[lag] = { navn: lag, aci: 7, slukket: false, synlig: true };
-      const aci = (e.colorIndex == null || e.colorIndex === 256) ? lagInfo[lag].aci : (e.colorIndex === 0 ? 7 : e.colorIndex);
+      let aci = e.colorIndex;
+      if (aci == null || aci === 256) aci = lagInfo[lag].aci;          // BYLAYER
+      else if (aci === 0) aci = (arv && arv.aci) || lagInfo[lag].aci;  // BYBLOCK
+      return { lag, aci };
+    };
+
+    const tilføjStreg = (e, p, lukket, arv) => {
+      if (p.length < 4) return;
+      const { lag, aci } = løsLag(e, arv);
       streger.push({ lag, aci, p, lukket: !!lukket });
     };
 
-    function gåEntiteter(liste, m, dybde) {
+    function gåEntiteter(liste, m, dybde, arv) {
       if (dybde > 8) return;
       for (const e of liste || []) {
         if (!e || e.isVisible === false) continue;
@@ -402,16 +413,16 @@ const CAD = (() => {
           case 'LINE': {
             const a = anvend(m, e.startPoint.x, e.startPoint.y);
             const b = anvend(m, e.endPoint.x, e.endPoint.y);
-            tilføjStreg(e, [a[0], a[1], b[0], b[1]]);
+            tilføjStreg(e, [a[0], a[1], b[0], b[1]], false, arv);
             break;
           }
           case 'CIRCLE':
             bueTilPunkter(e.center.x, e.center.y, e.radius, 0, Math.PI * 2, p, m);
-            tilføjStreg(e, p, true);
+            tilføjStreg(e, p, true, arv);
             break;
           case 'ARC':
             bueTilPunkter(e.center.x, e.center.y, e.radius, e.startAngle, e.endAngle, p, m);
-            tilføjStreg(e, p);
+            tilføjStreg(e, p, false, arv);
             break;
           case 'ELLIPSE': {
             const ax = e.majorAxisEndPoint.x, ay = e.majorAxisEndPoint.y;
@@ -429,7 +440,7 @@ const CAD = (() => {
                 e.center.y + x * Math.sin(v) + y * Math.cos(v));
               p.push(wx, wy);
             }
-            tilføjStreg(e, p);
+            tilføjStreg(e, p, false, arv);
             break;
           }
           case 'LWPOLYLINE': case 'POLYLINE': case 'LEADER': {
@@ -445,7 +456,7 @@ const CAD = (() => {
               const [x, y] = anvend(m, v[0].x, v[0].y);
               p.push(x, y);
             }
-            tilføjStreg(e, p, e.flag & 1);
+            tilføjStreg(e, p, e.flag & 1, arv);
             break;
           }
           case 'SPLINE':
@@ -454,19 +465,19 @@ const CAD = (() => {
             } else if (e.controlPoints && e.controlPoints.length > 1) {
               splinePunkter(e.controlPoints, e.degree || 3, p, m);
             }
-            tilføjStreg(e, p);
+            tilføjStreg(e, p, false, arv);
             break;
           case 'SOLID': case '3DFACE': {
             const h = e.corners || [];
             for (const q of h) { if (!q) continue; const [x, y] = anvend(m, q.x, q.y); p.push(x, y); }
-            if (p.length >= 4) { p.push(p[0], p[1]); tilføjStreg(e, p, true); }
+            if (p.length >= 4) { p.push(p[0], p[1]); tilføjStreg(e, p, true, arv); }
             break;
           }
           case 'POINT': {
             const q = e.position || e.startPoint;
             if (!q) break;
             const [x, y] = anvend(m, q.x, q.y);
-            tilføjStreg(e, [x - 1, y, x + 1, y]);
+            tilføjStreg(e, [x - 1, y, x + 1, y], false, arv);
             break;
           }
           case 'TEXT': case 'ATTRIB': case 'MTEXT': {
@@ -475,9 +486,7 @@ const CAD = (() => {
             const h = e.textHeight || e.height || 2.5;
             const [x, y] = anvend(m, q.x, q.y);
             const skala = Math.hypot(m[0], m[1]) || 1;
-            const lag = e.layer || '0';
-            if (!lagInfo[lag]) lagInfo[lag] = { navn: lag, aci: 7, slukket: false, synlig: true };
-            const aci = (e.colorIndex == null || e.colorIndex === 256) ? lagInfo[lag].aci : (e.colorIndex === 0 ? 7 : e.colorIndex);
+            const { lag, aci } = løsLag(e, arv);
             tekster.push({
               lag, aci, x, y, h: h * skala,
               v: (e.rotation || 0) + Math.atan2(m[1], m[0]),
@@ -512,7 +521,7 @@ const CAD = (() => {
                   }
                 }
               }
-              tilføjStreg(e, q, true);
+              tilføjStreg(e, q, true, arv);
             }
             break;
           }
@@ -524,7 +533,7 @@ const CAD = (() => {
               const [x, y] = anvend(m, q.x, q.y);
               p.push(x, y);
             }
-            tilføjStreg(e, p, (e.flags & 2) === 2);
+            tilføjStreg(e, p, (e.flags & 2) === 2, arv);
             break;
           }
           case 'MULTILEADER': {
@@ -533,9 +542,7 @@ const CAD = (() => {
             if (!q || !tekst) break;
             const [x, y] = anvend(m, q.x, q.y);
             const skala = Math.hypot(m[0], m[1]) || 1;
-            const lag = e.layer || '0';
-            if (!lagInfo[lag]) lagInfo[lag] = { navn: lag, aci: 7, slukket: false, synlig: true };
-            const aci = (e.colorIndex == null || e.colorIndex === 256) ? lagInfo[lag].aci : (e.colorIndex === 0 ? 7 : e.colorIndex);
+            const { lag, aci } = løsLag(e, arv);
             tekster.push({
               lag, aci, x, y,
               h: (e.textHeight || 2.5) * (e.contentScale || 1) * skala,
@@ -556,14 +563,14 @@ const CAD = (() => {
                 };
                 let lokal = gang(m, indsætM(punkt, e.xScale || 1, e.yScale || 1, e.rotation || 0));
                 lokal = gang(lokal, [1, 0, 0, 1, -(blok.basePoint ? blok.basePoint.x : 0), -(blok.basePoint ? blok.basePoint.y : 0)]);
-                gåEntiteter(blok.entities, lokal, dybde + 1);
+                gåEntiteter(blok.entities, lokal, dybde + 1, løsLag(e, arv));
               }
             }
             break;
           }
           case 'DIMENSION': {
             const blok = blokke[e.name];
-            if (blok) gåEntiteter(blok.entities, m, dybde + 1);
+            if (blok) gåEntiteter(blok.entities, m, dybde + 1, løsLag(e, arv));
             break;
           }
           default:
@@ -574,7 +581,7 @@ const CAD = (() => {
       }
     }
 
-    gåEntiteter(db.entities, enhedsM, 0);
+    gåEntiteter(db.entities, enhedsM, 0, null);
 
     // omregning fra tegningens enhed til meter
     let meterPerEnhed = ENHEDER[db.header && db.header.INSUNITS] || null;
@@ -585,7 +592,7 @@ const CAD = (() => {
       ramme.gættetEnhed = true;
     }
     return {
-      streger, tekster, lagInfo, ramme, meterPerEnhed,
+      streger, tekster, lagInfo, ramme, kerne: kerneRamme(streger), meterPerEnhed,
       gættetEnhed: !!ramme.gættetEnhed, springOver,
       antalEntiteter: (db.entities || []).length,
       blokke: Object.keys(blokke).length
@@ -597,6 +604,39 @@ const CAD = (() => {
       .replace(/\\P/g, ' ').replace(/\\[A-Za-z][^;]*;/g, '')
       .replace(/[{}]/g, '').replace(/%%[dDcCpP]/g, m => ({ d: '°', c: 'Ø', p: '±' }[m[2].toLowerCase()] || ''))
       .trim();
+  }
+
+  /* Tegningshoveder, rammer og enkelte streger kan ligge kilometer fra selve
+     planen. Kerneområdet er der, hvor stregerne rent faktisk er - fundet ved
+     at skære yderklumper fra, hvor der er et stort tomt spring. */
+  function kerneRamme(streger) {
+    if (streger.length < 20) return null;
+    const xs = [], ys = [];
+    for (const s of streger) {
+      let x = 0, y = 0, n = 0;
+      for (let i = 0; i < s.p.length; i += 2) { x += s.p[i]; y += s.p[i + 1]; n++; }
+      if (n) { xs.push(x / n); ys.push(y / n); }
+    }
+    const skær = v => {
+      v.sort((a, b) => a - b);
+      let lav = 0, høj = v.length - 1;
+      for (let runde = 0; runde < 4; runde++) {
+        const spand = v[høj] - v[lav];
+        if (!(spand > 0)) break;
+        let bedstGab = 0, bedstIdx = -1;
+        for (let i = lav; i < høj; i++) {
+          const gab = v[i + 1] - v[i];
+          const andel = (i - lav + 1) / (høj - lav + 1);
+          // et stort tomt spring, hvor den ene side kun rummer en lille del
+          if (gab > spand * 0.15 && (andel < 0.12 || andel > 0.88) && gab > bedstGab) { bedstGab = gab; bedstIdx = i; }
+        }
+        if (bedstIdx < 0) break;
+        if ((bedstIdx - lav + 1) / (høj - lav + 1) < 0.5) lav = bedstIdx + 1; else høj = bedstIdx;
+      }
+      return [v[lav], v[høj]];
+    };
+    const [x0, x1] = skær(xs), [y0, y1] = skær(ys);
+    return (x1 > x0 && y1 > y0) ? { x0, y0, x1, y1 } : null;
   }
 
   function beregnRamme(streger, tekster) {

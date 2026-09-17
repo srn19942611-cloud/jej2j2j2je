@@ -79,13 +79,20 @@ const IKKE_INVENTAR = /rum$|rum\b|lager|teknik|kontor|personale|gang|wc|toilet|g
 /* Rumnavne på danske butiksplaner, og hvilken zonetype de svarer til.
    Rækkefølgen betyder noget: "kølerum" er et rum, ikke et kølemøbel. */
 const RUMNAVNE = [
-  [/salgsareal|salgsomr|salgslokale|butiksareal/i, 'salg'],
-  [/vindfang|indgang|forrum/i, 'vindfang'],
-  [/kasseomr|kasselinje|kasseområde|bager|slagter|delikatesse|kiosk|pakkepost|post\b|information/i, 'betjent'],
-  [/lager|bagbutik|flaskerum|frostrum|kølerum|koelerum|varegård|varegaard|rampe|depot|emballage/i, 'lager'],
-  [/personale|kontor|omklædning|omklaedning|frokost|garderobe|gang\b|wc|toilet|teknik|rengøring|rengoering/i, 'personale'],
-  [/p-plads|parkering|foromr|overdækket|overdaekket|terræn|terraen|udvendig/i, 'ude']
+  [/^\s*(salgsareal|salgsomr|salgslokale|butiksareal)/i, 'salg'],
+  [/^\s*(vindfang|indgangsparti|forrum)/i, 'vindfang'],
+  [/^\s*(kasseomr|kasselinje|kasseområde|bageri|slagter|delikatesse|kiosk|pakkepost|information)/i, 'betjent'],
+  [/^\s*(lager|bagbutik|flaskerum|frostrum|kølerum|koelerum|varegård|varegaard|rampe|depot|emballage)/i, 'lager'],
+  [/^\s*(personale|kontor|omklædning|omklaedning|frokost|garderobe|wc|toilet|teknikrum|rengøring|rengoering)/i, 'personale'],
+  [/^\s*(p-plads|parkering|foromr|overdækket|overdaekket|terræn|terraen)/i, 'ude']
 ];
+
+/* Ord der afslører at teksten er en bygningsdel, ikke et rum - fx
+   "Indgang Skydedør" er en dør, ikke et vindfang. */
+const IKKE_RUMTEKST = /dør|doer|port\b|skab|automat|vindue|luge|gitter|trappe|elevator|skilt|reol|hylde|kasse\s*\d/i;
+
+/* Mindste rimelige areal pr. zonetype, så en dørkarm ikke bliver til en zone. */
+const MINDSTE_ZONEAREAL = { salg: 50, betjent: 8, vindfang: 6, lager: 8, personale: 5, ude: 20 };
 
 /* Zoner fundet i tegningen: et lukket omrids med et rumnavn indeni.
    Står arealet i teksten ("SALGSAREAL 779,6 M2"), tages det med til kontrol. */
@@ -108,19 +115,23 @@ function findZoner(lag, valg) {
   const fundne = [];
   const brugt = new Set();
   for (const t of tekster) {
+    const m2 = /(\d+[.,]?\d*)\s*m2|(\d+[.,]?\d*)\s*m²/i.exec(t.t);
+    const angivetAreal = m2 ? parseFloat((m2[1] || m2[2]).replace(',', '.')) : null;
+    const navn = t.t.replace(/\s*\d+[.,]?\d*\s*m[²2]\s*$/i, '').trim();
+    // et rumnavn er kort og handler ikke om en bygningsdel
+    if (!navn || navn.split(/\s+/).length > 3 || IKKE_RUMTEKST.test(navn)) continue;
     let type = null;
-    for (const [mønster, ty] of RUMNAVNE) if (mønster.test(t.t)) { type = ty; break; }
+    for (const [mønster, ty] of RUMNAVNE) if (mønster.test(navn)) { type = ty; break; }
     if (!type) continue;
     // det mindste omrids der indeholder teksten, er rummet
-    const rum = omrids.find(o => !brugt.has(o) && Geom.pointInPolygon([t.x, t.y], o.pts));
+    const rum = omrids.find(o => !brugt.has(o) &&
+      o.areal >= (MINDSTE_ZONEAREAL[type] || 8) &&
+      Geom.pointInPolygon([t.x, t.y], o.pts) &&
+      // står arealet på tegningen, skal omridset passe nogenlunde
+      (!angivetAreal || Math.abs(o.areal - angivetAreal) / angivetAreal < 0.25));
     if (!rum) continue;
     brugt.add(rum);
-    const m2 = /(\d+[.,]?\d*)\s*m2|(\d+[.,]?\d*)\s*m²/i.exec(t.t);
-    fundne.push({
-      type, navn: t.t.replace(/\s*\d+[.,]?\d*\s*m[²2]\s*$/i, '').trim() || type,
-      pts: rum.pts, areal: rum.areal,
-      angivetAreal: m2 ? parseFloat((m2[1] || m2[2]).replace(',', '.')) : null
-    });
+    fundne.push({ type, navn: navn || type, pts: rum.pts, areal: rum.areal, angivetAreal });
   }
   return fundne;
 }
