@@ -91,22 +91,16 @@ async function importerFiler(filer) {
     const navn = fil.name || 'tegning';
     try {
       if (/\.pdf$/i.test(navn) || fil.type === 'application/pdf') {
-        if (iSandkasse()) {
-          throw new Error('PDF kan ikke læses i webudgaven. Gem tegningen som PNG eller DXF, eller brug den lokale udgave.');
-        }
         await importerPdf(fil, navn);
       } else if (/\.dxf$/i.test(navn)) {
         toast('Læser DXF …');
         await importerCad(navn, CAD.parseDxf(await fil.text()));
       } else if (/\.dwg$/i.test(navn)) {
-        if (iSandkasse()) {
-          throw new Error('DWG kan ikke læses i webudgaven. Sandkassen omkring siden blokerer for at hente DWG-motoren. ' +
-            'Gem tegningen som DXF i CAD-programmet – den virker her – eller brug den lokale udgave (start-lysplan).');
-        }
         const mb = (fil.size / 1048576).toFixed(1);
-        toast(`${navn} (${mb} MB): henter DWG-motoren … første gang tager det et øjeblik`, 'arbejder');
+        toast(`${navn} (${mb} MB): starter DWG-motoren … første gang tager det et øjeblik`, 'arbejder');
         const data = await fil.arrayBuffer();
-        const db = await CAD.læsDwg(data, state.indst.dwgKilde, trin => toast(`${navn}: ${trin}`, 'arbejder'));
+        const db = await CAD.læsDwg(data, state.indst.dwgKilde,
+          trin => toast(`${navn}: ${trin}`, 'arbejder'), { kunLokal: iSandkasse() });
         await importerCad(navn, db);
       } else if (fil.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(navn)) {
         await tilføjLag(navn, await læsSomDataUrl(fil));
@@ -264,7 +258,8 @@ function hentPdfBibliotek() {
   if (pdfKlar) return pdfKlar;
   pdfKlar = (async () => {
     if (window.pdfjsLib) return window.pdfjsLib;
-    for (const kilde of PDF_KILDER) {
+    const kilder = iSandkasse() ? PDF_KILDER.filter(k => !/^https?:/i.test(k.js)) : PDF_KILDER;
+    for (const kilde of kilder) {
       try {
         await indlæsScript(kilde.js);
         if (window.pdfjsLib) {
@@ -273,7 +268,9 @@ function hentPdfBibliotek() {
         }
       } catch (e) { /* prøv næste kilde */ }
     }
-    throw new Error('pdf.js kunne ikke hentes');
+    throw new Error(iSandkasse()
+      ? 'PDF-motoren på siden kunne ikke startes. Gem tegningen som PNG eller DXF.'
+      : 'pdf.js kunne ikke hentes');
   })();
   return pdfKlar;
 }

@@ -627,9 +627,11 @@ const CAD = (() => {
 
   const forsøg = [];          // hvad der er prøvet, så fejl kan forklares
 
-  async function hentMotor(egenKilde, status) {
+  async function hentMotor(egenKilde, status, kunLokal) {
     if (motor) return motor;
-    const kilder = (egenKilde ? [egenKilde.endsWith('/') ? egenKilde : egenKilde + '/'] : []).concat(DWG_KILDER);
+    let kilder = (egenKilde ? [egenKilde.endsWith('/') ? egenKilde : egenKilde + '/'] : []).concat(DWG_KILDER);
+    // i en sandkasse nytter det ikke at prøve nettet - kun filer på siden selv
+    if (kunLokal) kilder = kilder.filter(k => !/^https?:/i.test(k));
     forsøg.length = 0;
     for (const kilde of kilder) {
       const lokal = !/^https?:/i.test(kilde);
@@ -646,6 +648,10 @@ const CAD = (() => {
       }
     }
     console.error('DWG-motoren kunne ikke hentes:\n' + forsøg.join('\n'));
+    if (kunLokal) {
+      throw new Error('DWG-motoren på siden kunne ikke startes. Prøvet: ' + forsøg.join(' | ') +
+        '. Gem tegningen som DXF, eller brug den lokale udgave.');
+    }
     const påNettet = kilder.some(k => /^https?:/i.test(k));
     throw new Error(
       'DWG-motoren kunne ikke hentes' +
@@ -654,8 +660,8 @@ const CAD = (() => {
       ' Prøvet: ' + forsøg.join(' | '));
   }
 
-  async function læsDwg(buffer, egenKilde, status) {
-    const { lib, typer } = await hentMotor(egenKilde, status);
+  async function læsDwg(buffer, egenKilde, status, valg) {
+    const { lib, typer } = await hentMotor(egenKilde, status, valg && valg.kunLokal);
     if (status) status('læser tegningen …');
     let dwg;
     try {
