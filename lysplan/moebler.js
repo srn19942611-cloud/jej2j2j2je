@@ -67,6 +67,11 @@ const MØBLER = {
     navn: 'Frugt & grønt-podie med skrå kasser', type: 'bord', dobbelt: false,
     hoejde: 0.95, dybde: 1.2, modul: 1.25, sokkel: 0.1, skraakasser: true
   },
+  pallereol: {
+    navn: 'Lagerreol til paller, 2 niveauer', type: 'pallereol', dobbelt: false,
+    hoejde: 2.5, dybde: 1.1, modul: 2.7, hylder: 2, sokkel: 0.1,
+    hyldedybde: 1.0, bunddybde: 1.05, skiltehoejde: 0
+  },
   palleplads: {
     navn: 'Pallefelt / spotvare', type: 'andet', dobbelt: false,
     hoejde: 1.2, dybde: 1.2, modul: 1.2, palle: true
@@ -77,7 +82,9 @@ const MØBLER = {
 const STANDARDMODEL = {
   reol: 'gondol1800', vaegreol: 'vaegreol2200', koel: 'koelLaage',
   frost: 'frostSkab', frostoe: 'frostOe', betjening: 'disk',
-  kasse: 'kassebaand', bord: 'podie', andet: 'palleplads'
+  kasse: 'kassebaand', bord: 'podie', display: 'palleplads',
+  endegavl: 'gondol1800', broed: 'broedreol', pallereol: 'pallereol',
+  palle: 'palleplads', automat: 'selvkasse', andet: 'palleplads'
 };
 
 const MATERIALER = {

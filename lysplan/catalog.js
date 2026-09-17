@@ -4,17 +4,22 @@
 
 const FIXTURES = {
   bricks: {
-    key: 'bricks', rolle: 'grund', cct: 3500, ra: 85, ugr: 19, navn: 'Bricks Track Line, montering på skinner',
+    key: 'bricks', rolle: 'grund', cct: 3500, ra: 85, ugr: 19,
+    // fordelingen er tilpasset, så værktøjet rammer SJOC's egne DIALux-tal
+    spredning: 110, fordeling: 'batwing', batwingVinkel: 78, batwingBredde: 24, batwingVaegt: 5,
+    navn: 'Bricks Track Line, montering på skinner',
     detalje: 'Længde 120cm', lyskilde: '70W LED 8800 Lm, 3500 K',
     w: 70, lm: 8800, farve: 'Hvid', fase: 'bricks', laengde: 1.2, symbol: 'bricks'
   },
   bricksscan: {
-    key: 'bricksscan', rolle: 'grund', cct: 3500, ra: 85, ugr: 19, navn: 'Bricks scan, montering på skinner',
+    key: 'bricksscan', rolle: 'grund', cct: 3500, ra: 85, ugr: 19,
+    spredning: 110, fordeling: 'batwing', batwingVinkel: 78, batwingBredde: 24, batwingVaegt: 5,
+    navn: 'Bricks scan, montering på skinner',
     detalje: 'Længde 30cm', lyskilde: '40W LED 3500 K',
     w: 40, lm: 5000, farve: 'Hvid', fase: 'bricks', laengde: 0.3, symbol: 'bricks'
   },
   sirius: {
-    key: 'sirius', rolle: 'accent', cct: 3500, ra: 85, ugr: 19, navn: 'Sirius spot, monteres på skinne',
+    key: 'sirius', rolle: 'accent', cct: 3500, ra: 85, ugr: 19, spredning: 36, navn: 'Sirius spot, monteres på skinne',
     detalje: '', lyskilde: '28W LED 36 gr. 3500K',
     w: 28, lm: 2800, farve: 'Hvid', fase: 'spot', laengde: 0.2, symbol: 'spot'
   },
@@ -24,24 +29,25 @@ const FIXTURES = {
     w: 12, lm: 1250, farve: 'Natur', fase: 'spot', laengde: 0.35, symbol: 'pendel'
   },
   panel30: {
-    key: 'panel30', rolle: 'grund', cct: 3500, ra: 85, ugr: 19, navn: 'LED Panel Premium m. Philips driver, mont. i ramme',
+    key: 'panel30', rolle: 'grund', cct: 3500, ra: 85, ugr: 19, spredning: 110, navn: 'LED Panel Premium m. Philips driver, mont. i ramme',
     detalje: 'Mål 30x120cm', lyskilde: '30W LED, 3500K 4500 Lm',
     w: 30, lm: 4500, farve: 'Hvid', fase: 'fast', laengde: 1.2, symbol: 'panel'
   },
   panel22: {
-    key: 'panel22', rolle: 'grund', cct: 3500, ra: 85, ugr: 19, navn: 'LED Panel Premium m. Philips driver',
+    key: 'panel22', rolle: 'grund', cct: 3500, ra: 85, ugr: 19, spredning: 110, navn: 'LED Panel Premium m. Philips driver',
     detalje: 'Mål 30x120cm, Udskiftes 1:1', lyskilde: '22W LED, 3500K 3300 Lm',
     w: 22, lm: 3300, farve: 'Hvid', fase: 'fast', laengde: 1.2, symbol: 'panel'
   },
   triproof: {
-    key: 'triproof', rolle: 'grund', cct: 3500, ra: 85, ugr: null, navn: 'Tri-proof Light deluxe med Lifud driver',
+    key: 'triproof', rolle: 'grund', cct: 3500, ra: 85, ugr: null, spredning: 110, navn: 'Tri-proof Light deluxe med Lifud driver',
     detalje: 'Længde 120cm', lyskilde: '33-40W LED, 3500K',
     w: 40, lm: 5200, farve: 'Hvid', fase: 'fast', laengde: 1.2, symbol: 'triproof'
   },
   panmax: {
     key: 'panmax', rolle: 'grund', cct: 3500, ra: 90, ugr: 19, navn: 'Pan Max downlight',
-    detalje: '', lyskilde: '28W LED, 3500K 930PC',
-    w: 28, lm: 3000, farve: 'Hvid', fase: 'fast', laengde: 0.25, symbol: 'downlight'
+    detalje: '', lyskilde: '20W LED, 3500K 930PC',
+    w: 20, lm: 2000, farve: 'Hvid', fase: 'fast', laengde: 0.25, symbol: 'downlight',
+    spredning: 70
   },
   gobo: {
     key: 'gobo', rolle: 'særlig', cct: null, ra: null, ugr: null, navn: 'Gobo projektor med logo indbygges i loftet',
@@ -140,6 +146,26 @@ const PRESETS = {
 
 /* Krav fra Coops byggeprogram, EL - Belysningsanlæg (rev. 1.3).
    Tallene bruges til kontrollen i fanen "Krav" og til udskriften. */
+/* Forudsætninger som SJOC's egne DIALux-rapporter regner med
+   (SuperBrugsen Støvring 22-06-2026 og Kvickly Hvidovre 02-07-2026). */
+const BEREGNING = {
+  /* Bricks Track Line er et skinnearmatur, der kaster lyset ud på varerne.
+     Uden producentens fotometri (IES/LDT) er fordelingen tilpasset, så
+     værktøjet reproducerer de to DIALux-rapporter herunder. Læg den rigtige
+     fotometri ind, hvis den kommer - så er kalibreringen overflødig. */
+  vedligehold: 0.80,
+  refleks: { loft: 0.70, vaeg: 0.50, gulv: 0.20 },
+  beregningshoejde: 0.80,      // DIALux regner i 0,8 m over gulv
+  montagehoejde: { standard: 2.8, kvickly: 3.2 },
+  norm: { salgsomraade: 300, uo: 0.40 },   // DS/EN 12464-1, profil 5.27.1
+  benchmark: [
+    { navn: 'SuperBrugsen Støvring', dato: '22-06-2026', areal: 1196.22, montage: 2.8,
+      armaturer: [['bricks', 135], ['panmax', 13]], lodret: 889, uo: 0.17, wPrM2: 8.21, wPr100lx: 0.92 },
+    { navn: 'Kvickly Hvidovre', dato: '02-07-2026', areal: 2317.70, montage: 3.2,
+      armaturer: [['bricks', 244]], lodret: 789, uo: 0.19, wPrM2: 7.43, wPr100lx: 0.94 }
+  ]
+};
+
 const KRAV = {
   kilde: 'Coop byggeprogram – EL/Belysningsanlæg 1.3',
   tolerance: 0.10,                 // lux måles med ±10 % tolerance

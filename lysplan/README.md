@@ -53,18 +53,49 @@ trækker med musen for at kigge.
   (kan ændres).
 * **Wireophæng + wire bracket** beregnes ud fra en c/c-afstand pr. meter skinne
   for de rækker, der er nedhængt i wire.
-* **Belysningsstyrken beregnes punkt for punkt** på gulvet ud fra hvert
-  armaturs placering, monteringshøjde og lysfordeling:
-  `E = Σ I₀·cosⁿθ·cosε / d² × LLMF`, hvor `n` følger af armaturets
-  spredningsvinkel. Oven i lægges et jævnt bidrag for lys reflekteret fra loft,
-  vægge og varer (refleksionstillægget, default 1,15 svarende til 15 %).
-  Gulvet under møblerne tælles ikke med – det er hylder, ikke gangareal.
+* **Belysningsstyrken beregnes punkt for punkt** ud fra hvert armaturs
+  placering, monteringshøjde og lysfordeling: `E = Σ I(θ)·cosε / d² × LLMF`.
+  Lysfordelingen ligger i en tabel pr. armatur – enten symmetrisk `cosⁿθ` eller
+  batwing, hvor lyset kastes ud til siden mod varerne.
+  Oven i det direkte lys lægges det reflekterede med den klassiske
+  interrefleksionsformel `E = Φ·MF·ρ/(A·(1−ρ))` ud fra rummets flader og
+  refleksionerne loft 70 %, vægge 50 % og gulv 20 % – de samme, SJOC's
+  DIALux-rapporter regner med. Gulvet under møblerne tælles ikke med.
   Samme beregning bruges til nøgletal, kravkontrol, varmekortet i planen og
-  3D-billedet, så tallene altid stemmer overens. Det er en direkte beregning
-  uden fuld refleksionsmodel og erstatter ikke en DIALux-rapport.
+  3D-billedet, så tallene altid stemmer overens.
+* **To måltal, to metoder.** Byggeprogrammet kræver 700 lux *på gulvet*.
+  SJOC's egne lysberegninger opgør derimod **lodret belysningsstyrke i 0,8 m**
+  (adaptiv) mod normens 300 lux i DS/EN 12464-1. Værktøjet viser begge tal pr.
+  zone, så man kan se, hvad der er dokumenteret hvad.
 * **Gruppeopdeling** følger noterne på lysplanerne: fase 1 til Bricks, maks.
   12 pr. fase; fase 2 til spot, bast lamper og wall washer, maks. 30 pr. fase;
   fase 3 til fast strøm. Antal 3-polede grupper er det største krav af de to.
+
+## Kalibrering mod rigtige lysberegninger
+
+Værktøjet er holdt op mod to af SJOC's egne DIALux-rapporter, og
+kontrolberegningen kan køres direkte i fanen **Krav**:
+
+| Sag | Areal | Armaturer | Montage | Rapportens Ēlodret | Værktøjet | W/m² rapport | W/m² her |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SuperBrugsen Støvring, 22-06-2026 | 1196 m² | 135 Bricks + 13 Pan Max | 2,80 m | 889 lux | 843 lux (−5 %) | 8,21 | 8,12 |
+| Kvickly Hvidovre, 02-07-2026 | 2318 m² | 244 Bricks | 3,20 m | 789 lux | 791 lux (±0 %) | 7,43 | 7,37 |
+
+Rapporterne regner begge med vedligeholdelsesfaktor 0,80, refleksioner
+70/50/20 %, beregningshøjde 0,8 m og lodret adaptiv belysningsstyrke.
+W/m²/100lx lander på 0,96 og 0,93 mod rapporternes 0,92 og 0,94.
+
+Det, kontrolberegningen **ikke** kan sammenlignes på, er uensartetheden:
+rapporterne får Uo 0,17–0,19, fordi de regner på den rigtige opstilling med
+inventar, mens kontrollen her fordeler armaturerne jævnt i et tomt rektangel og
+derfor får et langt højere tal.
+
+To rettelser kom ud af rapporterne: **Pan Max downlight er 20 W / 2000 lm**
+(ikke 28 W / 3000 lm som først antaget), og **Bricks Track Line er bekræftet
+70 W / 8800 lm = 125,7 lm/W** – altså under byggeprogrammets krav på 130 lm/W
+til grundbelysning, hvilket kontrollen derfor melder om. Bricks' lysfordeling
+er sat som batwing og tilpasset, så de to sager rammes; kommer producentens
+IES/LDT-fil, bør den lægges ind i stedet.
 
 ## Kontrol mod byggeprogrammet
 
@@ -95,6 +126,15 @@ retning og dybde til én række. Teksten nærmest rækken bestemmer resten:
 * `4,37 m Drikkevare køl` bliver til et kølemøbel med længde.
 * `FROST`, `KØL`, `Kasse`, `Slagter` m.fl. bestemmer typen; ellers gættes den
   ud fra dybden (under 1,05 m = reol, derover køl, over 1,6 m = frostø).
+* Betegnelserne fra rigtige Coop-planer kendes: `CLS2100` (reol, højde 2100),
+  `CLS_Endeboks`, `Mega 200`, `Kampagne`, `Katapult`, `Dumper`, `Styrtkurv`,
+  `Fletkurv`, `T-rack`, `Rack 120`, `F&G-Bord`, `Brødskab H:1605`,
+  `Tobaksreol`, `Posestativ`, `Pantautomat Tomra`, `Safe-pay`,
+  `Lagerreol 2 paller`, `Euro 800x1200`, `1/1 Papirpalle` og kølemøbler som
+  `LISBONA LF 95 3750 G` og `SANTIAGO LF 95 2500 G`, hvor tallet er længden i
+  mm og `G` betyder glaslåger.
+* Mål skrevet i teksten vinder over standardmålene: `H:1605`, `h:1680 d:900
+  b:1267`, `B1400 x D1100 x H1400` og `600x1245x1482`.
 * Står der flere varegrupper på samme gondolrække, deles rækken op efter dem og
   efter deres antal fag – som varegrupperne står på planen.
 

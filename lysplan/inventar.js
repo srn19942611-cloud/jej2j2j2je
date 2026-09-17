@@ -12,20 +12,65 @@ const INVENTAR_TYPER = {
   kasse: { navn: 'Kasse', hoejde: 1.1, farve: '#A9670C', maaler: 'stk' },
   betjening: { navn: 'Betjent disk', hoejde: 1.3, farve: '#C0392B', maaler: 'meter' },
   bord: { navn: 'Podie/bord', hoejde: 0.9, farve: '#7D6608', maaler: 'stk' },
+  display: { navn: 'Kampagne/display', hoejde: 1.4, farve: '#8E5B1F', maaler: 'stk' },
+  endegavl: { navn: 'Endegavl/endeboks', hoejde: 1.8, farve: '#5D6D7E', maaler: 'stk' },
+  broed: { navn: 'Brødreol/brødskab', hoejde: 1.6, farve: '#8A6D3B', maaler: 'fag' },
+  pallereol: { navn: 'Lagerreol til paller', hoejde: 2.5, farve: '#616A6B', maaler: 'fag' },
+  palle: { navn: 'Palleplads', hoejde: 1.2, farve: '#B08A5A', maaler: 'stk' },
+  automat: { navn: 'Pant-/møntautomat', hoejde: 1.8, farve: '#4D5656', maaler: 'stk' },
   andet: { navn: 'Øvrigt inventar', hoejde: 1.4, farve: '#808B96', maaler: 'stk' }
 };
 
 /* Ord på tegningen der afslører hvad et møbel er. Rækkefølgen betyder noget:
-   første træffer vinder, så "frostrum" fanges før "frost". */
+   første træffer vinder, så "frostrum" fanges før "frost".
+   Betegnelserne er samlet fra rigtige Coop-planer (365discount Kalundborg og
+   Kvickly Hvidovre): CLS-reoler, Endeboks, Mega 200, Katapult, Dumper,
+   LISBONA/SANTIAGO-kølemøbler, papirpaller og Euro-paller. */
 const ORDBOG = [
   [/frost\s*ø|ø\s*frost|frostoe/i, 'frostoe'],
   [/frost/i, 'frost'],
+  [/lisbona|santiago|multideck/i, 'koel'],
+  [/bærkøl|baerkoel/i, 'koel'],
   [/køl|koel|kol\b|chill/i, 'koel'],
-  [/kasse|kassebånd|checkout|selfscan|self\s*check/i, 'kasse'],
-  [/slagter|delikatesse|bager|bake\s*off|disk|betjen/i, 'betjening'],
-  [/podie|bord|pallet|paller|display/i, 'bord'],
-  [/væg|vaeg|wall/i, 'vaegreol']
+  [/pantautomat|tomra|møntmarked|moentmarked/i, 'automat'],
+  [/safe.?pay|kassebånd|kassebaand|kasselinje|checkout|selfscan|self.?check|svinglåge|svinglaage/i, 'kasse'],
+  [/kasse/i, 'kasse'],
+  [/slagter|delikatesse|bager|bake.?off|disk|betjen/i, 'betjening'],
+  [/endeboks|endegavl|gavlplads/i, 'endegavl'],
+  [/lagerreol|pallereol|reol\s*2\s*paller/i, 'pallereol'],
+  [/1\/1\s*papirpalle|1\/4\s*pl|euro\s*800|palleplads|papirpalle|\bpalle\b|paller\b/i, 'palle'],
+  [/brødskab|broedskab|brød|broed/i, 'broed'],
+  [/tobaksreol|tobak/i, 'reol'],
+  [/mega\s*\d+|kampagne|katapult|dumper|styrtkurv|fletkurv|byggebord|t-rack|rack\s*\d+|spotvare/i, 'display'],
+  [/f&g.?bord|f\s*&\s*g|frugt|grønt|gront|podie|banantrappe/i, 'bord'],
+  [/posestativ|poser|trille.?kurv|garderobe|affaldscontainer|gulvvasker/i, 'andet'],
+  [/cls[_\s]*\d{3,4}|følgefag|foelgefag|startfag|gondol/i, 'reol'],
+  [/væg|vaeg|wall/i, 'vaegreol'],
+  [/bord|display/i, 'bord']
 ];
+
+/* Mål skrevet i teksten: "H:1605", "h:1680 d:900 b:1267", "CLS2100",
+   "B1400 x D1100 x H1400" og "600x1245x1482" (bredde x dybde x højde). */
+function maalFraTekst(tekst) {
+  const ud = {};
+  const t = String(tekst || '');
+  const cls = /cls[_\s]*(\d{4})/i.exec(t);
+  if (cls) ud.hoejde = +cls[1] / 1000;
+  const h = /(?:^|[^a-zæøå])h\s*[:=]?\s*(\d{3,4})(?!\d)/i.exec(t);
+  if (h) ud.hoejde = +h[1] / 1000;
+  const d = /(?:^|[^a-zæøå])d\s*[:=]?\s*(\d{3,4})(?!\d)/i.exec(t);
+  if (d) ud.dybde = +d[1] / 1000;
+  const b = /(?:^|[^a-zæøå])b\s*[:=]?\s*(\d{3,4})(?!\d)/i.exec(t);
+  if (b) ud.bredde = +b[1] / 1000;
+  const tre = /(\d{3,4})\s*[x×]\s*(\d{3,4})\s*[x×]\s*(\d{3,4})/i.exec(t);
+  if (tre) { ud.bredde = +tre[1] / 1000; ud.dybde = +tre[2] / 1000; ud.hoejde = +tre[3] / 1000; }
+  // kølemøbler som "LISBONA LF 95 3750 G" - 3750 er længden, G betyder glaslåger
+  const køl = /(lisbona|santiago)[^\d]*(?:lf\s*\d+\s*)?(\d{4})\s*([GN])?/i.exec(t);
+  if (køl) { ud.laengde = +køl[2] / 1000; ud.laager = /g/i.test(køl[3] || ''); }
+  if (ud.hoejde && (ud.hoejde < 0.3 || ud.hoejde > 3)) delete ud.hoejde;
+  if (ud.dybde && (ud.dybde < 0.2 || ud.dybde > 3)) delete ud.dybde;
+  return ud;
+}
 
 /* Rum og bygningsdele der ikke er inventar. */
 const IKKE_INVENTAR = /rum$|rum\b|lager|teknik|kontor|personale|gang|wc|toilet|garderobe|vindfang|salgsareal|areal|omklædning|rampe|varegård|p-plads/i;
@@ -265,6 +310,7 @@ const Inventar = (() => {
     const iM = px => px / pxPerM;
     const laengde = iM(laengdePx), dybde = iM(r.dybde);
 
+    const maal = maalFraTekst(tekst);
     let type = null;
     if (tekst && !IKKE_INVENTAR.test(tekst)) {
       for (const [mønster, t] of ORDBOG) if (mønster.test(tekst)) { type = t; break; }
@@ -287,11 +333,13 @@ const Inventar = (() => {
     const c = Math.cos(r.vinkel), s = Math.sin(r.vinkel);
     const hl = laengdePx / 2, hd = r.dybde / 2;
     const hjørne = (u, v) => [centrum[0] + u * c - v * s, centrum[1] + u * s + v * c];
-    const model = vælgModel(type, dybde, laengde, tekst);
+    const model = vælgModel(type, maal.dybde || dybde, laengde, tekst);
+    const modelHøjde = (typeof MØBLER !== 'undefined' && MØBLER[model] ? MØBLER[model].hoejde : INVENTAR_TYPER[type].hoejde);
     return {
       type, kategori, tekst, fag, model,
       laengde, dybde,
-      hoejde: (typeof MØBLER !== 'undefined' && MØBLER[model] ? MØBLER[model].hoejde : INVENTAR_TYPER[type].hoejde),
+      // mål skrevet på tegningen vinder over modellens standardmål
+      hoejde: maal.hoejde || modelHøjde,
       vinkel: r.vinkel,
       centrum,
       hjørner: [hjørne(-hl, -hd), hjørne(hl, -hd), hjørne(hl, hd), hjørne(-hl, hd)],
@@ -311,12 +359,23 @@ const Inventar = (() => {
         if (dybde < 0.75) return 'vaegreol2200';
         return dybde > 1.15 ? 'gondol2100' : 'gondol1800';
       case 'vaegreol': return 'vaegreol2200';
-      case 'koel': return /åben|aaben|multideck|frugt|grønt|gront/.test(t) ? 'koelAaben' : 'koelLaage';
+      case 'koel': {
+        // "LISBONA LF 95 3750 G" - G står for glaslåger, N for åbent møbel
+        const m = /(lisbona|santiago)[^\d]*(?:lf\s*\d+\s*)?\d{4}\s*([gn])/i.exec(t);
+        if (m) return m[2].toLowerCase() === 'g' ? 'koelLaage' : 'koelAaben';
+        return /åben|aaben|multideck|frugt|grønt|gront/.test(t) ? 'koelAaben' : 'koelLaage';
+      }
       case 'frost': return dybde > 1.2 ? 'frostOe' : 'frostSkab';
       case 'frostoe': return 'frostOe';
       case 'betjening': return 'disk';
       case 'kasse': return laengde < 1.4 ? 'selvkasse' : 'kassebaand';
       case 'bord': return 'podie';
+      case 'display': return 'palleplads';
+      case 'endegavl': return dybde > 0.75 ? 'gondol1800' : 'vaegreol2200';
+      case 'broed': return 'broedreol';
+      case 'pallereol': return 'pallereol';
+      case 'palle': return 'palleplads';
+      case 'automat': return 'selvkasse';
       default: return STANDARDMODEL[type] || 'palleplads';
     }
   }

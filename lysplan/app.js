@@ -26,9 +26,11 @@ const state = {
     preset: 'superbrugsen',
     mode: 'track',
     ccSkinner: 2.5, margin: 1.0, ccX: 2.4, ccY: 2.4,
-    lofttype: 'skinne', zoneType: 'salg', refleks: 1.15, mf: 0.8, loftshoejde: 3.2,
+    lofttype: 'skinne', zoneType: 'salg', mf: 0.8, loftshoejde: 3.2,
+    refleksLoft: 0.70, refleksVaeg: 0.50, refleksGulv: 0.20,   // som SJOC's DIALux-rapporter
+    beregningshoejde: 0.0, metrik: 'vandret',
     inventarType: 'reol', fagbredde: 1.0, visInventar: true, følgInventar: true,
-    monteringshoejde: 2.9, fov: 72, farvetilstand: 'realistisk', maksLux: 1200, visVarme: false,
+    monteringshoejde: 2.8, fov: 72, farvetilstand: 'realistisk', maksLux: 1200, visVarme: false,
     skinneSpring: 2.5,
     primaer: 'bricks', accent: 'sirius', accentRatio: 0.35,
     minAfstand: 1.2, wireCC: 1.4, startPrRaekke: 1, wireMontage: 'wire',
@@ -1190,6 +1192,18 @@ function beregn() {
   };
 }
 
+let lodretCache = { nøgle: -1, tal: {} };
+function zoneLodret(zone) {
+  if (lodretCache.nøgle !== state.version) lodretCache = { nøgle: state.version, tal: {} };
+  if (lodretCache.tal[zone.id]) return lodretCache.tal[zone.id];
+  const poly = zone.pts.map(p => [p[0] / state.pxPerMeter, p[1] / state.pxPerMeter]);
+  const tal = Tre.planTal(sceneKilde(), poly, {
+    hoejde: BEREGNING.beregningshoejde, metrik: 'lodret', celle: 1.0
+  });
+  lodretCache.tal[zone.id] = tal;
+  return tal;
+}
+
 /* ---------- kontrol mod byggeprogrammet ---------- */
 function kravTjek(b) {
   const punkter = [];
@@ -1205,13 +1219,24 @@ function kravTjek(b) {
       continue;
     }
     const status = z.lux >= z.krav ? 'ok' : (z.indenforTolerance ? 'advarsel' : 'fejl');
+    const zone = state.zoner.find(x => x.id === z.id);
+    const lod = zone ? zoneLodret(zone) : null;
     tilføj(status, z.navn,
-      `${fmt(z.lux, 0)} lux mod krav ${fmt(z.krav)} lux${z.iProgram ? ' (byggeprogram)' : ' (eget krav)'}` +
-      ` – ${fmt(z.areal, 0)} m², ${z.stk} armaturer, ${fmt(z.wattPrM2, 1)} W/m².`);
+      `${fmt(z.lux, 0)} lux på gulvet mod krav ${fmt(z.krav)} lux${z.iProgram ? ' (byggeprogram)' : ' (eget krav)'}` +
+      ` – ${fmt(z.areal, 0)} m², ${z.stk} armaturer, ${fmt(z.wattPrM2, 1)} W/m²` +
+      (z.lux > 0 ? `, ${fmt(z.wattPrM2 / (z.lux / 100), 2)} W/m²/100lx` : '') + '.' +
+      (lod ? ` Lodret i ${fmt(BEREGNING.beregningshoejde, 1)} m: ${fmt(lod.snit, 0)} lux (Uo ${fmt(lod.uo, 2)}) – det tal SJOC's DIALux-rapporter opgiver mod normens ${BEREGNING.norm.salgsomraade} lux.` : ''));
     if (z.lux > 0 && z.luxGrund < z.krav) {
       tilføj(z.luxGrund >= z.krav * (1 - KRAV.tolerance) ? 'advarsel' : 'fejl', z.navn + ': grundbelysning',
         `Grundbelysningen alene giver ${fmt(z.luxGrund, 0)} lux. Spots må ikke anvendes som grundbelysning, kun til fremhævning af ${KRAV.spotOmraader.slice(0, 4).join(', ').toLowerCase()} m.fl.`);
     }
+  }
+
+  for (const z of b.zoner) {
+    if (!z.areal || z.type === 'ude' || !z.jaevnhed) continue;
+    const norm = BEREGNING.norm.uo;
+    tilføj(z.jaevnhed >= norm ? 'ok' : 'advarsel', z.navn + ': jævnhed',
+      `Uo ${fmt(z.jaevnhed, 2)} på gulvet mod ${norm} i DS/EN 12464-1. Mindste værdi ${fmt(z.minLux, 0)} lux. SJOC's egne beregninger ligger på 0,17–0,19, så tallet er til at holde øje med, ikke et afvisningskriterium.`);
   }
 
   // armaturdata mod kravene til lyskilder
@@ -1346,7 +1371,7 @@ function visNøgletal(b) {
     { navn: 'Installeret effekt', vaerdi: fmt(b.watt, 0) + ' W', note: b.areal ? fmt(b.wattPrM2, 1) + ' W/m²' : '' },
     { navn: 'Lysstrøm', vaerdi: fmt(b.lumen / 1000, 1) + ' klm', note: b.areal ? fmt(b.lumenPrM2, 0) + ' lm/m²' : '' },
     { navn: 'Zoner med opfyldt krav', vaerdi: b.zoner.length ? `${b.zonerOpfyldt}/${b.zoner.length}` : '–',
-      note: `LLMF ${i.mf} · refleks ${i.refleks}`, slags: zoneStatus },
+      note: `LLMF ${i.mf} · refleks ${Math.round(i.refleksLoft * 100)}/${Math.round(i.refleksVaeg * 100)}/${Math.round(i.refleksGulv * 100)}`, slags: zoneStatus },
     { navn: '3-polede grupper', vaerdi: fmt(b.grupper), note: `${b.pr_fase.bricks} Bricks · ${b.pr_fase.spot} spot/pendel` }
   ];
   $('#noegletal').innerHTML = kort.map(k => `
@@ -1502,10 +1527,56 @@ function visInventarPanel() {
   }
 }
 
+/* Kontrolberegning: værktøjet regner SJOC's egne DIALux-sager efter, så man
+   kan se hvor tæt beregningen ligger på de rapporter, den skal kunne erstatte
+   i skitsefasen. Opstillingen er forenklet - jævnt fordelte armaturer i et
+   rektangel uden inventar - så uensartetheden (Uo) kan ikke sammenlignes. */
+function referenceTjek() {
+  return BEREGNING.benchmark.map(b => {
+    const forhold = b.navn.includes('Kvickly') ? 79.53 / 37.4 : 45.419 / 27.042;
+    const h = Math.sqrt(b.areal / forhold), bredde = b.areal / h;
+    const armaturer = [];
+    let watt = 0;
+    for (const [type, antal] of b.armaturer) {
+      const trin = Math.sqrt((bredde * h) / antal);
+      const kolonner = Math.max(1, Math.round(bredde / trin));
+      const rækker = Math.max(1, Math.ceil(antal / kolonner));
+      for (let n = 0; n < antal; n++) {
+        const r = Math.floor(n / kolonner), k = n % kolonner;
+        armaturer.push({
+          id: 'ref' + n + type, type,
+          x: (bredde * (k + 0.5)) / kolonner * 100,
+          y: (h * (r + 0.5)) / rækker * 100, vinkel: 0
+        });
+        watt += FIXTURES[type].w;
+      }
+    }
+    const prøve = {
+      pxPerMeter: 100, armaturer, inventar: [],
+      zoner: [{ id: 'ref', type: 'salg', pts: [[0, 0], [bredde * 100, 0], [bredde * 100, h * 100], [0, h * 100]] }],
+      indst: Object.assign({}, state.indst, {
+        monteringshoejde: b.montage, loftshoejde: b.montage, mf: BEREGNING.vedligehold
+      })
+    };
+    const poly = prøve.zoner[0].pts.map(p => [p[0] / 100, p[1] / 100]);
+    const lodret = Tre.planTal(prøve, poly, { hoejde: BEREGNING.beregningshoejde, metrik: 'lodret', celle: 0.8 });
+    const gulv = Tre.planTal(prøve, poly, { hoejde: 0, metrik: 'vandret', celle: 0.8 });
+    const wPrM2 = watt / b.areal;
+    return {
+      navn: b.navn, dato: b.dato, areal: b.areal, montage: b.montage,
+      antal: b.armaturer.reduce((a, x) => a + x[1], 0),
+      rapportLodret: b.lodret, mitLodret: lodret.snit, mitGulv: gulv.snit,
+      afvigelse: b.lodret > 0 ? (lodret.snit / b.lodret - 1) * 100 : 0,
+      rapportW: b.wPrM2, mitW: wPrM2,
+      rapportW100: b.wPr100lx, mitW100: lodret.snit > 0 ? wPrM2 / (lodret.snit / 100) : 0
+    };
+  });
+}
+
 /* Kontrolfanen: punkterne fra kravTjek samt kravene til lyskilder. */
 function visKrav(b) {
   const punkter = kravTjek(b);
-  $('#krav-kilde').textContent = `${KRAV.kilde}. Lux beregnes punkt for punkt på gulvet ud fra armaturernes placering og lysfordeling, med LLMF ${state.indst.mf} og refleksionstillæg ${state.indst.refleks}. Det er en direkte beregning uden fuld refleksionsmodel – ikke en DIALux-rapport.`;
+  $('#krav-kilde').textContent = `${KRAV.kilde}. Lux beregnes punkt for punkt på gulvet ud fra armaturernes placering og lysfordeling, med LLMF ${state.indst.mf} og refleksioner ${Math.round(state.indst.refleksLoft*100)}/${Math.round(state.indst.refleksVaeg*100)}/${Math.round(state.indst.refleksGulv*100)} %. Det er en direkte beregning uden fuld refleksionsmodel – ikke en DIALux-rapport.`;
   $('#kravliste').innerHTML = punkter.map(p => `
     <li class="${p.status}"><span class="prik ${p.status}"></span>
       <span><b>${p.emne}</b>${p.tekst}</span></li>`).join('');
@@ -1525,6 +1596,18 @@ function visKrav(b) {
     ['Spots', 'kun som accent: ' + KRAV.spotOmraader.join(', ')]
   ];
   $('#lyskildekrav').innerHTML = rækker.map(([a, v]) => `<li><span>${a}</span><span>${v}</span></li>`).join('');
+  const ref = referenceTjek();
+  const refEl = $('#referencer');
+  if (refEl) {
+    refEl.innerHTML = ref.map(r => `
+      <li class="${Math.abs(r.afvigelse) <= 10 ? 'ok' : 'advarsel'}">
+        <span class="prik ${Math.abs(r.afvigelse) <= 10 ? 'ok' : 'advarsel'}"></span>
+        <span><b>${r.navn} · ${r.dato}</b>
+        ${fmt(r.areal, 0)} m², ${r.antal} armaturer, montage ${fmt(r.montage, 1)} m.<br>
+        Rapport: ${fmt(r.rapportLodret)} lx lodret · ${fmt(r.rapportW, 2)} W/m² · ${fmt(r.rapportW100, 2)} W/m²/100lx<br>
+        Her: ${fmt(r.mitLodret, 0)} lx lodret (${r.afvigelse >= 0 ? '+' : ''}${fmt(r.afvigelse, 0)} %) · ${fmt(r.mitGulv, 0)} lx på gulvet · ${fmt(r.mitW, 2)} W/m² · ${fmt(r.mitW100, 2)} W/m²/100lx</span>
+      </li>`).join('');
+  }
   $('#dokumentation').innerHTML = KRAV.dokumentation
     .map(d => `<li><span>${d}</span><span>${/LUX/i.test(d) ? 'beregnes her' : 'fra datablad'}</span></li>`).join('');
 }
@@ -1799,7 +1882,7 @@ function opdater() {
    bagefter af den punktvise beregning. */
 function nødvendigLumen(areal, maalLux) {
   const i = state.indst;
-  return areal > 0 ? (maalLux * areal) / (0.85 * i.mf * (i.refleks || 1)) : 0;
+  return areal > 0 ? (maalLux * areal) / (0.85 * i.mf * 1.25) : 0;
 }
 
 function generer() {
@@ -1812,6 +1895,11 @@ function generer() {
   let antal = 0;
   for (const zone of zoner) {
     antal += state.indst.mode === 'track' ? genererSkinner(zone) : genererPaneler(zone);
+  }
+  // Zonerne dimensioneres én ad gangen, så de første ikke kender lyset fra de
+  // sidste. Anden runde retter antallet, nu hvor hele butikken er fyldt op.
+  if (state.indst.mode === 'track' && zoner.length > 1) {
+    for (const zone of zoner) antal += efterjuster(zone);
   }
   const b = opdater();
   toast(`Belysningsplan beregnet: ${antal} armaturer i ${zoner.length} zone${zoner.length > 1 ? 'r' : ''} – ${b.zonerOpfyldt} af ${b.zoner.length} opfylder lux-kravet`);
@@ -2037,6 +2125,39 @@ function genererSkinner(zone) {
   return antalPrimær + antalAccent;
 }
 
+/* Retter antallet af armaturer i en zone, når resten af butikken er på plads.
+   Skinnerne bliver liggende - kun armaturerne flyttes. */
+function efterjuster(zone) {
+  const i = state.indst;
+  const krav = zoneKrav(zone);
+  const skinner = state.skinner.filter(sk => sk.auto && sk.zoneId === zone.id);
+  if (!skinner.length) return 0;
+  const længder = skinner.map(sk => pxToM(Geom.polylineLength(sk.pts)));
+  const total = længder.reduce((a, b) => a + b, 0);
+  const maks = Math.floor(total / Math.max(0.3, i.minAfstand));
+  let antal = state.armaturer.filter(a => a.auto && a.zoneId === zone.id && a.type === i.primaer).length;
+  let ændring = 0;
+  for (let runde = 0; runde < 3; runde++) {
+    const målt = Tre.zoneSnit(state, zone.pts, 0.7, 'grund').snit;
+    if (målt >= krav * 0.99 && målt <= krav * 1.08) break;
+    const nyt = Math.max(1, Math.min(maks, Math.round(antal * (krav / Math.max(1, målt)))));
+    if (nyt === antal) break;
+    ændring += nyt - antal;
+    antal = nyt;
+    state.armaturer = state.armaturer.filter(a => !(a.auto && a.zoneId === zone.id));
+    const pr = fordelAntal(antal, længder);
+    skinner.forEach((sk, idx) => fordelPåSkinne(sk, i.primaer, pr[idx], 0, zone.id));
+    const accent = i.accent ? Math.round(antal * i.accentRatio) : 0;
+    const accentPr = fordelAntal(accent, længder);
+    skinner.forEach((sk, idx) => {
+      if (!accent || accentPr[idx] <= 0) return;
+      if (sk.overInventar) fordelIEnder(sk, i.accent, accentPr[idx], zone.id);
+      else fordelPåSkinne(sk, i.accent, accentPr[idx], 0.5, zone.id, true);
+    });
+  }
+  return ændring;
+}
+
 /* Fordeler et antal armaturer på rækkerne efter længde, uden at miste
    stykker til afrunding (største rest får det overskydende). */
 function fordelAntal(total, vægte) {
@@ -2170,7 +2291,7 @@ function eksporterCsv() {
   linjer.push(['Skinne i alt', fmt(b.skinne.laengde, 1) + ' m']);
   linjer.push(['Installeret effekt', fmt(b.watt, 0) + ' W', fmt(b.wattPrM2, 2) + ' W/m2']);
   linjer.push(['Lysstrøm', fmt(b.lumen, 0) + ' lm', fmt(b.lumenPrM2, 0) + ' lm/m2']);
-  linjer.push(['Beregningsforudsætning', `LLMF ${state.indst.mf} / refleks ${state.indst.refleks}`, 'punktberegning paa gulv']);
+  linjer.push(['Beregningsforudsætning', `LLMF ${state.indst.mf} / refleksioner ${Math.round(state.indst.refleksLoft*100)}-${Math.round(state.indst.refleksVaeg*100)}-${Math.round(state.indst.refleksGulv*100)} %`, 'punktberegning med interrefleksion']);
   linjer.push(['3-polede grupper', String(b.grupper)]);
   const inv = Inventar.stykliste(state.inventar, state.indst.fagbredde);
   if (inv.grupper.length) {
@@ -2287,7 +2408,7 @@ function udskriv() {
     <table><thead><tr><th style="text-align:left">Status</th><th style="text-align:left">Emne</th><th style="text-align:left">Bemærkning</th></tr></thead><tbody>${kravRækker}</tbody></table>
     <div class="noter">Areal i alt ${fmt(b.areal, 0)} kvm.
 Installeret effekt ${fmt(b.watt, 0)} W (${fmt(b.wattPrM2, 1)} W/m²) · lysstrøm ${fmt(b.lumenPrM2, 0)} lm/m².
-Lux er beregnet punkt for punkt på gulvet ud fra armaturernes placering med LLMF ${state.indst.mf} og refleksionstillæg ${state.indst.refleks}, og erstatter ikke lysberegning og måling i butikken. Lux måles på gulv (${KRAV.maalehoejde}) med ±${Math.round(KRAV.tolerance * 100)} % tolerance.
+Lux er beregnet punkt for punkt på gulvet ud fra armaturernes placering med LLMF ${state.indst.mf} og refleksioner ${Math.round(state.indst.refleksLoft*100)}/${Math.round(state.indst.refleksVaeg*100)}/${Math.round(state.indst.refleksGulv*100)} %, og erstatter ikke lysberegning og måling i butikken. Lux måles på gulv (${KRAV.maalehoejde}) med ±${Math.round(KRAV.tolerance * 100)} % tolerance.
 Der skal bruges ${b.grupper} stk. 3-pol grupper til belysningen.
 Fase 1 bruges til Bricks, maks. 12 stk. pr. fase. Fase 2 bruges til spot, bast lamper og wall washer maks. 30 stk. pr. fase. Fase 3 er til fast strøm (nødbelysning).
 Der udføres tilslutninger i alle S./start samt mulighed for tilslutning i alle H.S./hjørnesamlinger.</div>

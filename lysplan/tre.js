@@ -5,13 +5,87 @@
 
 const Tre = (() => {
 
-  /* Lysfordeling: I(θ) = I0 · cos^n(θ). n følger af spredningsvinklen,
-     og I0 skalerer, så den samlede lysstrøm passer med armaturets lumen. */
-  function fordeling(f) {
-    const grader = f.spredning || (f.symbol === 'spot' ? 36 : (f.symbol === 'bricks' ? 80 : 110));
+  /* Lysfordelingen ligger i en tabel slået op på cos(vinklen fra sigteretningen),
+     så der hverken bruges acos eller pow under beregningen.
+
+     - "symmetrisk" er den klassiske I(θ) = I0·cos^n(θ)
+     - "batwing" har sit maksimum ude i siden, som et skinnearmatur der skal
+       lyse på varerne i reolen frem for ned i gulvet
+     Tabellen normeres, så den samlede lysstrøm passer med armaturets lumen. */
+  const TABEL = 128;
+
+  function byggTabel(f) {
+    const grader = f.spredning || (f.symbol === 'spot' ? 36 : (f.symbol === 'bricks' ? 100 : 110));
     const halv = Math.max(5, Math.min(85, grader / 2)) * Math.PI / 180;
     const n = Math.log(0.5) / Math.log(Math.max(0.02, Math.cos(halv)));
-    return { n, i0: (f.lm * (n + 1)) / (2 * Math.PI) };
+    const batwing = f.fordeling === 'batwing';
+    const top = (f.batwingVinkel || 58) * Math.PI / 180;
+    const bredde = (f.batwingBredde || 26) * Math.PI / 180;
+    const vægt = f.batwingVaegt != null ? f.batwingVaegt : 1.6;
+
+    const form = new Float64Array(TABEL + 1);
+    for (let i = 0; i <= TABEL; i++) {
+      const u = i / TABEL;                       // u = cos(θ)
+      let v = Math.pow(u, n);
+      if (batwing) {
+        const θ = Math.acos(Math.min(1, u));
+        v += vægt * Math.exp(-Math.pow((θ - top) / bredde, 2)) * u;
+      }
+      form[i] = v;
+    }
+    // Φ = 2π ∫ I(u) du over u fra 0 til 1
+    let integral = 0;
+    for (let i = 0; i < TABEL; i++) integral += (form[i] + form[i + 1]) / 2 / TABEL;
+    const skala = f.lm / Math.max(1e-6, 2 * Math.PI * integral);
+    for (let i = 0; i <= TABEL; i++) form[i] *= skala;
+    return form;
+  }
+
+  /* Tabellerne caches pr. armaturtype, men nulstilles hvis kataloget rettes. */
+  const cache = new Map();
+  function armaturLys(type) {
+    const f = FIXTURES[type] || { lm: 1000 };
+    const nøgle = [type, f.lm, f.spredning, f.fordeling, f.batwingVaegt, f.batwingVinkel, f.batwingBredde].join('|');
+    let t = cache.get(nøgle);
+    if (!t) { t = byggTabel(f); cache.set(nøgle, t); }
+    return t;
+  }
+
+  /* Belysningsstyrke i et punkt på en flade med normalen n. */
+  function lux(p, normal, lamper, vedligehold) {
+    let sum = 0;
+    for (const l of lamper) {
+      const dx = p[0] - l.x, dy = p[1] - l.y, dz = p[2] - l.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 < 0.0025 || d2 > 900) continue;
+      const d = Math.sqrt(d2);
+      // vinklen måles fra armaturets sigteretning (nedad, eller drejet mod en reol)
+      const cosTheta = (dx * l.sx + dy * l.sy + dz * l.sz) / d;
+      if (cosTheta <= 0.004) continue;
+      const cosInd = -(dx * normal[0] + dy * normal[1] + dz * normal[2]) / d;
+      if (cosInd <= 0) continue;
+      const t = cosTheta * TABEL;
+      const i0 = t | 0;
+      const rest = t - i0;
+      const I = l.tabel[i0] + (l.tabel[Math.min(TABEL, i0 + 1)] - l.tabel[i0]) * rest;
+      sum += (I * cosInd) / d2;
+    }
+    return sum * vedligehold;
+  }
+
+  /* Armaturerne omsat til lyspunkter i meter. */
+  function lamper(state) {
+    const m = state.pxPerMeter || 100;
+    const h = state.indst.monteringshoejde || Math.max(2.2, (state.indst.loftshoejde || 3.2) - 0.35);
+    return state.armaturer.map(a => {
+      const f = FIXTURES[a.type];
+      const s = a.sigte || [0, 0, -1];
+      const sl = Math.hypot(s[0], s[1], s[2]) || 1;
+      return {
+        x: a.x / m, y: a.y / m, z: h, tabel: armaturLys(a.type), type: a.type, lm: f ? f.lm : 0,
+        vinkel: a.vinkel || 0, sx: s[0] / sl, sy: s[1] / sl, sz: s[2] / sl
+      };
+    });
   }
 
   /* Gulvet under et møbel måles ikke - det er hylder og sokkel, ikke gangareal. */
@@ -32,44 +106,97 @@ const Tre = (() => {
     return false;
   }
 
-  const cache = new Map();
-  function armaturLys(type) {
-    if (!cache.has(type)) cache.set(type, fordeling(FIXTURES[type] || { lm: 1000 }));
-    return cache.get(type);
-  }
-
-  /* Belysningsstyrke i et punkt på en flade med normalen n. */
-  function lux(p, normal, lamper, vedligehold) {
-    let sum = 0;
-    for (const l of lamper) {
-      const dx = p[0] - l.x, dy = p[1] - l.y, dz = p[2] - l.z;
-      const d2 = dx * dx + dy * dy + dz * dz;
-      if (d2 < 0.0025 || d2 > 900) continue;
-      const d = Math.sqrt(d2);
-      // vinklen måles fra armaturets sigteretning (nedad, eller drejet mod en reol)
-      const cosTheta = (dx * l.sx + dy * l.sy + dz * l.sz) / d;
-      if (cosTheta <= 0.01) continue;
-      const cosInd = -(dx * normal[0] + dy * normal[1] + dz * normal[2]) / d;
-      if (cosInd <= 0) continue;
-      sum += (l.i0 * Math.pow(cosTheta, l.n) * cosInd) / d2;
-    }
-    return sum * vedligehold;
-  }
-
-  /* Armaturerne omsat til lyspunkter i meter. */
-  function lamper(state) {
+  /* Det reflekterede lys. Rummets flader kaster lyset tilbage, og bidraget
+     regnes med den klassiske interrefleksionsformel:
+        E = Φ · MF · ρ / (A_flader · (1 − ρ))
+     hvor ρ er den arealvægtede middelrefleksion. SJOC's DIALux-rapporter
+     regner med loft 70 %, vægge 50 % og gulv 20 %. */
+  /* Rummets samlede flader. Interrefleksionen hører til rummet som helhed -
+     ikke til den enkelte zone - så alle zoner får det samme bidrag. */
+  function rumFlader(state) {
     const m = state.pxPerMeter || 100;
-    const h = state.indst.monteringshoejde || Math.max(2.2, (state.indst.loftshoejde || 3.2) - 0.35);
-    return state.armaturer.map(a => {
-      const f = FIXTURES[a.type];
-      const l = armaturLys(a.type);
-      const s = a.sigte || [0, 0, -1];
-      const sl = Math.hypot(s[0], s[1], s[2]) || 1;
-      return {
-        x: a.x / m, y: a.y / m, z: h, n: l.n, i0: l.i0, type: a.type, lm: f ? f.lm : 0,
-        vinkel: a.vinkel || 0, sx: s[0] / sl, sy: s[1] / sl, sz: s[2] / sl
-      };
-    });
+    const zoner = (state.zoner || []).filter(z => z.pts && z.pts.length > 2 && z.type !== 'ude');
+    if (!zoner.length) return null;
+    let areal = 0, x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const z of zoner) {
+      const poly = z.pts.map(p => [p[0] / m, p[1] / m]);
+      areal += Geom.polygonArea(poly);
+      for (const p of poly) {
+        x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]);
+        y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]);
+      }
+    }
+    // ydervæggene tilnærmes med omkredsen af det samlede areal
+    return { areal, omkreds: 2 * ((x1 - x0) + (y1 - y0)) };
+  }
+
+  function rumRefleks(state, lysListe) {
+    const rum = rumFlader(state);
+    if (!rum) return 0;
+    return reflekteret(state, rum.areal, rum.omkreds, lysListe || lamper(state));
+  }
+
+  function reflekteret(state, arealM2, omkredsM, lys) {
+    const i = state.indst || {};
+    const r = { loft: i.refleksLoft || 0.7, vaeg: i.refleksVaeg || 0.5, gulv: i.refleksGulv || 0.2 };
+    const h = i.loftshoejde || 3.2;
+    const mf = i.mf || 0.8;
+    if (!(arealM2 > 0)) return 0;
+    const vægareal = Math.max(1, omkredsM * h);
+    const flader = arealM2 * 2 + vægareal;
+    const ρ = (r.loft * arealM2 + r.gulv * arealM2 + r.vaeg * vægareal) / flader;
+    const flux = lys.reduce((a, l) => a + (l.lm || 0), 0) * mf;
+    return (flux * ρ) / (flader * Math.max(0.05, 1 - ρ));
+  }
+
+  function omkreds(poly) {
+    let l = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      l += Math.hypot(b[0] - a[0], b[1] - a[1]);
+    }
+    return l;
+  }
+
+  /* Lodret belysningsstyrke, adaptiv: den retning der giver mest lys,
+     som DIALux regner den i salgsområder. */
+  function lodretAdaptiv(p, lys, mf) {
+    let maks = 0;
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4;
+      maks = Math.max(maks, lux(p, [Math.cos(a), Math.sin(a), 0], lys, mf));
+    }
+    return maks;
+  }
+
+  /* Måltal for en flade, som lysberegningerne opgiver dem:
+     gennemsnit, mindste, største, Uo = Emin/Ē og g2 = Emin/Emaks. */
+  function planTal(state, polyM, valg) {
+    const lys = lamper(state);
+    const mf = (state.indst && state.indst.mf) || 0.8;
+    const højde = valg.hoejde != null ? valg.hoejde : 0.8;
+    const celle = valg.celle || 0.5;
+    const xs = polyM.map(p => p[0]), ys = polyM.map(p => p[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const felter = valg.medMøbler === false ? [] : inventarFelter(state);
+    const indirekte = valg.udenRefleks ? 0 : rumRefleks(state);
+    let sum = 0, n = 0, min = Infinity, maks = 0;
+    for (let y = y0 + celle / 2; y < y1; y += celle) {
+      for (let x = x0 + celle / 2; x < x1; x += celle) {
+        if (!Geom.pointInPolygon([x, y], polyM)) continue;
+        if (underMøbel([x, y], felter)) continue;
+        const p = [x, y, højde];
+        // det reflekterede lys er nogenlunde ens uanset fladens retning,
+        // fordi rummets flader lyser fra alle sider
+        const e = (valg.metrik === 'lodret' ? lodretAdaptiv(p, lys, mf) : lux(p, [0, 0, 1], lys, mf)) + indirekte;
+        sum += e; n++;
+        if (e < min) min = e;
+        if (e > maks) maks = e;
+      }
+    }
+    if (!n) return { snit: 0, min: 0, maks: 0, uo: 0, g2: 0, celler: 0, indirekte };
+    const snit = sum / n;
+    return { snit, min, maks, uo: snit > 0 ? min / snit : 0, g2: maks > 0 ? min / maks : 0, celler: n, indirekte };
   }
 
   /* Gulvnet med beregnet belysningsstyrke. Samme beregning bruges til
@@ -106,8 +233,7 @@ const Tre = (() => {
       }
     }
     // reflekteret lys fra loft, vægge og varer lægges til som en jævn baggrund
-    const snitDirekte = gulv.length ? gulv.reduce((a, g) => a + g.direkte, 0) / gulv.length : 0;
-    const omgivende = snitDirekte * Math.max(0, (state.indst.refleks || 1) - 1);
+    const omgivende = rumRefleks(state);
     for (const g of gulv) g.lux = g.direkte + omgivende;
     return { ramme, gulv, lys, celle, vedligehold, omgivende };
   }
@@ -180,10 +306,12 @@ const Tre = (() => {
   /* Hurtig gennemsnitsberegning for én zone - bruges når planen dimensioneres. */
   function zoneSnit(state, pts, celle, kunRolle) {
     const m = state.pxPerMeter || 100;
-    const k = (state.indst.mf || 0.8) * (state.indst.refleks || 1);
+    const k = state.indst.mf || 0.8;
     let lys = lamper(state);
     if (kunRolle) lys = lys.filter(l => (FIXTURES[l.type] || {}).rolle === kunRolle);
     const poly = pts.map(p => [p[0] / m, p[1] / m]);
+    // når der kun regnes på grundbelysningen, tæller kun dens eget reflekterede lys med
+    const indirekte = rumRefleks(state, lys);
     const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]);
     const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
     celle = celle || 0.6;
@@ -193,7 +321,7 @@ const Tre = (() => {
       for (let x = x0 + celle / 2; x < x1; x += celle) {
         if (!Geom.pointInPolygon([x, y], poly)) continue;
         if (underMøbel([x, y], felter)) continue;
-        const e = lux([x, y, 0], [0, 0, 1], lys, k);
+        const e = lux([x, y, 0], [0, 0, 1], lys, k) + indirekte;
         sum += e; n++; min = Math.min(min, e);
       }
     }
@@ -391,5 +519,5 @@ const Tre = (() => {
     return { snit, min, maks, jaevnhed: snit > 0 ? min / snit : 0 };
   }
 
-  return { byggScene, gulvNet, zoneTal, zoneSnit, tegn, gulvTal, lux, lamper, luxFarve };
+  return { byggScene, gulvNet, zoneTal, zoneSnit, planTal, lodretAdaptiv, reflekteret, rumRefleks, tegn, gulvTal, lux, lamper, luxFarve };
 })();
