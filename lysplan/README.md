@@ -4,8 +4,35 @@ Værktøj til at lægge bygningstegninger ind, tegne butiksindretningen og regne
 belysningsplanen ud – stykliste, nøgletal og gruppeopdeling, i samme opbygning
 som SJOC-lysplanerne til Coop-butikkerne.
 
-Åbn `lysplan/index.html` i en browser. Ingen installation, ingen server:
+Ingen installation, ingen server, ingen konto: alt kører i browseren, og
 tegninger og projekter forlader aldrig maskinen.
+
+## Sådan kører du det
+
+**På din egen pc.** Hent mappen ned (grøn `Code`-knap → `Download ZIP`, eller
+`git clone`), pak ud, og:
+
+* **Windows:** dobbeltklik `lysplan\start-lysplan.cmd`
+* **macOS/Linux:** kør `lysplan/start-lysplan.sh` i en terminal
+
+Scriptet starter en lille lokal webserver og åbner browseren på
+`http://localhost:8123/`. Luk vinduet igen, når du er færdig. Har maskinen
+hverken Python eller Node, åbner scriptet i stedet `index.html` direkte – så
+virker alt undtagen DWG og PDF.
+
+**Helt uden internet.** DWG læses med LibreDWG og PDF med pdf.js, som normalt
+hentes fra nettet første gang. Kør `hent-motorer.cmd` (Windows) eller
+`hent-motorer.sh` én gang med netforbindelse, så lægger de sig i `vendor/`, og
+derefter virker både DWG og PDF offline. Mappen `vendor/` er holdt ude af
+repositoriet – LibreDWG er GPL-3 og skal ikke deles videre herfra.
+
+**Som en webside.** Repositoriet har en GitHub Pages-opsætning
+(`.github/workflows/pages.yml`). Slå den til én gang under **Settings → Pages →
+Source: GitHub Actions**, så ligger værktøjet på
+`https://<bruger>.github.io/<repo>/lysplan/` og opdateres ved hvert push.
+Er repositoriet privat, kræver GitHub Pages en betalt plan; så er en intern
+webserver eller den lokale kørsel vejen frem. Værktøjet er rene statiske filer,
+så det kan også bare lægges i en mappe på et intranet eller et fildrev.
 
 ## Arbejdsgang
 
@@ -217,6 +244,8 @@ lager/bagbutik. De er ment som et startpunkt, ikke som en norm.
 | `cad.js` | DXF-læser, DWG via LibreDWG, fladgørelse til streger og tekst |
 | `inventar.js` | Genkendelse af reoler, køl og frost samt inventaropgørelse |
 | `moebler.js` | Møbelbibliotek med detailmål og opbygning af møblerne i 3D |
+| `start-lysplan.cmd/.sh` | Starter en lokal webserver og åbner værktøjet |
+| `hent-motorer.cmd/.sh` | Henter DWG- og PDF-motoren ned til offline brug |
 | `tre.js` | Lysberegning punkt for punkt og 3D-billedet |
 | `geom.js` | Geometri: areal, skæringer, projektion, rotation |
 | `app.js` | Tegneflade, værktøjer, beregning, stykliste, eksport |

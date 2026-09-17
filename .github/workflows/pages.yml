@@ -1,0 +1,36 @@
+# Udgiver værktøjet som en webside på GitHub Pages.
+# Slå det til én gang under Settings → Pages → Source: "GitHub Actions".
+# Siden ligger derefter på https://<bruger>.github.io/<repo>/lysplan/
+name: Udgiv på GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - claude/building-layout-lighting-plans-8nhsq5
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  udgiv:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.udrulning.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - id: udrulning
+        uses: actions/deploy-pages@v4

@@ -203,22 +203,43 @@ function tilføjLag(navn, src) {
   });
 }
 
+/* pdf.js hentes fra en lokal kopi i vendor/, hvis den findes, ellers fra nettet. */
+const PDF_KILDER = [
+  { js: 'vendor/pdfjs-dist/legacy/build/pdf.min.js', worker: 'vendor/pdfjs-dist/legacy/build/pdf.worker.min.js' },
+  { js: 'vendor/pdfjs-dist/build/pdf.min.js', worker: 'vendor/pdfjs-dist/build/pdf.worker.min.js' },
+  {
+    js: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+    worker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+  }
+];
+
 let pdfKlar = null;
 function hentPdfBibliotek() {
   if (pdfKlar) return pdfKlar;
-  pdfKlar = new Promise((ok, fejl) => {
-    if (window.pdfjsLib) return ok(window.pdfjsLib);
+  pdfKlar = (async () => {
+    if (window.pdfjsLib) return window.pdfjsLib;
+    for (const kilde of PDF_KILDER) {
+      try {
+        await indlæsScript(kilde.js);
+        if (window.pdfjsLib) {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = kilde.worker;
+          return window.pdfjsLib;
+        }
+      } catch (e) { /* prøv næste kilde */ }
+    }
+    throw new Error('pdf.js kunne ikke hentes');
+  })();
+  return pdfKlar;
+}
+
+function indlæsScript(url) {
+  return new Promise((ok, fejl) => {
     const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    s.onload = () => {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      ok(window.pdfjsLib);
-    };
-    s.onerror = () => fejl(new Error('pdf.js kunne ikke hentes'));
+    s.src = url;
+    s.onload = ok;
+    s.onerror = () => fejl(new Error('kunne ikke hente ' + url));
     document.head.appendChild(s);
   });
-  return pdfKlar;
 }
 
 async function importerPdf(fil, navn) {

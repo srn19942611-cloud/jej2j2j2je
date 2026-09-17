@@ -506,6 +506,7 @@ const CAD = (() => {
 
   /* ---- DWG via LibreDWG (WebAssembly, hentes fra nettet) ---- */
   const DWG_KILDER = [
+    'vendor/libredwg-web/',          // lokal kopi, hvis hent-motorer er kørt
     'https://cdn.jsdelivr.net/npm/@mlightcad/libredwg-web@0.7.10/',
     'https://unpkg.com/@mlightcad/libredwg-web@0.7.10/'
   ];
@@ -515,8 +516,10 @@ const CAD = (() => {
     if (motor) return motor;
     const kilder = (egenKilde ? [egenKilde.endsWith('/') ? egenKilde : egenKilde + '/'] : []).concat(DWG_KILDER);
     let sidsteFejl = null;
-    for (const base of kilder) {
+    for (const kilde of kilder) {
       try {
+        // relative stier skal gøres absolutte, ellers læses de som modulnavne
+        const base = new URL(kilde, document.baseURI).href;
         const mod = await import(/* @vite-ignore */ base + 'dist/libredwg-web.js');
         const lib = await mod.LibreDwg.create(base + 'wasm/');
         motor = { lib, typer: mod.Dwg_File_Type };
