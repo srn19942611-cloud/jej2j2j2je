@@ -91,11 +91,18 @@ async function importerFiler(filer) {
     const navn = fil.name || 'tegning';
     try {
       if (/\.pdf$/i.test(navn) || fil.type === 'application/pdf') {
+        if (iSandkasse()) {
+          throw new Error('PDF kan ikke læses i webudgaven. Gem tegningen som PNG eller DXF, eller brug den lokale udgave.');
+        }
         await importerPdf(fil, navn);
       } else if (/\.dxf$/i.test(navn)) {
         toast('Læser DXF …');
         await importerCad(navn, CAD.parseDxf(await fil.text()));
       } else if (/\.dwg$/i.test(navn)) {
+        if (iSandkasse()) {
+          throw new Error('DWG kan ikke læses i webudgaven. Sandkassen omkring siden blokerer for at hente DWG-motoren. ' +
+            'Gem tegningen som DXF i CAD-programmet – den virker her – eller brug den lokale udgave (start-lysplan).');
+        }
         const mb = (fil.size / 1048576).toFixed(1);
         toast(`${navn} (${mb} MB): henter DWG-motoren … første gang tager det et øjeblik`, 'arbejder');
         const data = await fil.arrayBuffer();
