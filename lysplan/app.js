@@ -56,7 +56,8 @@ function toast(besked, slags = 'info') {
   el.dataset.slags = slags;
   el.classList.add('vis');
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => el.classList.remove('vis'), 3200);
+  // "arbejder" bliver stående, til næste besked afløser den
+  if (slags !== 'arbejder') toast._t = setTimeout(() => el.classList.remove('vis'), slags === 'fejl' ? 9000 : 3600);
 }
 
 /* ---------- historik (fortryd) ---------- */
@@ -95,8 +96,11 @@ async function importerFiler(filer) {
         toast('Læser DXF …');
         await importerCad(navn, CAD.parseDxf(await fil.text()));
       } else if (/\.dwg$/i.test(navn)) {
-        toast('Henter DWG-motor og læser tegningen …');
-        await importerCad(navn, await CAD.læsDwg(await fil.arrayBuffer(), state.indst.dwgKilde));
+        const mb = (fil.size / 1048576).toFixed(1);
+        toast(`${navn} (${mb} MB): henter DWG-motoren … første gang tager det et øjeblik`, 'arbejder');
+        const data = await fil.arrayBuffer();
+        const db = await CAD.læsDwg(data, state.indst.dwgKilde, trin => toast(`${navn}: ${trin}`, 'arbejder'));
+        await importerCad(navn, db);
       } else if (fil.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(navn)) {
         await tilføjLag(navn, await læsSomDataUrl(fil));
       } else {
@@ -104,17 +108,38 @@ async function importerFiler(filer) {
       }
     } catch (e) {
       console.error(e);
-      toast(navn + ': ' + (e && e.message ? e.message : 'kunne ikke læses'), 'fejl');
+      toast(navn + ': ' + forklarFejl(e), 'fejl');
     }
   }
   opdater();
 }
 
+/* Webudgaven kører i en sandkasse, der blokerer eksterne hentninger.
+   Så kan DWG- og PDF-motoren ikke hentes, og det skal siges tydeligt. */
+function iSandkasse() {
+  return /claudeusercontent|artifact/.test(location.hostname + location.pathname) ||
+    typeof window.claude === 'object';
+}
+
+function forklarFejl(e) {
+  const besked = e && e.message ? e.message : 'kunne ikke læses';
+  if (iSandkasse() && /motor|hentes|pdf\.js/i.test(besked)) {
+    return 'DWG og PDF kan ikke læses i webudgaven – sandkassen blokerer for at hente motoren. ' +
+      'Brug den lokale udgave (start-lysplan), eller gem tegningen som DXF.';
+  }
+  return besked;
+}
+
 /* CAD-tegning (DXF/DWG) lægges ind som vektorlag i tegningens egne mål. */
 async function importerCad(navn, db) {
   const flad = CAD.fladgør(db);
+  flad.diagnose = {
+    entiteter: flad.antalEntiteter, blokke: flad.blokke, springOver: flad.springOver,
+    xref: db.xref || 0, kilde: db.kilde || 'modelrum', enhed: flad.meterPerEnhed, gættet: flad.gættetEnhed
+  };
   if (!flad.streger.length && !flad.tekster.length) {
-    toast(navn + ': tegningen indeholder ingen linjer der kan vises', 'fejl');
+    toast(navn + ': ' + tomTegningBesked(flad, db), 'fejl');
+    console.warn('Lysplan – tegningen kunne ikke tegnes:', flad.diagnose);
     return null;
   }
   const nyMaalestok = !state.pxPerMeter;
@@ -135,6 +160,7 @@ async function importerCad(navn, db) {
   }
   const lag = {
     id: nyId(), navn, slags: 'cad', synlig: true, opacitet: 1, x: 0, y: 0, skala: 1,
+    diagnose: flad.diagnose,
     bredde: (r.x1 - r.x0) * k, højde: (r.y1 - r.y0) * k,
     tegning: { streger: flad.streger, tekster: flad.tekster, lagInfo: flad.lagInfo, meterPerEnhed: flad.meterPerEnhed },
     egneFarver: false,
@@ -154,6 +180,19 @@ async function importerCad(navn, db) {
   // møblerne findes med det samme, så lysplanen kan tage højde for dem
   setTimeout(() => findInventar(true), 0);
   return lag;
+}
+
+/* Forklaring når en tegning kommer ind uden noget at vise. */
+function tomTegningBesked(flad, db) {
+  const sprunget = Object.entries(flad.springOver || {}).sort((a, b) => b[1] - a[1]);
+  if (db.xref) {
+    return `tegningen henviser til ${db.xref} ekstern${db.xref > 1 ? 'e' : ''} fil${db.xref > 1 ? 'er' : ''} (xref). Bind dem ind i CAD-programmet (BIND/INSERT) eller gem som DXF.`;
+  }
+  if (sprunget.length) {
+    const top = sprunget.slice(0, 3).map(([t, n]) => `${n} ${t}`).join(', ');
+    return `ingen af de ${flad.antalEntiteter} objekter kunne tegnes (${top}). Objekttyper fra f.eks. AutoCAD Architecture skal eksploderes eller gemmes som DXF.`;
+  }
+  return 'tegningen indeholder ingen linjer der kan vises – ligger geometrien i et xref eller i papirrummet?';
 }
 
 /* Linjerne samles i én Path2D pr. CAD-lag og farve, så store tegninger
@@ -1663,7 +1702,10 @@ function visLag() {
     el.querySelector('[data-h="fjern"]').onclick = () => {
       state.lag.splice(idx, 1); visLag(); tegn();
     };
-    if (lag.slags === 'cad') el.appendChild(cadLagPanel(lag));
+    if (lag.slags === 'cad') {
+      el.appendChild(cadLagPanel(lag));
+      if (lag.diagnose) el.appendChild(diagnosePanel(lag));
+    }
     liste.appendChild(el);
   });
 }
@@ -1878,6 +1920,45 @@ function visReferenceNote() {
     ? `Viser referencen fra kl. ${r.navn}: ${fmt(r.tal.snit, 0)} lux og ${fmt(r.watt, 0)} W.`
     : `Mod referencen kl. ${r.navn}: ${fmt(nu.snit - r.tal.snit, 0)} lux, ${fmt(watt - r.watt, 0)} W og ${fmt(state.armaturer.length - r.antal, 0)} armaturer.`;
   $('#knap-vis-reference').textContent = state.visReference ? 'Vis den nye plan' : 'Vis reference';
+}
+
+/* Hvad tegningen indeholdt, og hvad der ikke kunne tegnes. Teksten kan
+   kopieres, så den kan sendes videre når noget ikke ser rigtigt ud. */
+function diagnoseTekst(lag) {
+  const d = lag.diagnose || {};
+  const sprunget = Object.entries(d.springOver || {}).sort((a, b) => b[1] - a[1]);
+  const linjer = [
+    `Fil: ${lag.navn}`,
+    `Objekter i tegningen: ${fmt(d.entiteter || 0)} (${d.kilde || 'modelrum'})`,
+    `Blokke: ${fmt(d.blokke || 0)}${d.xref ? ` · eksterne referencer (xref): ${d.xref}` : ''}`,
+    `Tegnet: ${fmt(lag.tegning.streger.length)} streger, ${fmt(lag.tegning.tekster.length)} tekster, ${Object.keys(lag.cadLag).length} lag`,
+    `Enhed: ${d.enhed === 0.001 ? 'millimeter' : d.enhed === 1 ? 'meter' : d.enhed + ' m pr. enhed'}${d.gættet ? ' (gættet – stod ikke i filen)' : ''}`,
+    `Størrelse: ${fmt(lag.bredde / (state.pxPerMeter || 100), 1)} × ${fmt(lag.højde / (state.pxPerMeter || 100), 1)} m`
+  ];
+  if (sprunget.length) {
+    linjer.push('Sprunget over: ' + sprunget.map(([t, n]) => `${n} ${t}`).join(', '));
+  }
+  return linjer.join('\n');
+}
+
+function diagnosePanel(lag) {
+  const boks = document.createElement('details');
+  boks.className = 'diagnose';
+  const d = lag.diagnose || {};
+  const sprunget = Object.entries(d.springOver || {}).sort((a, b) => b[1] - a[1]);
+  const advarsel = d.xref || (sprunget.length && sprunget.reduce((a, x) => a + x[1], 0) > lag.tegning.streger.length);
+  boks.innerHTML = `
+    <summary>${advarsel ? '⚠ ' : ''}Tegningsinfo</summary>
+    <pre class="diagnose-tekst">${diagnoseTekst(lag).replace(/</g, '&lt;')}</pre>
+    ${d.xref ? '<p class="hjælp">Tegningen henviser til eksterne filer. Bind dem ind i CAD-programmet (BIND) eller gem som DXF, ellers mangler geometrien.</p>' : ''}
+    ${sprunget.length ? '<p class="hjælp">Objekter som HATCH, proxy-objekter fra AutoCAD Architecture og 3D-volumener tegnes ikke. Betyder de noget for planen, skal de eksploderes eller gemmes som DXF.</p>' : ''}
+    <div class="rk lille"><button data-h="kopier">Kopiér info</button></div>`;
+  boks.querySelector('[data-h="kopier"]').onclick = async () => {
+    const tekst = diagnoseTekst(lag);
+    try { await navigator.clipboard.writeText(tekst); toast('Tegningsinfo kopieret'); }
+    catch (e) { console.log(tekst); toast('Kunne ikke kopiere – teksten står i browserens konsol', 'fejl'); }
+  };
+  return boks;
 }
 
 function opdater() {

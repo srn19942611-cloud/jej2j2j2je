@@ -172,6 +172,7 @@ const CAD = (() => {
         (g[k] = g[k] || []).push(v);
         q++;
       }
+      if (type === 'HATCH') g.__par = par.slice(p + 1, q);
       const e = byggEntitet(type, g);
       if (type === 'POLYLINE') {
         polylinje = e; ud.push(e);
@@ -235,6 +236,11 @@ const CAD = (() => {
         columnSpacing: t1(g, 44), rowSpacing: t1(g, 45)
       };
       case 'DIMENSION': return { ...fælles, name: s1(g, 2) };
+      case 'HATCH': return { ...fælles, boundaryPaths: læsHatchStier(g.__par || []), fraDxf: true };
+      case 'MLINE': {
+        const xs = g[11] || [], ys = g[21] || [];
+        return { ...fælles, vertices: xs.map((x, k) => ({ vertex: { x: +x, y: +(ys[k] || 0) } })), flags: t1(g, 71) };
+      }
       case 'SPLINE': {
         const cx = g[10] || [], cy = g[20] || [], fx = g[11] || [], fy = g[21] || [];
         return {
@@ -250,6 +256,45 @@ const CAD = (() => {
       }
       default: return null;   // HATCH, MLINE, 3DSOLID m.fl. springes over
     }
+  }
+
+  /* Grænsekurverne i en HATCH står som en sekvens af grupper, så de skal
+     læses i rækkefølge - ikke som opsamlede lister. */
+  function læsHatchStier(par) {
+    const stier = [];
+    let sti = null, kant = null;
+    const lukKant = () => { if (sti && kant) { sti.edges.push(kant); kant = null; } };
+    for (const [kode, værdi] of par) {
+      const v = +værdi;
+      if (kode === 92) {
+        lukKant();
+        sti = { boundaryPathTypeFlag: v, polylinje: (v & 2) === 2, vertices: [], edges: [], isClosed: false };
+        stier.push(sti);
+      } else if (!sti) continue;
+      else if (sti.polylinje) {
+        if (kode === 73) sti.isClosed = v === 1;
+        else if (kode === 10) sti.vertices.push({ x: v, y: 0, bulge: 0 });
+        else if (kode === 20 && sti.vertices.length) sti.vertices[sti.vertices.length - 1].y = v;
+        else if (kode === 42 && sti.vertices.length) sti.vertices[sti.vertices.length - 1].bulge = v;
+      } else {
+        if (kode === 72) { lukKant(); kant = { type: v }; }
+        else if (!kant) continue;
+        else if (kant.type === 1) {
+          if (kode === 10) kant.start = { x: v, y: 0 };
+          else if (kode === 20 && kant.start) kant.start.y = v;
+          else if (kode === 11) kant.end = { x: v, y: 0 };
+          else if (kode === 21 && kant.end) kant.end.y = v;
+        } else if (kant.type === 2) {
+          if (kode === 10) kant.center = { x: v, y: 0 };
+          else if (kode === 20 && kant.center) kant.center.y = v;
+          else if (kode === 40) kant.radius = v;
+          else if (kode === 50) kant.startAngle = (v * Math.PI) / 180;
+          else if (kode === 51) kant.endAngle = (v * Math.PI) / 180;
+        }
+      }
+    }
+    lukKant();
+    return stier.filter(s => s.vertices.length > 1 || s.edges.length);
   }
 
   /* ---- matrix: (x,y) -> (a*x + c*y + e, b*x + d*y + f) ---- */
@@ -337,6 +382,7 @@ const CAD = (() => {
       lagInfo[l.name] = { navn: l.name, aci: l.colorIndex == null ? 7 : l.colorIndex, slukket: !!l.off || !!l.frozen, synlig: !(l.off || l.frozen) };
     }
     const streger = [], tekster = [];
+    const springOver = {};
     const blokke = db.blocks || {};
 
     const tilføjStreg = (e, p, lukket) => {
@@ -439,6 +485,65 @@ const CAD = (() => {
             });
             break;
           }
+          case 'HATCH': {
+            // selve skraveringen tegnes ikke, men grænsekurven viser væg, felt eller møbel
+            for (const sti of e.boundaryPaths || []) {
+              const q = [];
+              const knuder = sti.vertices || [];
+              if (knuder.length > 1) {
+                for (let k = 0; k < knuder.length; k++) {
+                  const a = knuder[k];
+                  const [x, y] = anvend(m, a.x, a.y);
+                  q.push(x, y);
+                  const næste = knuder[k + 1] || (sti.isClosed ? knuder[0] : null);
+                  if (næste && a.bulge) bulgeTilPunkter(a.x, a.y, næste.x, næste.y, a.bulge, q, m);
+                }
+                if (sti.isClosed) { const [x, y] = anvend(m, knuder[0].x, knuder[0].y); q.push(x, y); }
+              } else {
+                for (const kant of sti.edges || []) {
+                  if (kant.type === 1 && kant.start && kant.end) {
+                    const a = anvend(m, kant.start.x, kant.start.y);
+                    const b = anvend(m, kant.end.x, kant.end.y);
+                    if (!q.length) q.push(a[0], a[1]);
+                    q.push(b[0], b[1]);
+                  } else if (kant.type === 2 && kant.center) {
+                    bueTilPunkter(kant.center.x, kant.center.y, kant.radius || 0,
+                      kant.startAngle || 0, kant.endAngle == null ? Math.PI * 2 : kant.endAngle, q, m);
+                  }
+                }
+              }
+              tilføjStreg(e, q, true);
+            }
+            break;
+          }
+          case 'MLINE': {
+            // dobbeltlinjer, typisk vægge - midterlinjen er nok til en lysplan
+            for (const v of e.vertices || []) {
+              const q = v.vertex || v;
+              if (!q) continue;
+              const [x, y] = anvend(m, q.x, q.y);
+              p.push(x, y);
+            }
+            tilføjStreg(e, p, (e.flags & 2) === 2);
+            break;
+          }
+          case 'MULTILEADER': {
+            const q = e.contentBasePosition || e.textAnchor || e.blockContent;
+            const tekst = e.textContent || (e.blockAttributes || []).map(a => a.text).filter(Boolean).join(' ');
+            if (!q || !tekst) break;
+            const [x, y] = anvend(m, q.x, q.y);
+            const skala = Math.hypot(m[0], m[1]) || 1;
+            const lag = e.layer || '0';
+            if (!lagInfo[lag]) lagInfo[lag] = { navn: lag, aci: 7, slukket: false, synlig: true };
+            const aci = (e.colorIndex == null || e.colorIndex === 256) ? lagInfo[lag].aci : (e.colorIndex === 0 ? 7 : e.colorIndex);
+            tekster.push({
+              lag, aci, x, y,
+              h: (e.textHeight || 2.5) * (e.contentScale || 1) * skala,
+              v: (e.textRotation || 0) + Math.atan2(m[1], m[0]),
+              t: renTekst(tekst)
+            });
+            break;
+          }
           case 'INSERT': {
             const blok = blokke[e.name];
             if (!blok) break;
@@ -461,7 +566,10 @@ const CAD = (() => {
             if (blok) gåEntiteter(blok.entities, m, dybde + 1);
             break;
           }
-          default: break;
+          default:
+            // HATCH, proxy-objekter fra AutoCAD Architecture m.fl. kan ikke tegnes
+            springOver[e.type] = (springOver[e.type] || 0) + 1;
+            break;
         }
       }
     }
@@ -476,7 +584,12 @@ const CAD = (() => {
       meterPerEnhed = størst > 400 ? 0.001 : 1;   // store tal betyder næsten altid millimeter
       ramme.gættetEnhed = true;
     }
-    return { streger, tekster, lagInfo, ramme, meterPerEnhed, gættetEnhed: !!ramme.gættetEnhed };
+    return {
+      streger, tekster, lagInfo, ramme, meterPerEnhed,
+      gættetEnhed: !!ramme.gættetEnhed, springOver,
+      antalEntiteter: (db.entities || []).length,
+      blokke: Object.keys(blokke).length
+    };
   }
 
   function renTekst(t) {
@@ -512,28 +625,46 @@ const CAD = (() => {
   ];
   let motor = null;
 
-  async function hentMotor(egenKilde) {
+  const forsøg = [];          // hvad der er prøvet, så fejl kan forklares
+
+  async function hentMotor(egenKilde, status) {
     if (motor) return motor;
     const kilder = (egenKilde ? [egenKilde.endsWith('/') ? egenKilde : egenKilde + '/'] : []).concat(DWG_KILDER);
-    let sidsteFejl = null;
+    forsøg.length = 0;
     for (const kilde of kilder) {
+      const lokal = !/^https?:/i.test(kilde);
       try {
+        if (status) status(lokal ? `leder efter motoren i ${kilde}` : `henter motoren fra ${new URL(kilde).hostname} (ca. 10 MB)`);
         // relative stier skal gøres absolutte, ellers læses de som modulnavne
         const base = new URL(kilde, document.baseURI).href;
         const mod = await import(/* @vite-ignore */ base + 'dist/libredwg-web.js');
         const lib = await mod.LibreDwg.create(base + 'wasm/');
-        motor = { lib, typer: mod.Dwg_File_Type };
+        motor = { lib, typer: mod.Dwg_File_Type, kilde: base };
         return motor;
-      } catch (e) { sidsteFejl = e; }
+      } catch (e) {
+        forsøg.push(kilde + ': ' + (e && e.message ? e.message.slice(0, 80) : 'ukendt fejl'));
+      }
     }
-    console.error(sidsteFejl);
-    throw new Error('DWG-motoren kunne ikke hentes. Den kræver internetforbindelse første gang – ellers gem tegningen som DXF i CAD-programmet.');
+    console.error('DWG-motoren kunne ikke hentes:\n' + forsøg.join('\n'));
+    const påNettet = kilder.some(k => /^https?:/i.test(k));
+    throw new Error(
+      'DWG-motoren kunne ikke hentes' +
+      (påNettet ? '. Netværket blokerer måske cdn.jsdelivr.net og unpkg.com – kør hent-motorer.cmd/.sh én gang, eller gem tegningen som DXF.' :
+        '. Kør hent-motorer.cmd/.sh, eller gem tegningen som DXF.') +
+      ' Prøvet: ' + forsøg.join(' | '));
   }
 
-  async function læsDwg(buffer, egenKilde) {
-    const { lib, typer } = await hentMotor(egenKilde);
-    const dwg = lib.dwg_read_data(buffer, typer.DWG);
-    if (!dwg) throw new Error('Filen kunne ikke læses som DWG');
+  async function læsDwg(buffer, egenKilde, status) {
+    const { lib, typer } = await hentMotor(egenKilde, status);
+    if (status) status('læser tegningen …');
+    let dwg;
+    try {
+      dwg = lib.dwg_read_data(buffer, typer.DWG);
+    } catch (e) {
+      throw new Error('Filen kunne ikke læses som DWG (' + (e && e.message ? e.message.slice(0, 120) : 'ukendt fejl') + '). Er det en rigtig DWG, eller er den gemt i et meget nyt format?');
+    }
+    if (!dwg) throw new Error('Filen kunne ikke læses som DWG. Prøv at gemme den som DXF eller i et ældre DWG-format.');
+    if (status) status('omsætter geometrien …');
     const rå = lib.convert(dwg);
     try { lib.dwg_free(dwg); } catch (e) { /* hukommelsen frigives af motoren selv */ }
     return normaliser(rå);
@@ -543,16 +674,29 @@ const CAD = (() => {
   function normaliser(rå) {
     const blocks = {};
     const poster = (rå.tables && rå.tables.BLOCK_RECORD && rå.tables.BLOCK_RECORD.entries) || [];
+    let xref = 0;
     for (const b of poster) {
-      if (b && b.name) blocks[b.name] = { name: b.name, basePoint: b.basePoint || { x: 0, y: 0 }, entities: b.entities || [] };
+      if (!b || !b.name) continue;
+      if ((b.flags & 4) || (b.flags & 8)) xref++;     // eksterne referencer
+      blocks[b.name] = { name: b.name, basePoint: b.basePoint || { x: 0, y: 0 }, entities: b.entities || [] };
     }
     let entities = rå.entities || [];
+    let kilde = 'modelrum';
     if (!entities.length) {
       const model = poster.find(b => /^\*model_space$/i.test(b.name || ''));
-      if (model) entities = model.entities || [];
+      if (model && model.entities && model.entities.length) { entities = model.entities; kilde = 'modelrum (blok)'; }
     }
-    return { header: rå.header || {}, tables: rå.tables || { LAYER: { entries: [] } }, blocks, entities };
+    if (!entities.length) {
+      // nogle tegninger har alt i papirrummet
+      const papir = poster.filter(b => /^\*paper_space/i.test(b.name || '') && b.entities && b.entities.length)
+        .sort((a, b) => b.entities.length - a.entities.length)[0];
+      if (papir) { entities = papir.entities; kilde = 'papirrum'; }
+    }
+    return {
+      header: rå.header || {}, tables: rå.tables || { LAYER: { entries: [] } },
+      blocks, entities, xref, kilde
+    };
   }
 
-  return { parseDxf, fladgør, læsDwg, aciFarve, ENHEDER, DWG_KILDER };
+  return { parseDxf, fladgør, læsDwg, hentMotor, aciFarve, ENHEDER, DWG_KILDER, forsøg };
 })();
