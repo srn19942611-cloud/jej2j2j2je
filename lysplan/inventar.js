@@ -72,6 +72,16 @@ function maalFraTekst(tekst) {
   return ud;
 }
 
+/* Tekst i felter der ikke er møbler: tegningshoved, signaturfelter,
+   bygningsdele og installationer der tilfældigvis er tegnet som rektangler. */
+const IKKE_MOEBEL_TEKST = new RegExp([
+  '●|www\\.|tlf\\.?\\s*:|@|\\bcvr\\b|\\bmål\\s*:|\\bsag\\b|\\bdato\\b|\\brev\\.',
+  'brt\\.\\s*m|\\bbr\\.\\s*areal|\\bm2\\b|\\bm²',
+  'vindue|vindfang|d[øo]r\\b|skydedør|port\\b|baldakin|trappe|elevator|s[øo]jle',
+  'n[øo]glekontakt|kontakt\\b|tavle\\b|m[åa]ler\\b|stikkontakt|ventilation|sprinkler',
+  'pris\\s*scanner|pristjekker|skilt\\b|forberedt for|\\binfo\\s*:|\\bsignatur\\b|\\bnote\\b'
+].join('|'), 'i');
+
 /* Rum og bygningsdele der ikke er inventar. */
 const IKKE_INVENTAR = /rum$|rum\b|lager|teknik|kontor|personale|gang|wc|toilet|garderobe|vindfang|salgsareal|areal|omklædning|rampe|varegård|p-plads/i;
 
@@ -267,7 +277,7 @@ const Inventar = (() => {
         tilhør[bedst].push(t);
       }
     }
-    return [].concat(...rækker.map((r, i) => beskriv(r, tilhør[i], pxPerM, grænser)));
+    return [].concat(...rækker.map((r, i) => beskriv(r, tilhør[i], pxPerM, grænser))).filter(Boolean);
   }
 
   /* Naboelementer med samme retning og dybde lægges sammen til én række,
@@ -370,6 +380,8 @@ const Inventar = (() => {
   function enkeltMøbel(r, tekst, laengdePx, centrum, pxPerM, grænser) {
     const iM = px => px / pxPerM;
     const laengde = iM(laengdePx), dybde = iM(r.dybde);
+    // et felt med tegningshoved- eller bygningstekst er ikke et møbel
+    if (tekst && IKKE_MOEBEL_TEKST.test(tekst)) return null;
 
     const maal = maalFraTekst(tekst);
     let type = null;

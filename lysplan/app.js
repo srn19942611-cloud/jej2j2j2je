@@ -1095,7 +1095,23 @@ function findInventar(stille) {
       graenser: { fagbredde: state.indst.fagbredde }
     });
     const r = lagRamme(lag);
+    // Tegningshoved, adresselinjer og signaturfelter ligger langt uden for
+    // selve planen - de skal ikke tælles med som møbler. Filteret bruges kun,
+    // når der faktisk ligger noget langt væk, og med god margin, så det ikke
+    // kan skære et hjørne af butikken.
+    const k = (() => {
+      const kerne = lag.kerne;
+      if (!kerne) return null;
+      const bk = kerne.x1 - kerne.x0, hk = kerne.y1 - kerne.y0;
+      if (lag.bredde < bk * 1.5 && lag.højde < hk * 1.5) return null;
+      return { x0: kerne.x0 - bk * 0.25, x1: kerne.x1 + bk * 0.25,
+               y0: kerne.y0 - hk * 0.25, y1: kerne.y1 + hk * 0.25 };
+    })();
     for (const f of liste) {
+      if (k) {
+        const [cx, cy] = f.centrum;
+        if (cx < k.x0 || cx > k.x1 || cy < k.y0 || cy > k.y1) continue;
+      }
       // lagets egen forskydning og skalering lægges på
       const flyt = p => [lag.x + p[0] * lag.skala, lag.y + p[1] * lag.skala];
       const post = {
@@ -1396,7 +1412,57 @@ function kantOmNet(med, nx, ny, x0, y0, celle) {
     const retning = (a, b) => (b[0] - a[0]) + ',' + (b[1] - a[1]);
     if (retning(f, m) !== retning(m, e)) pts.push([x0 + m[0] * celle, y0 + m[1] * celle]);
   }
-  return pts.length >= 4 ? pts : null;
+  if (pts.length < 4) return null;
+  // trappetrinnene rettes ud, så zonen får vægge og ikke 120 småhak
+  return glatOmrids(pts, mToPx(1.1));
+}
+
+/* Omridset forenkles (Douglas-Peucker på en lukket ring), så zonen kan
+   tegnes og bygges i 3D som en rigtig rumkontur. */
+function glatOmrids(ring, tol) {
+  if (ring.length < 5) return ring;
+  const afstand = (p, a, b) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const len2 = dx * dx + dy * dy;
+    let t = len2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2 : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+  };
+  const dp = (pkt, i, j, behold) => {
+    let værst = -1, d = tol;
+    for (let k = i + 1; k < j; k++) {
+      const e = afstand(pkt[k], pkt[i], pkt[j]);
+      if (e > d) { d = e; værst = k; }
+    }
+    if (værst < 0) return;
+    behold[værst] = 1;
+    dp(pkt, i, værst, behold);
+    dp(pkt, værst, j, behold);
+  };
+  // ringen deles ved de to punkter der ligger længst fra hinanden
+  let a = 0, b = 0, maks = -1;
+  for (let i = 0; i < ring.length; i++) {
+    const d = Geom.dist(ring[0], ring[i]);
+    if (d > maks) { maks = d; b = i; }
+  }
+  maks = -1;
+  for (let i = 0; i < ring.length; i++) {
+    const d = Geom.dist(ring[b], ring[i]);
+    if (d > maks) { maks = d; a = i; }
+  }
+  if (a > b) { const t = a; a = b; b = t; }
+  const behold = new Uint8Array(ring.length);
+  behold[a] = behold[b] = 1;
+  dp(ring, a, b, behold);
+  const anden = ring.slice(b).concat(ring.slice(0, a + 1));
+  const beholdAnden = new Uint8Array(anden.length);
+  beholdAnden[0] = beholdAnden[anden.length - 1] = 1;
+  dp(anden, 0, anden.length - 1, beholdAnden);
+  for (let i = 1; i < anden.length - 1; i++) {
+    if (beholdAnden[i]) behold[(b + i) % ring.length] = 1;
+  }
+  const ud = ring.filter((_, i) => behold[i]);
+  return ud.length >= 4 ? ud : ring;
 }
 
 function tilføjInventarRekt(a, b) {
@@ -2151,21 +2217,40 @@ function placerStartkamera() {
   const punkt = frittPunkt(start, zone);
   state.kamera.x = punkt[0] / m;
   state.kamera.y = punkt[1] / m;
-  state.kamera.retning = langs ? 0 : Math.PI / 2;
+  state.kamera.retning = gangretning(zone, langs ? 0 : Math.PI / 2);
   state.kamera.tilt = -0.08;
   state.kameraer.push({ id: nyId(), navn: 'Indgang', ...state.kamera });
   visKameraer();
 }
 
+/* Man ser mest af butikken ved at kigge ned ad en gang, altså på langs af
+   reolrækkerne. Retningen er den, flest løbende meter inventar vender. */
+function gangretning(zone, standard) {
+  const vægt = new Map();
+  for (const i of state.inventar) {
+    if (!Geom.pointInPolygon(i.centrum, zone.pts)) continue;
+    const v = ((i.vinkel % Math.PI) + Math.PI) % Math.PI;
+    const nøgle = Math.round(v / (Math.PI / 12));
+    vægt.set(nøgle, (vægt.get(nøgle) || 0) + i.laengde);
+  }
+  let bedst = null, mest = 0;
+  for (const [n, m] of vægt) if (m > mest) { mest = m; bedst = n; }
+  return bedst == null ? standard : bedst * (Math.PI / 12);
+}
+
 /* Nærmeste sted i zonen hvor der ikke står et møbel - så man ikke starter inde i en reol. */
 function frittPunkt(p, zone) {
-  const fri = q => Geom.pointInPolygon(q, zone.pts) &&
-    !state.inventar.some(i => Geom.pointInPolygon(q, udvidetRekt(i, mToPx(0.4))));
-  if (fri(p)) return p;
-  for (let radius = mToPx(0.5); radius < mToPx(12); radius += mToPx(0.5)) {
-    for (let v = 0; v < Math.PI * 2; v += Math.PI / 8) {
-      const q = [p[0] + Math.cos(v) * radius, p[1] + Math.sin(v) * radius];
-      if (fri(q)) return q;
+  // først søges et sted med albuerum, så man står i gangen og ikke med
+  // næsen i en reol; findes det ikke, tages et hvilket som helst frit sted
+  for (const margen of [1.4, 1.0, 0.7, 0.4]) {
+    const fri = q => Geom.pointInPolygon(q, zone.pts) &&
+      !state.inventar.some(i => Geom.pointInPolygon(q, udvidetRekt(i, mToPx(margen))));
+    if (fri(p)) return p;
+    for (let radius = mToPx(0.5); radius < mToPx(12); radius += mToPx(0.5)) {
+      for (let v = 0; v < Math.PI * 2; v += Math.PI / 8) {
+        const q = [p[0] + Math.cos(v) * radius, p[1] + Math.sin(v) * radius];
+        if (fri(q)) return q;
+      }
     }
   }
   return p;

@@ -617,21 +617,26 @@ const CAD = (() => {
       for (let i = 0; i < s.p.length; i += 2) { x += s.p[i]; y += s.p[i + 1]; n++; }
       if (n) { xs.push(x / n); ys.push(y / n); }
     }
+    /* Kun rigtige udrejsere skæres fra: en håndfuld streger, der ligger
+       længere væk end hele resten af tegningen fylder. Et almindeligt
+       mellemrum mellem to dele af planen må ikke kunne udløse et snit. */
     const skær = v => {
       v.sort((a, b) => a - b);
       let lav = 0, høj = v.length - 1;
       for (let runde = 0; runde < 4; runde++) {
-        const spand = v[høj] - v[lav];
-        if (!(spand > 0)) break;
         let bedstGab = 0, bedstIdx = -1;
         for (let i = lav; i < høj; i++) {
           const gab = v[i + 1] - v[i];
-          const andel = (i - lav + 1) / (høj - lav + 1);
-          // et stort tomt spring, hvor den ene side kun rummer en lille del
-          if (gab > spand * 0.15 && (andel < 0.12 || andel > 0.88) && gab > bedstGab) { bedstGab = gab; bedstIdx = i; }
+          const antal = høj - lav + 1;
+          const venstre = i - lav + 1, højre = høj - i;
+          const lille = Math.min(venstre, højre);
+          // den lille side er en ubetydelig rest, og springet er større end
+          // det, den store side selv fylder
+          const stor = venstre < højre ? v[høj] - v[i + 1] : v[i] - v[lav];
+          if (lille / antal < 0.05 && gab > Math.max(stor, 1e-9) && gab > bedstGab) { bedstGab = gab; bedstIdx = i; }
         }
         if (bedstIdx < 0) break;
-        if ((bedstIdx - lav + 1) / (høj - lav + 1) < 0.5) lav = bedstIdx + 1; else høj = bedstIdx;
+        if ((bedstIdx - lav + 1) < (høj - bedstIdx)) lav = bedstIdx + 1; else høj = bedstIdx;
       }
       return [v[lav], v[høj]];
     };
