@@ -8,11 +8,17 @@ const state = {
   pxPerMeter: null,   // målestok, sat via kalibrering
   kalibrering: null,  // {a, b, meter}
   zoner: [],          // {id, type, navn, pts, maalLux} - salgsareal, betjent område osv.
+  inventar: [],       // {id, type, kategori, laengde, dybde, hoejde, vinkel, centrum, hjørner, fag}
   skinner: [],        // {id, pts:[[x,y]...], montage:'wire'|'loft'}
   armaturer: [],      // {id, type, x, y, vinkel, skinneId}
   manuelt: {},        // manuelle tillæg til styklisten, pr. katalognøgle
   valgt: null,        // {slags:'skinne'|'armatur'|'zone', id}
   vaerktoej: 'pan',
+  tilstand: 'plan',   // 'plan' eller '3d'
+  kamera: { x: 5, y: 5, h: 1.65, retning: 0, tilt: -0.12 },
+  kameraer: [],       // gemte kamerapunkter i butikken
+  scene: null, sceneVersion: -1, version: 0,
+  reference: null, visReference: false,
   kladde: [],         // punkter under tegning
   muse: null,         // sidste musepunkt i verdenskoordinater
   visning: { x: 0, y: 0, zoom: 1 },
@@ -20,7 +26,10 @@ const state = {
     preset: 'superbrugsen',
     mode: 'track',
     ccSkinner: 2.5, margin: 1.0, ccX: 2.4, ccY: 2.4,
-    lofttype: 'skinne', zoneType: 'salg', uf: 0.5, mf: 0.8, loftshoejde: 3.2,
+    lofttype: 'skinne', zoneType: 'salg', refleks: 1.15, mf: 0.8, loftshoejde: 3.2,
+    inventarType: 'reol', fagbredde: 1.0, visInventar: true, følgInventar: true,
+    monteringshoejde: 2.9, fov: 72, farvetilstand: 'realistisk', maksLux: 1200, visVarme: false,
+    skinneSpring: 2.5,
     primaer: 'bricks', accent: 'sirius', accentRatio: 0.35,
     minAfstand: 1.2, wireCC: 1.4, startPrRaekke: 1, wireMontage: 'wire',
     retning: 'auto', autoTaethed: true, dwgKilde: ''
@@ -51,7 +60,9 @@ function toast(besked, slags = 'info') {
 /* ---------- historik (fortryd) ---------- */
 function gem() {
   historik.push(JSON.stringify({
-    zoner: state.zoner, skinner: state.skinner,
+    zoner: state.zoner,
+    inventar: state.inventar,
+    kameraer: state.kameraer, skinner: state.skinner, inventar: state.inventar,
     armaturer: state.armaturer, manuelt: state.manuelt
   }));
   if (historik.length > 60) historik.shift();
@@ -60,7 +71,7 @@ function fortryd() {
   const s = historik.pop();
   if (!s) { toast('Intet at fortryde'); return; }
   const d = JSON.parse(s);
-  state.zoner = d.zoner; state.skinner = d.skinner;
+  state.zoner = d.zoner; state.skinner = d.skinner; state.inventar = d.inventar || [];
   state.armaturer = d.armaturer; state.manuelt = d.manuelt;
   state.valgt = null;
   opdater();
@@ -138,6 +149,8 @@ async function importerCad(navn, db) {
     toast(`${navn} indlæst. Skalering følger den målestok, der allerede er sat.`);
   }
   if (state.lag.length === 1) tilpasVisning();
+  // møblerne findes med det samme, så lysplanen kan tage højde for dem
+  setTimeout(() => findInventar(true), 0);
   return lag;
 }
 
@@ -292,6 +305,7 @@ const FARVER = {
 };
 
 function tegn() {
+  if (state.tilstand === '3d' && !eksportStørrelse) { tegn3d(); return; }
   const { b, h } = visningsStørrelse();
   ctx.save();
   ctx.clearRect(0, 0, b, h);
@@ -310,10 +324,14 @@ function tegn() {
   }
   ctx.globalAlpha = 1;
 
+  tegnVarmekort();
   tegnZoner();
+  tegnInventar();
   for (const s of state.skinner) tegnSkinne(s);
   for (const a of state.armaturer) tegnArmatur(a);
+  tegnKameraer();
   tegnKladde();
+  tegnRektKladde();
   tegnKalibrering();
 
   ctx.restore();
@@ -369,6 +387,56 @@ function tegnCadLag(lag) {
 const zoneFarve = z => (ZONETYPER[z.type] || {}).farve || FARVER.omraade;
 const zoneKrav = z => (z.maalLux != null ? z.maalLux : ((ZONETYPER[z.type] || {}).lux || 500));
 const zoneNavn = z => z.navn || (ZONETYPER[z.type] || {}).navn || 'Zone';
+
+/* Lysspredningen vist som farvet net oven på planen. */
+function tegnVarmekort() {
+  if (!state.indst.visVarme || !harMaalestok()) return;
+  const scene = hentScene();
+  if (!scene) return;
+  const m = state.pxPerMeter;
+  ctx.save();
+  ctx.globalAlpha = 0.62;
+  for (const g of scene.gulv) {
+    ctx.fillStyle = Tre.luxFarve(g.lux, state.indst.maksLux, 'falsk');
+    ctx.fillRect(g.x * m, g.y * m, g.celle * m + 0.5, g.celle * m + 0.5);
+  }
+  ctx.restore();
+}
+
+function tegnInventar() {
+  if (!state.indst.visInventar || !state.inventar.length) return;
+  const z = state.visning.zoom;
+  ctx.lineWidth = 1.2 / z;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const i of state.inventar) {
+    const t = Inventar.INVENTAR_TYPER[i.type] || Inventar.INVENTAR_TYPER.andet;
+    const valgt = state.valgt && state.valgt.slags === 'inventar' && state.valgt.id === i.id;
+    ctx.beginPath();
+    ctx.moveTo(i.hjørner[0][0], i.hjørner[0][1]);
+    for (const p of i.hjørner.slice(1)) ctx.lineTo(p[0], p[1]);
+    ctx.closePath();
+    ctx.fillStyle = t.farve + (valgt ? '55' : '2E');
+    ctx.fill();
+    ctx.strokeStyle = valgt ? FARVER.skinneValgt : t.farve;
+    ctx.lineWidth = (valgt ? 2.2 : 1.2) / z;
+    ctx.stroke();
+    if (harMaalestok() && mToPx(i.laengde) * z > 60) {
+      ctx.save();
+      ctx.translate(i.centrum[0], i.centrum[1]);
+      let v = i.vinkel;
+      if (v > Math.PI / 2 || v < -Math.PI / 2) v += Math.PI;
+      ctx.rotate(v);
+      ctx.fillStyle = t.farve;
+      ctx.font = `${11 / z}px "IBM Plex Sans", sans-serif`;
+      const mærkat = (i.kategori || t.navn) + (i.fag ? ` · ${i.fag} fag` : ` · ${fmt(i.laengde, 1)} m`);
+      ctx.fillText(mærkat, 0, 0);
+      ctx.restore();
+    }
+  }
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
 
 function tegnZoner() {
   const z = state.visning.zoom;
@@ -496,6 +564,44 @@ function tegnArmatur(a) {
   ctx.restore();
 }
 
+function tegnRektKladde() {
+  if (!træk || træk.slags !== 'rekt') return;
+  const z = state.visning.zoom;
+  const [a, b] = [træk.start, træk.nu];
+  const t = Inventar.INVENTAR_TYPER[state.indst.inventarType];
+  ctx.save();
+  ctx.setLineDash([6 / z, 4 / z]);
+  ctx.strokeStyle = t.farve;
+  ctx.fillStyle = t.farve + '22';
+  ctx.lineWidth = 1.6 / z;
+  ctx.beginPath();
+  ctx.rect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]));
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+function tegnKameraer() {
+  if (!state.kameraer.length && state.tilstand !== 'plan') return;
+  const z = state.visning.zoom, m = state.pxPerMeter || 100;
+  const punkter = state.kameraer.concat(state.tilstand === '3d' ? [Object.assign({ navn: 'Nu', nu: true }, state.kamera)] : []);
+  for (const k of punkter) {
+    const x = k.x * m, y = k.y * m;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(k.retning);
+    ctx.fillStyle = k.nu ? '#E02B20' : '#145DA0';
+    ctx.beginPath();
+    ctx.moveTo(14 / z, 0); ctx.lineTo(-8 / z, 8 / z); ctx.lineTo(-8 / z, -8 / z);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+    if (k.navn && !k.nu) {
+      ctx.fillStyle = '#145DA0';
+      ctx.font = `${11 / z}px "IBM Plex Sans", sans-serif`;
+      ctx.fillText(k.navn, x + 12 / z, y - 10 / z);
+    }
+  }
+}
+
 function tegnKladde() {
   if (!state.kladde.length) return;
   const z = state.visning.zoom;
@@ -562,6 +668,10 @@ let træk = null;
 
 lærred.addEventListener('pointerdown', e => {
   lærred.setPointerCapture(e.pointerId);
+  if (state.tilstand === '3d') {
+    træk = { slags: 'kig', skærm: [e.clientX, e.clientY], start: { ...state.kamera } };
+    return;
+  }
   const p = musePunkt(e);
   const panner = e.button === 1 || e.button === 2 || state.vaerktoej === 'pan' || e.shiftKey && state.vaerktoej === 'vaelg';
   if (panner) {
@@ -599,6 +709,12 @@ lærred.addEventListener('pointerdown', e => {
       state.kladde.push(state.kladde.length ? snapHvisOrtho(e, p) : p);
       tegn();
       break;
+    case 'inventar':
+      træk = { slags: 'rekt', start: p, nu: p };
+      break;
+    case 'kamera':
+      træk = { slags: 'kamera', start: p, nu: p };
+      break;
     case 'slet': {
       const ramt = ramtObjekt(p);
       if (ramt) { gem(); fjernObjekt(ramt); opdater(); }
@@ -614,6 +730,13 @@ lærred.addEventListener('pointerdown', e => {
 });
 
 lærred.addEventListener('pointermove', e => {
+  if (træk && træk.slags === 'kig') {
+    state.kamera.retning = træk.start.retning + (e.clientX - træk.skærm[0]) * 0.005;
+    state.kamera.tilt = Math.max(-1.35, Math.min(1.35, træk.start.tilt - (e.clientY - træk.skærm[1]) * 0.004));
+    tegn();
+    return;
+  }
+  if (state.tilstand === '3d') return;
   const p = musePunkt(e);
   state.muse = state.kladde.length ? snapHvisOrtho(e, p) : p;
   visStatus(p);
@@ -621,6 +744,11 @@ lærred.addEventListener('pointermove', e => {
     const z = state.visning.zoom;
     state.visning.x = træk.start.x - (e.clientX - træk.startSkærm[0]) / z;
     state.visning.y = træk.start.y - (e.clientY - træk.startSkærm[1]) / z;
+    tegn();
+    return;
+  }
+  if (træk && (træk.slags === 'rekt' || træk.slags === 'kamera')) {
+    træk.nu = p;
     tegn();
     return;
   }
@@ -637,6 +765,25 @@ lærred.addEventListener('pointermove', e => {
 
 lærred.addEventListener('pointerup', e => {
   if (træk && træk.slags === 'flyt' && træk.flyttet) opdater();
+  if (træk && træk.slags === 'rekt') {
+    gem();
+    const post = tilføjInventarRekt(træk.start, træk.nu);
+    if (post) state.valgt = { slags: 'inventar', id: post.id };
+    opdater();
+  }
+  if (træk && træk.slags === 'kamera') {
+    const m = state.pxPerMeter || 100;
+    const dx = træk.nu[0] - træk.start[0], dy = træk.nu[1] - træk.start[1];
+    const retning = Math.hypot(dx, dy) > 4 ? Math.atan2(dy, dx) : 0;
+    const k = {
+      id: nyId(), navn: 'Kig ' + (state.kameraer.length + 1),
+      x: træk.start[0] / m, y: træk.start[1] / m, h: 1.65, retning, tilt: -0.1
+    };
+    state.kameraer.push(k);
+    Object.assign(state.kamera, { x: k.x, y: k.y, h: k.h, retning: k.retning, tilt: k.tilt });
+    visKameraer();
+    tegn();
+  }
   træk = null;
 });
 
@@ -645,6 +792,10 @@ lærred.addEventListener('contextmenu', e => e.preventDefault());
 
 lærred.addEventListener('wheel', e => {
   e.preventDefault();
+  if (state.tilstand === '3d') {
+    flytKamera(-Math.sign(e.deltaY) * (e.shiftKey ? 1.5 : 0.5), 0, 0);
+    return;
+  }
   const r = lærred.getBoundingClientRect();
   const skærm = [e.clientX - r.left, e.clientY - r.top];
   const før = tilVerden(skærm);
@@ -656,8 +807,27 @@ lærred.addEventListener('wheel', e => {
   tegn();
 }, { passive: false });
 
+function flytKamera(frem, side, op) {
+  const c = Math.cos(state.kamera.retning), s = Math.sin(state.kamera.retning);
+  state.kamera.x += c * frem - s * side;
+  state.kamera.y += s * frem + c * side;
+  state.kamera.h = Math.max(0.3, Math.min(6, state.kamera.h + op));
+  tegn();
+}
+
 window.addEventListener('keydown', e => {
   if (/input|textarea|select/i.test(e.target.tagName)) return;
+  if (state.tilstand === '3d') {
+    const skridt = e.shiftKey ? 1.2 : 0.45;
+    const taster = {
+      w: [skridt, 0, 0], ArrowUp: [skridt, 0, 0], s: [-skridt, 0, 0], ArrowDown: [-skridt, 0, 0],
+      a: [0, -skridt, 0], ArrowLeft: [0, -skridt, 0], d: [0, skridt, 0], ArrowRight: [0, skridt, 0],
+      q: [0, 0, -0.2], e: [0, 0, 0.2]
+    };
+    if (taster[e.key]) { e.preventDefault(); flytKamera(...taster[e.key]); return; }
+    if (e.key === 'Escape') { sætTilstand('plan'); return; }
+    return;
+  }
   if (e.key === 'Escape') { state.kladde = []; state.valgt = null; opdater(); }
   else if (e.key === 'Enter') afslutKladde();
   else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -668,6 +838,9 @@ window.addEventListener('keydown', e => {
   else if (e.key === 's') vælgVærktøj('skinne');
   else if (e.key === 'a') vælgVærktøj('omraade');
   else if (e.key === 'm') vælgVærktøj('maalestok');
+  else if (e.key === 'i') vælgVærktøj('inventar');
+  else if (e.key === 'k') vælgVærktøj('kamera');
+  else if (e.key === '3') sætTilstand('3d');
 });
 
 function snapHvisOrtho(e, p) {
@@ -724,6 +897,10 @@ function ramtObjekt(p) {
     const pr = Geom.projectOnPolyline(p, s.pts);
     if (pr && pr.afstand <= tol) return { slags: 'skinne', id: s.id };
   }
+  for (let i = state.inventar.length - 1; i >= 0; i--) {
+    const inv = state.inventar[i];
+    if (Geom.pointInPolygon(p, inv.hjørner)) return { slags: 'inventar', id: inv.id };
+  }
   for (let i = state.zoner.length - 1; i >= 0; i--) {
     const zone = state.zoner[i];
     const kant = Geom.projectOnPolyline(p, zone.pts.concat([zone.pts[0]]));
@@ -738,6 +915,7 @@ function fjernObjekt(ref) {
     state.skinner = state.skinner.filter(s => s.id !== ref.id);
     state.armaturer = state.armaturer.filter(a => a.skinneId !== ref.id);
   } else if (ref.slags === 'zone') state.zoner = state.zoner.filter(z => z.id !== ref.id);
+  else if (ref.slags === 'inventar') state.inventar = state.inventar.filter(i => i.id !== ref.id);
 }
 
 function flytObjekt(ref, dx, dy) {
@@ -754,6 +932,12 @@ function flytObjekt(ref, dx, dy) {
   } else if (ref.slags === 'zone') {
     const zone = state.zoner.find(z => z.id === ref.id);
     if (zone) zone.pts = zone.pts.map(p => [p[0] + dx, p[1] + dy]);
+  } else if (ref.slags === 'inventar') {
+    const inv = state.inventar.find(i => i.id === ref.id);
+    if (inv) {
+      inv.hjørner = inv.hjørner.map(p => [p[0] + dx, p[1] + dy]);
+      inv.centrum = [inv.centrum[0] + dx, inv.centrum[1] + dy];
+    }
   }
 }
 
@@ -793,10 +977,73 @@ function vælgVærktøj(v) {
     maalestok: 'Klik to punkter med kendt indbyrdes afstand, og indtast målet.',
     omraade: 'Klik hjørnerne i zonen. Enter eller dobbeltklik lukker den. Zonetypen vælges i panelet til højre.',
     skinne: 'Klik skinnens knækpunkter. Enter eller dobbeltklik afslutter rækken. Alt = fri vinkel.',
+    inventar: 'Træk et rektangel hen over møblet. Typen vælges i fanen Inventar.',
+    kamera: 'Klik hvor du vil stå, og træk i den retning du kigger. Skift derefter til 3D.',
     slet: 'Klik på et objekt for at slette det.'
   }[v] || 'Klik i planen for at placere armaturet. Det snapper til nærmeste skinne (Alt = fri placering).';
   $('#status-hjælp').textContent = hjælp;
   tegn();
+}
+
+/* ---------- inventar ---------- */
+function findInventar(stille) {
+  const cadLag = state.lag.filter(l => l.slags === 'cad' && l.synlig);
+  if (!cadLag.length) {
+    if (!stille) toast('Inventar findes i DWG- og DXF-tegninger. Importér en CAD-tegning først.', 'fejl');
+    return 0;
+  }
+  if (!harMaalestok()) { if (!stille) toast('Sæt målestok først', 'fejl'); return 0; }
+  gem();
+  state.inventar = state.inventar.filter(i => i.kilde === 'manuel');
+  let fundet = 0;
+  for (const lag of cadLag) {
+    const liste = Inventar.find(lag, {
+      pxPerMeter: state.pxPerMeter / (lag.skala || 1),
+      lagFilter: lag.cadLag,
+      graenser: { fagbredde: state.indst.fagbredde }
+    });
+    for (const f of liste) {
+      // lagets egen forskydning og skalering lægges på
+      const flyt = p => [lag.x + p[0] * lag.skala, lag.y + p[1] * lag.skala];
+      state.inventar.push({
+        id: nyId(), ...f,
+        centrum: flyt(f.centrum),
+        hjørner: f.hjørner.map(flyt),
+        laengde: f.laengde * lag.skala,
+        dybde: f.dybde * lag.skala
+      });
+      fundet++;
+    }
+  }
+  opdater();
+  if (!stille || fundet) {
+    const st = Inventar.stykliste(state.inventar, state.indst.fagbredde);
+    toast(fundet
+      ? `${fundet} møbler fundet: ${fmt(st.meterReol, 0)} m reol, ${fmt(st.meterKoel, 0)} m køl og ${fmt(st.meterFrost, 0)} m frost`
+      : 'Der blev ikke fundet inventar – prøv at slå flere lag til, eller tegn møblerne med inventarværktøjet');
+  }
+  return fundet;
+}
+
+function tilføjInventarRekt(a, b) {
+  const dx = Math.abs(b[0] - a[0]), dy = Math.abs(b[1] - a[1]);
+  if (Math.max(dx, dy) < mToPx(0.3)) return null;
+  const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]);
+  const y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
+  const vandret = dx >= dy;
+  const type = state.indst.inventarType;
+  const t = Inventar.INVENTAR_TYPER[type];
+  const laengde = pxToM(vandret ? dx : dy), dybde = pxToM(vandret ? dy : dx);
+  const post = {
+    id: nyId(), type, kategori: '', tekst: '', kilde: 'manuel',
+    laengde, dybde, hoejde: t.hoejde, vinkel: vandret ? 0 : Math.PI / 2,
+    centrum: [(x0 + x1) / 2, (y0 + y1) / 2],
+    hjørner: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]],
+    fag: t.maaler === 'fag' ? Math.max(1, Math.round(laengde / state.indst.fagbredde)) : null,
+    dele: 1
+  };
+  state.inventar.push(post);
+  return post;
 }
 
 /* ---------- beregning af stykliste og nøgletal ---------- */
@@ -858,7 +1105,8 @@ function beregn() {
     pr_fase[f.fase] = (pr_fase[f.fase] || 0) + n;
   }
 
-  // zoner: lysstrøm regnes af de armaturer, der ligger inde i zonen
+  // zoner: belysningsstyrken beregnes punkt for punkt fra armaturernes placering
+  const net = hentGulvNet();
   const zoner = state.zoner.map(z => {
     const areal = harMaalestok() && z.pts.length > 2
       ? Geom.polygonArea(z.pts) / (state.pxPerMeter ** 2) : 0;
@@ -872,13 +1120,14 @@ function beregn() {
       if (f.rolle === 'grund') lmGrund += f.lm;
       else if (f.rolle === 'accent') lmAccent += f.lm;
     }
-    const faktor = i.uf * i.mf;
     const krav = zoneKrav(z);
-    const lux = areal > 0 ? (lm * faktor) / areal : 0;
-    const luxGrund = areal > 0 ? (lmGrund * faktor) / areal : 0;
+    const tal = Tre.zoneTal(net, z.id);
+    const lux = tal.snit;
+    // grundbelysningens andel af lysstrømmen bestemmer dens andel af gennemsnittet
+    const luxGrund = lm > 0 ? lux * (lmGrund / lm) : 0;
     return {
       id: z.id, navn: zoneNavn(z), type: z.type, farve: zoneFarve(z), krav,
-      areal, lm, w, stk, typer, lux, luxGrund,
+      areal, lm, w, stk, typer, lux, luxGrund, jaevnhed: tal.jaevnhed, minLux: tal.min,
       wattPrM2: areal > 0 ? w / areal : 0,
       iProgram: !!(ZONETYPER[z.type] || {}).iProgram,
       opfyldt: areal > 0 && lux >= krav,
@@ -888,7 +1137,7 @@ function beregn() {
   const arealInde = zoner.filter(z => z.type !== 'ude').reduce((a, z) => a + z.areal, 0);
   const areal = arealInde;
 
-  const lux = areal > 0 ? (lumen * i.uf * i.mf) / areal : 0;
+  const lux = zoner.length ? zoner.reduce((a, z) => a + z.lux * z.areal, 0) / Math.max(1, areal) : 0;
   const grupper = Math.max(
     pr_fase.bricks ? Math.ceil(pr_fase.bricks / FASE_REGLER.bricks.maks) : 0,
     pr_fase.spot ? Math.ceil(pr_fase.spot / FASE_REGLER.spot.maks) : 0,
@@ -971,7 +1220,7 @@ function kravTjek(b) {
   }
 
   tilføj('info', 'Måling',
-    `Lux måles på gulv (${KRAV.maalehoejde}) med ±${Math.round(KRAV.tolerance * 100)} % tolerance. Programmets tal her er et overslag efter lumenmetoden – den endelige dokumentation kræver lysberegning og måling i butikken.`);
+    `Lux måles på gulv (${KRAV.maalehoejde}) med ±${Math.round(KRAV.tolerance * 100)} % tolerance. Tallene her er beregnet direkte fra armaturernes placering og lysfordeling – den endelige dokumentation kræver lysberegning og måling i butikken.`);
   tilføj('info', 'Fersk­varer',
     `Ved slagter, delikatesse og kølemøbler til kød og pålæg kræves spots med Ra ≥ ${KRAV.fersk.ra} og R9 ≥ ${KRAV.fersk.r9}.`);
 
@@ -1060,7 +1309,7 @@ function visNøgletal(b) {
     { navn: 'Installeret effekt', vaerdi: fmt(b.watt, 0) + ' W', note: b.areal ? fmt(b.wattPrM2, 1) + ' W/m²' : '' },
     { navn: 'Lysstrøm', vaerdi: fmt(b.lumen / 1000, 1) + ' klm', note: b.areal ? fmt(b.lumenPrM2, 0) + ' lm/m²' : '' },
     { navn: 'Zoner med opfyldt krav', vaerdi: b.zoner.length ? `${b.zonerOpfyldt}/${b.zoner.length}` : '–',
-      note: `UF ${i.uf} · LLMF ${i.mf}`, slags: zoneStatus },
+      note: `LLMF ${i.mf} · refleks ${i.refleks}`, slags: zoneStatus },
     { navn: '3-polede grupper', vaerdi: fmt(b.grupper), note: `${b.pr_fase.bricks} Bricks · ${b.pr_fase.spot} spot/pendel` }
   ];
   $('#noegletal').innerHTML = kort.map(k => `
@@ -1140,10 +1389,70 @@ function visZoner(b) {
   }
 }
 
+/* Inventarfanen: opgørelse pr. type og en redigerbar liste over møblerne. */
+function visInventarPanel() {
+  const st = Inventar.stykliste(state.inventar, state.indst.fagbredde);
+  $('#inventar-noegletal').innerHTML = [
+    { navn: 'Reol', vaerdi: fmt(st.meterReol, 1) + ' m', note: `${st.fagIAlt} fag i alt` },
+    { navn: 'Køl', vaerdi: fmt(st.meterKoel, 1) + ' m', note: 'løbende meter' },
+    { navn: 'Frost', vaerdi: fmt(st.meterFrost, 1) + ' m', note: 'løbende meter' },
+    { navn: 'Møbler', vaerdi: fmt(state.inventar.length), note: 'fundet i tegningen' }
+  ].map(k => `<div class="kort"><span class="kort-navn">${k.navn}</span><strong>${k.vaerdi}</strong><span class="kort-note">${k.note}</span></div>`).join('');
+
+  const krop = $('#inventar-tabel tbody');
+  if (!st.grupper.length) {
+    krop.innerHTML = '<tr><td colspan="4" class="tom">Intet inventar endnu.</td></tr>';
+  } else {
+    krop.innerHTML = st.grupper.map(g => {
+      const under = Object.entries(g.varegrupper)
+        .sort((a, b) => b[1].meter - a[1].meter)
+        .map(([navn, v]) => `<tr class="under"><td>${navn}</td><td class="tal">${v.antal}</td><td class="tal">${fmt(v.meter, 1)}</td><td class="tal">${v.fag || ''}</td></tr>`).join('');
+      return `<tr><td><strong>${g.navn}</strong></td><td class="tal">${g.antal}</td><td class="tal">${fmt(g.meter, 1)}</td><td class="tal">${g.fag || ''}</td></tr>` + under;
+    }).join('');
+  }
+
+  const liste = $('#inventar-liste');
+  if (!state.inventar.length) {
+    liste.innerHTML = '<p class="tom">Tryk “Find inventar i tegningen”, eller tegn møblerne med inventarværktøjet.</p>';
+    return;
+  }
+  liste.innerHTML = '';
+  for (const i of state.inventar) {
+    const t = Inventar.INVENTAR_TYPER[i.type] || Inventar.INVENTAR_TYPER.andet;
+    const el = document.createElement('div');
+    el.className = 'inv' + (state.valgt && state.valgt.slags === 'inventar' && state.valgt.id === i.id ? ' valgt' : '');
+    el.style.borderLeftColor = t.farve;
+    el.innerHTML = `
+      <select data-h="type">${Object.entries(Inventar.INVENTAR_TYPER)
+        .map(([k, v]) => `<option value="${k}" ${k === i.type ? 'selected' : ''}>${v.navn}</option>`).join('')}</select>
+      <input data-h="kategori" value="${(i.kategori || '').replace(/"/g, '&quot;')}" placeholder="varegruppe">
+      <span class="meter" title="længde × dybde">${fmt(i.laengde, 1)}×${fmt(i.dybde, 1)}</span>
+      <input data-h="fag" type="number" min="0" step="1" value="${i.fag || ''}" title="fag">
+      <button class="ikon" data-h="slet" title="Slet">✕</button>`;
+    el.querySelector('[data-h="type"]').onchange = e => {
+      i.type = e.target.value;
+      const ny = Inventar.INVENTAR_TYPER[i.type];
+      i.hoejde = ny.hoejde;
+      i.fag = ny.maaler === 'fag' ? Math.max(1, Math.round(i.laengde / state.indst.fagbredde)) : null;
+      opdater();
+    };
+    el.querySelector('[data-h="kategori"]').onchange = e => { i.kategori = e.target.value; opdater(); };
+    el.querySelector('[data-h="fag"]').onchange = e => { i.fag = Math.max(0, parseInt(e.target.value, 10) || 0) || null; opdater(); };
+    el.querySelector('[data-h="slet"]').onclick = () => { gem(); state.inventar = state.inventar.filter(x => x.id !== i.id); opdater(); };
+    el.onclick = e => {
+      if (e.target.dataset.h) return;
+      state.valgt = { slags: 'inventar', id: i.id };
+      visInventarPanel();
+      tegn();
+    };
+    liste.appendChild(el);
+  }
+}
+
 /* Kontrolfanen: punkterne fra kravTjek samt kravene til lyskilder. */
 function visKrav(b) {
   const punkter = kravTjek(b);
-  $('#krav-kilde').textContent = `${KRAV.kilde}. Lux-tallene er overslag efter lumenmetoden med UF ${state.indst.uf} og LLMF ${state.indst.mf} – ikke en lysberegning.`;
+  $('#krav-kilde').textContent = `${KRAV.kilde}. Lux beregnes punkt for punkt på gulvet ud fra armaturernes placering og lysfordeling, med LLMF ${state.indst.mf} og refleksionstillæg ${state.indst.refleks}. Det er en direkte beregning uden fuld refleksionsmodel – ikke en DIALux-rapport.`;
   $('#kravliste').innerHTML = punkter.map(p => `
     <li class="${p.status}"><span class="prik ${p.status}"></span>
       <span><b>${p.emne}</b>${p.tekst}</span></li>`).join('');
@@ -1235,24 +1544,184 @@ function cadLagPanel(lag) {
   return boks;
 }
 
+/* Gulvnettet beregnes én gang pr. ændring og genbruges af nøgletal,
+   kravkontrol, varmekort og 3D-billedet. */
+function sceneKilde() {
+  return (state.visReference && state.reference)
+    ? Object.assign({}, state, {
+      armaturer: state.reference.armaturer, skinner: state.reference.skinner, inventar: state.reference.inventar
+    })
+    : state;
+}
+
+let netCache = { nøgle: -1, net: null };
+function hentGulvNet() {
+  const nøgle = state.version * 2 + (state.visReference ? 1 : 0);
+  if (netCache.nøgle === nøgle) return netCache.net;
+  netCache = { nøgle, net: Tre.gulvNet(sceneKilde(), state.indst.trecelle || 0.5) };
+  return netCache.net;
+}
+
+/* Scenen bygges igen, når planen er ændret - ikke når kameraet flyttes. */
+function hentScene() {
+  const nøgle = state.version * 2 + (state.visReference ? 1 : 0);
+  if (state.scene && state.sceneVersion === nøgle) return state.scene;
+  state.scene = Tre.byggScene(sceneKilde(), { net: hentGulvNet() });
+  state.sceneVersion = nøgle;
+  return state.scene;
+}
+
+function tegn3d() {
+  const { b, h } = visningsStørrelse();
+  ctx.save();
+  ctx.setTransform(lærred.width / b, 0, 0, lærred.height / h, 0, 0);
+  const scene = hentScene();
+  if (!scene) {
+    ctx.fillStyle = '#20242C';
+    ctx.fillRect(0, 0, b, h);
+    ctx.fillStyle = '#8A8F9C';
+    ctx.font = '14px "IBM Plex Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Tegn zoner og armaturer – så kan du gå ind i butikken her', b / 2, h / 2);
+    ctx.textAlign = 'left';
+    ctx.restore();
+    return;
+  }
+  Tre.tegn(ctx, b, h, state.kamera, scene, {
+    fov: state.indst.fov, farvetilstand: state.indst.farvetilstand, maksLux: state.indst.maksLux
+  });
+  ctx.restore();
+  visTreTal(scene);
+}
+
+function visTreTal(scene) {
+  const tal = Tre.gulvTal(scene);
+  const el = $('#tre-tal');
+  if (!el) return;
+  const ref = state.reference ? state.reference.tal : null;
+  const diff = (nu, før) => {
+    if (!ref) return '';
+    const d = nu - før;
+    return `<span class="diff ${d >= 0 ? 'op' : 'ned'}">${d >= 0 ? '+' : '−'}${fmt(Math.abs(d), 0)}</span>`;
+  };
+  el.innerHTML = `
+    <div class="kort"><span class="kort-navn">Gennemsnit på gulvet</span><strong>${fmt(tal.snit, 0)} lux</strong>
+      <span class="kort-note">direkte lys ${diff(tal.snit, ref ? ref.snit : 0)}</span></div>
+    <div class="kort"><span class="kort-navn">Mindst</span><strong>${fmt(tal.min, 0)} lux</strong>
+      <span class="kort-note">jævnhed ${fmt(tal.jaevnhed, 2)}</span></div>
+    <div class="kort"><span class="kort-navn">Størst</span><strong>${fmt(tal.maks, 0)} lux</strong>
+      <span class="kort-note">max/min ${fmt(tal.min > 0 ? tal.maks / tal.min : 0, 1)}</span></div>
+    <div class="kort"><span class="kort-navn">Effekt</span><strong>${fmt(state.armaturer.reduce((a, x) => a + (FIXTURES[x.type] ? FIXTURES[x.type].w : 0), 0), 0)} W</strong>
+      <span class="kort-note">${state.armaturer.length} armaturer</span></div>`;
+}
+
+/* Skift mellem plantegning og 3D-kig. */
+function sætTilstand(t) {
+  state.tilstand = t;
+  $('#knap-plan').classList.toggle('aktiv', t === 'plan');
+  $('#knap-3d').classList.toggle('aktiv', t === '3d');
+  $$('.kun-3d').forEach(el => { el.hidden = t !== '3d'; });
+  $$('.kun-plan').forEach(el => { el.hidden = t === '3d'; });
+  $('#tre-tal').hidden = t !== '3d';
+  if (t === '3d') {
+    if (!state.kameraer.length && state.zoner.length) placerStartkamera();
+    lærred.style.cursor = 'grab';
+  } else {
+    vælgVærktøj(state.vaerktoej);
+  }
+  tegn();
+}
+
+function placerStartkamera() {
+  const zone = state.zoner.find(z => z.type !== 'ude') || state.zoner[0];
+  if (!zone) return;
+  const m = state.pxPerMeter || 100;
+  const r = Geom.bbox(zone.pts);
+  // stil kameraet ved den ene ende og kig ind over arealet
+  const langs = (r.x1 - r.x0) >= (r.y1 - r.y0);
+  state.kamera.x = (langs ? r.x0 + (r.x1 - r.x0) * 0.08 : (r.x0 + r.x1) / 2) / m;
+  state.kamera.y = (langs ? (r.y0 + r.y1) / 2 : r.y0 + (r.y1 - r.y0) * 0.08) / m;
+  state.kamera.retning = langs ? 0 : Math.PI / 2;
+  state.kamera.tilt = -0.08;
+  state.kameraer.push({ id: nyId(), navn: 'Indgang', ...state.kamera });
+  visKameraer();
+}
+
+function visKameraer() {
+  const boks = $('#kameraliste');
+  if (!state.kameraer.length) {
+    boks.innerHTML = '<p class="hjælp">Sæt kigpunkter med kameraværktøjet (K), og skift til 3D.</p>';
+    return;
+  }
+  boks.innerHTML = '';
+  for (const k of state.kameraer) {
+    const el = document.createElement('div');
+    el.className = 'kamera-post';
+    el.innerHTML = `<button class="gå">${k.navn}</button><button class="ikon" title="Slet">✕</button>`;
+    el.querySelector('.gå').onclick = () => {
+      Object.assign(state.kamera, { x: k.x, y: k.y, h: k.h, retning: k.retning, tilt: k.tilt });
+      sætTilstand('3d');
+    };
+    el.querySelector('.ikon').onclick = () => {
+      state.kameraer = state.kameraer.filter(x => x.id !== k.id);
+      visKameraer(); tegn();
+    };
+    boks.appendChild(el);
+  }
+}
+
+function gemReference() {
+  const scene = hentScene();
+  state.reference = {
+    navn: new Date().toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }),
+    armaturer: JSON.parse(JSON.stringify(state.armaturer)),
+    skinner: JSON.parse(JSON.stringify(state.skinner)),
+    inventar: JSON.parse(JSON.stringify(state.inventar)),
+    tal: Tre.gulvTal(scene),
+    watt: state.armaturer.reduce((a, x) => a + (FIXTURES[x.type] ? FIXTURES[x.type].w : 0), 0),
+    antal: state.armaturer.length
+  };
+  $('#knap-vis-reference').hidden = false;
+  visReferenceNote();
+  toast('Reference gemt – ret nu planen og sammenlign');
+}
+
+function visReferenceNote() {
+  const el = $('#reference-note');
+  if (!state.reference) return;
+  const nu = Tre.gulvTal(hentScene());
+  const r = state.reference;
+  const watt = state.armaturer.reduce((a, x) => a + (FIXTURES[x.type] ? FIXTURES[x.type].w : 0), 0);
+  el.innerHTML = state.visReference
+    ? `Viser referencen fra kl. ${r.navn}: ${fmt(r.tal.snit, 0)} lux og ${fmt(r.watt, 0)} W.`
+    : `Mod referencen kl. ${r.navn}: ${fmt(nu.snit - r.tal.snit, 0)} lux, ${fmt(watt - r.watt, 0)} W og ${fmt(state.armaturer.length - r.antal, 0)} armaturer.`;
+  $('#knap-vis-reference').textContent = state.visReference ? 'Vis den nye plan' : 'Vis reference';
+}
+
 function opdater() {
+  state.version++;
   const b = beregn();
   visStykliste(b);
   visNøgletal(b);
   visZoner(b);
+  visInventarPanel();
+  if (state.reference) visReferenceNote();
   visKrav(b);
   visLag();
   $('#status-valgt').textContent = state.valgt
-    ? { skinne: 'Skinnerække valgt', armatur: 'Armatur valgt', zone: 'Zone valgt' }[state.valgt.slags]
+    ? { skinne: 'Skinnerække valgt', armatur: 'Armatur valgt', zone: 'Zone valgt', inventar: 'Inventar valgt' }[state.valgt.slags]
     : '';
   tegn();
   return b;
 }
 
 /* ---------- automatisk belysningsplan ---------- */
+/* Startgæt på lysstrømmen: næsten alt lys fra et nedadrettet armatur
+   rammer gulv og inventar, så andelen sættes til 0,85. Tallet rettes
+   bagefter af den punktvise beregning. */
 function nødvendigLumen(areal, maalLux) {
   const i = state.indst;
-  return areal > 0 ? (maalLux * areal) / (i.uf * i.mf) : 0;
+  return areal > 0 ? (maalLux * areal) / (0.85 * i.mf * (i.refleks || 1)) : 0;
 }
 
 function generer() {
@@ -1295,52 +1764,197 @@ function rækkerIAreal(poly, cc, margin, retning) {
   return linjer;
 }
 
+/* Møbler i zonen, i den rækkefølge de skal have lys over sig. */
+function inventarIZone(zone) {
+  const medRække = { reol: 1, vaegreol: 1, koel: 1, frost: 1, frostoe: 1, betjening: 1 };
+  return state.inventar.filter(i => medRække[i.type] && Geom.pointInPolygon(i.centrum, zone.pts));
+}
+
+/* Klipper et linjestykke mod zonens kant, så skinner ikke løber udenfor. */
+function klipModPolygon(a, b, poly) {
+  const ts = [0, 1];
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const p = poly[j], q = poly[i];
+    const d1x = b[0] - a[0], d1y = b[1] - a[1];
+    const d2x = q[0] - p[0], d2y = q[1] - p[1];
+    const næv = d1x * d2y - d1y * d2x;
+    if (Math.abs(næv) < 1e-9) continue;
+    const t = ((p[0] - a[0]) * d2y - (p[1] - a[1]) * d2x) / næv;
+    const u = ((p[0] - a[0]) * d1y - (p[1] - a[1]) * d1x) / næv;
+    if (t > 0 && t < 1 && u >= 0 && u <= 1) ts.push(t);
+  }
+  ts.sort((x, y) => x - y);
+  const stykker = [];
+  for (let k = 0; k + 1 < ts.length; k++) {
+    const t0 = ts[k], t1 = ts[k + 1];
+    if (t1 - t0 < 1e-6) continue;
+    const m = (t0 + t1) / 2;
+    const midt = [a[0] + (b[0] - a[0]) * m, a[1] + (b[1] - a[1]) * m];
+    if (!Geom.pointInPolygon(midt, poly)) continue;
+    stykker.push([
+      [a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0],
+      [a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1]
+    ]);
+  }
+  return stykker;
+}
+
+/* Skinnerækker lagt oven på møblerne: én skinne pr. reol-, køle- eller frostrække. */
+function skinnerOverInventar(zone) {
+  const forlæng = mToPx(0.15);
+  const linjer = [];
+  for (const inv of inventarIZone(zone)) {
+    const halv = mToPx(inv.laengde) / 2 + forlæng;
+    const c = Math.cos(inv.vinkel), sn = Math.sin(inv.vinkel);
+    const a = [inv.centrum[0] - c * halv, inv.centrum[1] - sn * halv];
+    const b = [inv.centrum[0] + c * halv, inv.centrum[1] + sn * halv];
+    for (const stk of klipModPolygon(a, b, zone.pts)) {
+      if (pxToM(Geom.dist(stk[0], stk[1])) >= 1.2) linjer.push({ pts: stk, inventarId: inv.id });
+    }
+  }
+  return samlCollinear(linjer);
+}
+
+/* En gondolrække kan være delt i flere varegrupper. Skinnerne over dem
+   ligger på linje og samles til én række, så samlinger og endestykker passer. */
+function samlCollinear(linjer) {
+  const grupper = new Map();
+  for (const l of linjer) {
+    let v = Math.atan2(l.pts[1][1] - l.pts[0][1], l.pts[1][0] - l.pts[0][0]);
+    v = ((v % Math.PI) + Math.PI) % Math.PI;               // retning uden fortegn
+    const c = Math.cos(v), sn = Math.sin(v);
+    const tvaers = -l.pts[0][0] * sn + l.pts[0][1] * c;    // afstand fra origo på tværs
+    const nøgle = Math.round(v * 40) + ':' + Math.round(tvaers / mToPx(0.25));
+    let g = grupper.get(nøgle);
+    if (!g) { g = { c, sn, tvaers, inventarId: l.inventarId, stykker: [] }; grupper.set(nøgle, g); }
+    const u0 = l.pts[0][0] * c + l.pts[0][1] * sn;
+    const u1 = l.pts[1][0] * c + l.pts[1][1] * sn;
+    g.stykker.push([Math.min(u0, u1), Math.max(u0, u1)]);
+  }
+  const ud = [];
+  for (const g of grupper.values()) {
+    g.stykker.sort((a, b) => a[0] - b[0]);
+    const punkt = u => [u * g.c - g.tvaers * g.sn, u * g.sn + g.tvaers * g.c];
+    let [a, b] = g.stykker[0];
+    const luk = () => ud.push({ pts: [punkt(a), punkt(b)], inventarId: g.inventarId });
+    const spring = mToPx(state.indst.skinneSpring || 2.5);
+    for (const [u0, u1] of g.stykker.slice(1)) {
+      // en gondolrække er tegnet som enkeltreoler med mellemrum; skinnen går hen over dem
+      if (u0 - b > spring) { luk(); a = u0; b = u1; }
+      else b = Math.max(b, u1);
+    }
+    luk();
+  }
+  return ud;
+}
+
+/* Skinnerækker lagt oven på møblerne: én skinne pr. reol-, køle- eller frostrække. */
+function skinnerOverInventar(zone) {
+  const forlæng = mToPx(0.15);
+  const linjer = [];
+  for (const inv of inventarIZone(zone)) {
+    const halv = mToPx(inv.laengde) / 2 + forlæng;
+    const c = Math.cos(inv.vinkel), sn = Math.sin(inv.vinkel);
+    const a = [inv.centrum[0] - c * halv, inv.centrum[1] - sn * halv];
+    const b = [inv.centrum[0] + c * halv, inv.centrum[1] + sn * halv];
+    for (const stk of klipModPolygon(a, b, zone.pts)) {
+      if (pxToM(Geom.dist(stk[0], stk[1])) >= 1.2) linjer.push({ pts: stk, inventarId: inv.id });
+    }
+  }
+  return samlCollinear(linjer);
+}
+
+
 function genererSkinner(zone) {
   const i = state.indst;
   const areal = Geom.polygonArea(zone.pts) / (state.pxPerMeter ** 2);
   const primær = FIXTURES[i.primaer];
   const accent = i.accent ? FIXTURES[i.accent] : null;
-  // kravet skal kunne dækkes af grundbelysningen alene; accentlys lægges oven i
-  const behov = nødvendigLumen(areal, zoneKrav(zone));
-  const ønsketIAlt = Math.ceil(behov / Math.max(1, primær.lm));
+  const krav = zoneKrav(zone);
+  const overInventar = i.følgInventar ? skinnerOverInventar(zone) : [];
+  // startgæt; det rettes bagefter af den punktvise beregning på gulvet
+  const førsteBud = Math.ceil(nødvendigLumen(areal, krav) / Math.max(1, primær.lm));
 
-  let cc = i.ccSkinner, nye = [], længder = [], antalPrimær = 0, ønsket = 0;
+  const ryd = () => {
+    state.skinner = state.skinner.filter(sk => !(sk.auto && sk.zoneId === zone.id));
+    state.armaturer = state.armaturer.filter(a => !(a.auto && a.zoneId === zone.id));
+  };
+
+  let cc = i.ccSkinner, nye = [], længder = [], antalPrimær = 0, målt = 0, maks = 0;
   for (let forsøg = 0; forsøg < 6; forsøg++) {
-    state.skinner = state.skinner.filter(s => !(s.auto && s.zoneId === zone.id));
-    const linjer = rækkerIAreal(zone.pts, cc, i.margin, i.retning || 'auto');
+    ryd();
+    let linjer = overInventar.map(l => l.pts);
+    const fraInventar = linjer.length;
+    // resten af zonen dækkes med parallelle rækker, men ikke oven i de første
+    for (const r of rækkerIAreal(zone.pts, cc, i.margin, i.retning || 'auto')) {
+      const midt = [(r[0][0] + r[1][0]) / 2, (r[0][1] + r[1][1]) / 2];
+      const tætPå = linjer.slice(0, fraInventar).some(l => {
+        const pr = Geom.projectOnPolyline(midt, l);
+        return pr && pr.afstand < mToPx(Math.max(0.9, i.ccSkinner * 0.45));
+      });
+      if (!tætPå) linjer.push(r);
+    }
     if (!linjer.length) {
       toast(`${zoneNavn(zone)}: for lille til c/c ${fmt(cc, 1)} m og ${fmt(i.margin, 1)} m til væg`, 'fejl');
       return 0;
     }
-    nye = linjer.map(pts => {
-      const s = { id: nyId(), pts, montage: i.wireMontage, auto: true, zoneId: zone.id };
-      state.skinner.push(s);
-      return s;
+    nye = linjer.map((pts, idx) => {
+      const sk = {
+        id: nyId(), pts, montage: i.wireMontage, auto: true, zoneId: zone.id,
+        overInventar: idx < overInventar.length ? overInventar[idx].inventarId : null
+      };
+      state.skinner.push(sk);
+      return sk;
     });
-    længder = nye.map(s => pxToM(Geom.polylineLength(s.pts)));
+    længder = nye.map(sk => pxToM(Geom.polylineLength(sk.pts)));
     const total = længder.reduce((a, b) => a + b, 0);
-    ønsket = Math.max(nye.length, ønsketIAlt);
-    // der kan ikke sidde flere armaturer på skinnen end mindsteafstanden tillader
-    antalPrimær = Math.min(ønsket, Math.floor(total / Math.max(0.3, i.minAfstand)));
-    if (antalPrimær >= ønsket || cc <= 1.2001) break;
-    // skinnerækkerne rykkes tættere, så lyskravet kan nås. Rækkeantallet er
-    // heltal, så der tvinges mindst én række mere pr. forsøg.
-    const efterBehov = cc * Math.sqrt(Math.max(0.4, antalPrimær / ønsket));
+    maks = Math.floor(total / Math.max(0.3, i.minAfstand));
+    antalPrimær = Math.max(1, Math.min(maks, førsteBud));
+
+    // grundbelysningen lægges ud, og antallet rettes op eller ned efter
+    // det beregnede lysniveau, så der hverken mangler eller spildes lys
+    for (let runde = 0; runde < 5; runde++) {
+      state.armaturer = state.armaturer.filter(a => !(a.auto && a.zoneId === zone.id));
+      const pr = fordelAntal(antalPrimær, længder);
+      nye.forEach((sk, idx) => fordelPåSkinne(sk, i.primaer, pr[idx], 0, zone.id));
+      målt = Tre.zoneSnit(state, zone.pts, 0.7, 'grund').snit;
+      const forHøjt = målt > krav * 1.08 && antalPrimær > 1;
+      const forLavt = målt < krav * 0.99 && antalPrimær < maks;
+      if (!forHøjt && !forLavt) break;
+      let nyt = Math.round(antalPrimær * (krav / Math.max(1, målt)));
+      if (forLavt) nyt = Math.max(nyt, antalPrimær + 1);
+      if (forHøjt) nyt = Math.min(nyt, antalPrimær - 1);
+      nyt = Math.max(1, Math.min(maks, nyt));
+      if (nyt === antalPrimær) break;
+      antalPrimær = nyt;
+    }
+    if (målt >= krav * 0.98 || cc <= 1.2001) break;
+    // rækkerne rykkes tættere, så der er plads til mere lys
     const énRækkeMere = (cc * nye.length) / (nye.length + 1);
-    cc = Math.max(1.2, Math.min(efterBehov, énRækkeMere));
+    cc = Math.max(1.2, Math.min(cc * Math.sqrt(Math.max(0.4, målt / krav)), énRækkeMere));
   }
-  if (antalPrimær < ønsket) {
-    toast(`${zoneNavn(zone)}: ${fmt(zoneKrav(zone))} lux kan ikke nås med ${kortNavn(i.primaer)} alene – vælg et kraftigere armatur eller mindre mindsteafstand`, 'fejl');
+
+  if (målt < krav * 0.98) {
+    toast(`${zoneNavn(zone)}: ${fmt(krav)} lux kan ikke nås med ${kortNavn(i.primaer)} – der beregnes ${fmt(målt, 0)} lux. Vælg et kraftigere armatur eller mindre afstand.`, 'fejl');
   } else if (Math.abs(cc - i.ccSkinner) > 0.05) {
-    toast(`${zoneNavn(zone)}: skinnerækkerne er rykket til c/c ${fmt(cc, 1)} m for at nå ${fmt(zoneKrav(zone))} lux`);
+    toast(`${zoneNavn(zone)}: skinnerækkerne er rykket til c/c ${fmt(cc, 1)} m for at nå ${fmt(krav)} lux`);
+  }
+
+  // skinner uden armaturer tjener ikke noget formål
+  const brugte = new Set(state.armaturer.filter(a => a.zoneId === zone.id).map(a => a.skinneId));
+  const tomme = new Set(nye.filter(sk => !brugte.has(sk.id)).map(sk => sk.id));
+  if (tomme.size) {
+    state.skinner = state.skinner.filter(sk => !tomme.has(sk.id));
+    for (let k = nye.length - 1; k >= 0; k--) if (tomme.has(nye[k].id)) { nye.splice(k, 1); længder.splice(k, 1); }
   }
 
   const antalAccent = accent ? Math.round(antalPrimær * i.accentRatio) : 0;
-  const prRække = fordelAntal(antalPrimær, længder);
   const accentPrRække = fordelAntal(antalAccent, længder);
-  nye.forEach((s, idx) => {
-    fordelPåSkinne(s, i.primaer, prRække[idx], 0, zone.id);
-    if (accent && accentPrRække[idx] > 0) fordelPåSkinne(s, i.accent, accentPrRække[idx], 0.5, zone.id);
+  nye.forEach((sk, idx) => {
+    if (!accent || accentPrRække[idx] <= 0) return;
+    // over et møbel sættes accentlyset i enderne, hvor endegavl og skilte sidder
+    if (sk.overInventar) fordelIEnder(sk, i.accent, accentPrRække[idx], zone.id);
+    else fordelPåSkinne(sk, i.accent, accentPrRække[idx], 0.5, zone.id, true);
   });
   return antalPrimær + antalAccent;
 }
@@ -1358,7 +1972,30 @@ function fordelAntal(total, vægte) {
   return antal;
 }
 
-function fordelPåSkinne(s, type, antal, forskydning, zoneId) {
+/* Accentlys ved endegavlene: først enderne, resten fordelt jævnt.
+   Spottene drejes ud mod reolfronten, som byggeprogrammet lægger op til. */
+function fordelIEnder(s, type, antal, zoneId) {
+  const L = Geom.polylineLength(s.pts);
+  const ender = [0.06, 0.94];
+  for (let k = 0; k < Math.min(2, antal); k++) {
+    const { punkt, vinkel } = Geom.pointAtLength(s.pts, L * ender[k]);
+    state.armaturer.push({
+      id: nyId(), type, x: punkt[0], y: punkt[1], vinkel, skinneId: s.id, zoneId, auto: true,
+      sigte: sigteModReol(vinkel, k)
+    });
+  }
+  if (antal > 2) fordelPåSkinne(s, type, antal - 2, 0.5, zoneId, true);
+}
+
+/* Spot drejet ca. 25 grader ud fra lodret, skiftevis til hver side. */
+function sigteModReol(skinneVinkel, nr) {
+  const side = nr % 2 ? 1 : -1;
+  const nx = -Math.sin(skinneVinkel) * side, ny = Math.cos(skinneVinkel) * side;
+  const h = Math.sin(0.44), v = -Math.cos(0.44);
+  return [nx * h, ny * h, v];
+}
+
+function fordelPåSkinne(s, type, antal, forskydning, zoneId, drejet) {
   if (antal <= 0) return;
   const L = Geom.polylineLength(s.pts);
   const trin = L / antal;
@@ -1366,7 +2003,9 @@ function fordelPåSkinne(s, type, antal, forskydning, zoneId) {
     const d = trin * (k + 0.5 + forskydning * 0.5);
     if (d > L) continue;
     const { punkt, vinkel } = Geom.pointAtLength(s.pts, d);
-    state.armaturer.push({ id: nyId(), type, x: punkt[0], y: punkt[1], vinkel, skinneId: s.id, zoneId, auto: true });
+    const post = { id: nyId(), type, x: punkt[0], y: punkt[1], vinkel, skinneId: s.id, zoneId, auto: true };
+    if (drejet) post.sigte = sigteModReol(vinkel, k);
+    state.armaturer.push(post);
   }
 }
 
@@ -1374,18 +2013,24 @@ function genererPaneler(zone) {
   const i = state.indst;
   const areal = Geom.polygonArea(zone.pts) / (state.pxPerMeter ** 2);
   const f = FIXTURES[i.primaer];
+  const krav = zoneKrav(zone);
   if (!i.autoTaethed) return læggUdNet(zone, i.ccX, i.ccY);
 
-  // Lux-kravet styrer tætheden. Randafstanden koster armaturer, så nettet
-  // strammes indtil det placerede antal dækker behovet.
-  const behov = Math.max(1, Math.ceil(nødvendigLumen(areal, zoneKrav(zone)) / Math.max(1, f.lm)));
+  // Lux-kravet styrer tætheden: nettet strammes, til den beregnede
+  // belysningsstyrke på gulvet er i hus.
+  const behov = Math.max(1, Math.ceil(nødvendigLumen(areal, krav) / Math.max(1, f.lm)));
   let cc = Math.max(0.6, Math.sqrt(areal / behov));
-  let n = 0;
-  for (let forsøg = 0; forsøg < 4; forsøg++) {
+  let n = 0, målt = 0;
+  for (let forsøg = 0; forsøg < 5; forsøg++) {
     state.armaturer = state.armaturer.filter(a => !(a.auto && a.zoneId === zone.id));
     n = læggUdNet(zone, cc, cc);
-    if (n >= behov || n === 0) break;
-    cc = Math.max(0.6, cc * Math.sqrt(Math.max(0.5, n / behov)));
+    if (!n) break;
+    målt = Tre.zoneSnit(state, zone.pts, 0.7, 'grund').snit;
+    if (målt >= krav * 0.99 || cc <= 0.6001) break;
+    cc = Math.max(0.6, cc * Math.sqrt(Math.max(0.4, målt / krav)));
+  }
+  if (n && målt < krav * 0.98) {
+    toast(`${zoneNavn(zone)}: ${fmt(krav)} lux kan ikke nås med ${kortNavn(i.primaer)} – der beregnes ${fmt(målt, 0)} lux`, 'fejl');
   }
   return n;
 }
@@ -1447,8 +2092,22 @@ function eksporterCsv() {
   linjer.push(['Skinne i alt', fmt(b.skinne.laengde, 1) + ' m']);
   linjer.push(['Installeret effekt', fmt(b.watt, 0) + ' W', fmt(b.wattPrM2, 2) + ' W/m2']);
   linjer.push(['Lysstrøm', fmt(b.lumen, 0) + ' lm', fmt(b.lumenPrM2, 0) + ' lm/m2']);
-  linjer.push(['Beregningsforudsætning', `UF ${state.indst.uf} / LLMF ${state.indst.mf}`, 'lumenmetoden, overslag']);
+  linjer.push(['Beregningsforudsætning', `LLMF ${state.indst.mf} / refleks ${state.indst.refleks}`, 'punktberegning paa gulv']);
   linjer.push(['3-polede grupper', String(b.grupper)]);
+  const inv = Inventar.stykliste(state.inventar, state.indst.fagbredde);
+  if (inv.grupper.length) {
+    linjer.push([]);
+    linjer.push(['Inventar', 'Antal', 'Meter', 'Fag']);
+    for (const g of inv.grupper) {
+      linjer.push([g.navn, String(g.antal), fmt(g.meter, 1), g.fag ? String(g.fag) : '']);
+      for (const [navn, v] of Object.entries(g.varegrupper).sort((a, b) => b[1].meter - a[1].meter)) {
+        linjer.push(['   ' + navn, String(v.antal), fmt(v.meter, 1), v.fag ? String(v.fag) : '']);
+      }
+    }
+    linjer.push(['Reol i alt', '', fmt(inv.meterReol, 1) + ' m', String(inv.fagIAlt) + ' fag']);
+    linjer.push(['Køl i alt', '', fmt(inv.meterKoel, 1) + ' m']);
+    linjer.push(['Frost i alt', '', fmt(inv.meterFrost, 1) + ' m']);
+  }
   linjer.push([]);
   linjer.push(['Kontrol mod ' + KRAV.kilde]);
   for (const p of kravTjek(b)) linjer.push([p.status.toUpperCase(), p.emne, p.tekst]);
@@ -1466,6 +2125,7 @@ function sceneRamme() {
   }
   for (const s of state.skinner) for (const p of s.pts) tag(p[0], p[1]);
   for (const z of state.zoner) for (const p of z.pts) tag(p[0], p[1]);
+  for (const i of state.inventar) for (const p of i.hjørner) tag(p[0], p[1]);
   for (const a of state.armaturer) tag(a.x, a.y);
   if (!isFinite(x0)) return null;
   const m = 40;
@@ -1513,6 +2173,11 @@ function udskriv() {
   const zoneRækker = b.zoner.map(z => `
     <tr><td style="text-align:left">${z.navn}</td><td>${fmt(z.areal, 0)}</td><td>${fmt(z.krav)}</td>
         <td>${fmt(z.lux, 0)}</td><td>${fmt(z.luxGrund, 0)}</td><td>${z.stk}</td><td>${fmt(z.wattPrM2, 1)}</td></tr>`).join('');
+  const inv = Inventar.stykliste(state.inventar, state.indst.fagbredde);
+  const invRækker = inv.grupper.map(g => `
+    <tr><td style="text-align:left"><strong>${g.navn}</strong></td><td>${g.antal}</td><td>${fmt(g.meter, 1)}</td><td>${g.fag || ''}</td></tr>` +
+    Object.entries(g.varegrupper).sort((a, c) => c[1].meter - a[1].meter).map(([navn, v]) => `
+    <tr><td style="text-align:left;padding-left:16px;color:#555">${navn}</td><td>${v.antal}</td><td>${fmt(v.meter, 1)}</td><td>${v.fag || ''}</td></tr>`).join('')).join('');
   const kravRækker = kravTjek(b).map(p =>
     `<tr><td style="text-align:left">${{ ok: 'OK', advarsel: 'OBS', fejl: 'AFVIGER', info: 'NOTE' }[p.status]}</td>
          <td style="text-align:left">${p.emne}</td><td style="text-align:left">${p.tekst}</td></tr>`).join('');
@@ -1537,11 +2202,14 @@ function udskriv() {
     <table><thead><tr><th style="text-align:left">Zone</th><th>Areal m²</th><th>Krav lux</th><th>Beregnet lux</th><th>Heraf grundbelysning</th><th>Armaturer</th><th>W/m²</th></tr></thead><tbody>${zoneRækker}</tbody></table>
     <h2>Stykliste</h2>
     <table><thead><tr><th>Antal</th><th>Beskrivelse</th><th>Lyskilde</th><th>Farve</th></tr></thead><tbody>${rækker}</tbody></table>
+    ${invRækker ? `<h2>Inventar</h2>
+    <table><thead><tr><th style="text-align:left">Type og varegruppe</th><th>Antal</th><th>Meter</th><th>Fag</th></tr></thead><tbody>${invRækker}</tbody></table>
+    <p style="font-size:11px;margin:4px 0 0">Reol ${fmt(inv.meterReol, 1)} m (${inv.fagIAlt} fag) · køl ${fmt(inv.meterKoel, 1)} m · frost ${fmt(inv.meterFrost, 1)} m.</p>` : ''}
     <h2>Kontrol mod ${KRAV.kilde}</h2>
     <table><thead><tr><th style="text-align:left">Status</th><th style="text-align:left">Emne</th><th style="text-align:left">Bemærkning</th></tr></thead><tbody>${kravRækker}</tbody></table>
     <div class="noter">Areal i alt ${fmt(b.areal, 0)} kvm.
 Installeret effekt ${fmt(b.watt, 0)} W (${fmt(b.wattPrM2, 1)} W/m²) · lysstrøm ${fmt(b.lumenPrM2, 0)} lm/m².
-Lux-tallene er overslag efter lumenmetoden med UF ${state.indst.uf} og LLMF ${state.indst.mf} og erstatter ikke lysberegning og måling i butikken. Lux måles på gulv (${KRAV.maalehoejde}) med ±${Math.round(KRAV.tolerance * 100)} % tolerance.
+Lux er beregnet punkt for punkt på gulvet ud fra armaturernes placering med LLMF ${state.indst.mf} og refleksionstillæg ${state.indst.refleks}, og erstatter ikke lysberegning og måling i butikken. Lux måles på gulv (${KRAV.maalehoejde}) med ±${Math.round(KRAV.tolerance * 100)} % tolerance.
 Der skal bruges ${b.grupper} stk. 3-pol grupper til belysningen.
 Fase 1 bruges til Bricks, maks. 12 stk. pr. fase. Fase 2 bruges til spot, bast lamper og wall washer maks. 30 stk. pr. fase. Fase 3 er til fast strøm (nødbelysning).
 Der udføres tilslutninger i alle S./start samt mulighed for tilslutning i alle H.S./hjørnesamlinger.</div>
@@ -1580,6 +2248,9 @@ async function hentProjekt(fil) {
   state.indst = Object.assign(state.indst, d.indst || {});
   state.pxPerMeter = d.pxPerMeter || null;
   state.kalibrering = d.kalibrering || null;
+  state.inventar = d.inventar || [];
+  state.kameraer = d.kameraer || [];
+  visKameraer();
   state.zoner = d.zoner || (d.omraade && d.omraade.length > 2
     ? [{ id: nyId(), type: 'salg', pts: d.omraade, navn: ZONETYPER.salg.navn, maalLux: ZONETYPER.salg.lux }]
     : []);
@@ -1698,7 +2369,20 @@ function bindIndstillinger() {
 
 function bindKnapper() {
   $$('[data-vaerktoej]').forEach(b => b.onclick = () => vælgVærktøj(b.dataset.vaerktoej));
+  $('#knap-plan').onclick = () => sætTilstand('plan');
+  $('#knap-3d').onclick = () => sætTilstand('3d');
+  $('#knap-reference').onclick = gemReference;
+  $('#knap-vis-reference').onclick = () => {
+    state.visReference = !state.visReference;
+    visReferenceNote();
+    tegn();
+  };
   $('#knap-generer').onclick = generer;
+  $('#knap-inventar').onclick = () => findInventar(false);
+  $('#knap-inventar-ryd').onclick = () => {
+    if (!state.inventar.length) return;
+    gem(); state.inventar = []; opdater();
+  };
   $('#knap-tilpas').onclick = tilpasVisning;
   $('#knap-fortryd').onclick = fortryd;
   $('#knap-csv').onclick = eksporterCsv;
@@ -1745,6 +2429,7 @@ function bindKnapper() {
 function start() {
   byggArmaturKnapper();
   byggArmaturValg();
+  visKameraer();
   bindIndstillinger();
   bindKnapper();
   visIndstillinger();

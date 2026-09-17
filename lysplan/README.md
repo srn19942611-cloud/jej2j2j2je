@@ -17,20 +17,32 @@ tegninger og projekter forlader aldrig maskinen.
    CAD-tegning kan slukkes enkeltvis, så målsætning og møblering ikke støjer.
 2. **Målestok** – kom den ikke med tegningen: klik to punkter med kendt
    indbyrdes afstand og indtast målet. Derefter regnes alt i meter og m².
-3. **Zoner** – vælg zonetype og tegn polygonen. Salgsareal, betjente områder,
+3. **Inventar** – tryk “Find inventar i tegningen”. Reoler, køl, frost, kasser
+   og diske genkendes som rektangler i CAD-tegningen, og teksterne på planen
+   bestemmer varegruppe og antal fag. Alt kan rettes i listen, og manglende
+   møbler tegnes med inventarværktøjet (I).
+4. **Zoner** – vælg zonetype og tegn polygonen. Salgsareal, betjente områder,
    vindfang, lager og personale har hver sit lux-krav, og arealet vises løbende.
-4. **Beregn belysningsplan** – vælg koncept, loftstype og c/c-afstand.
-   Værktøjet lægger skinnerækker ud i hver zone, klipper dem mod væggene og
-   fordeler armaturer, til zonens lux-krav er dækket af grundbelysningen alene.
-   Rækker den valgte c/c-afstand ikke, rykkes rækkerne tættere, og det siges.
-5. **Ret til i hånden** – tegn ekstra skinnerækker, placér enkeltarmaturer
+5. **Beregn belysningsplan** – vælg koncept, loftstype og c/c-afstand.
+   Skinnerne lægges oven på reol- og kølerækkerne, resten af zonen dækkes med
+   parallelle rækker, og armaturerne fordeles, til zonens lux-krav er dækket af
+   grundbelysningen alene. Rækker den valgte c/c-afstand ikke, rykkes rækkerne
+   tættere, og det siges.
+6. **Se det i 3D** – sæt kigpunkter med kameraværktøjet (K) og skift til
+   3D-kig. Lyset beregnes på gulv, reoler og vægge, så man kan se lysfordelingen
+   i gangene. Gem en reference, ret armaturer eller inventar, og skift frem og
+   tilbage for at se forskellen i lux og watt med det samme.
+7. **Ret til i hånden** – tegn ekstra skinnerækker, placér enkeltarmaturer
    (de snapper til nærmeste skinne), flyt og slet. Ctrl+Z fortryder.
-6. **Ud af huset** – stykliste som CSV, plan som PNG, samlet udskrift med
-   tegning, stykliste og elnoter, og hele projektet som `.json` til senere.
+8. **Ud af huset** – stykliste som CSV med både armaturer og inventar, plan som
+   PNG, samlet udskrift med tegning, zoner, styklister, kravkontrol og elnoter,
+   og hele projektet som `.json` til senere.
 
-Genveje: `H` flyt, `V` vælg, `M` målestok, `A` salgsareal, `S` lysskinne,
-`Enter` afslut optegning, `Esc` fortryd optegning, `Delete` slet det valgte.
-Alt-tasten slår vinkellåsen fra under optegning og snap fra ved placering.
+Genveje: `H` flyt, `V` vælg, `M` målestok, `A` zone, `S` lysskinne,
+`I` inventar, `K` kigpunkt, `3` 3D-kig, `Enter` afslut optegning, `Esc` fortryd,
+`Delete` slet det valgte. Alt-tasten slår vinkellåsen fra under optegning og
+snap fra ved placering. I 3D flytter W A S D, Q og E hæver og sænker, og man
+trækker med musen for at kigge.
 
 ## Det programmet regner
 
@@ -41,11 +53,15 @@ Alt-tasten slår vinkellåsen fra under optegning og snap fra ved placering.
   (kan ændres).
 * **Wireophæng + wire bracket** beregnes ud fra en c/c-afstand pr. meter skinne
   for de rækker, der er nedhængt i wire.
-* **Belysningsstyrke** er et overslag efter lumenmetoden:
-  `E = Σlm × UF × LLMF / areal`. UF og LLMF kan sættes i panelet (default 0,5 og
-  0,8). Det er et overslag til dimensionering – ikke en DIALux-beregning, og
-  spot- og Bricks-lys er retningsbestemt, så den reelle belysningsstyrke på
-  varen er højere end fladeberegningen viser.
+* **Belysningsstyrken beregnes punkt for punkt** på gulvet ud fra hvert
+  armaturs placering, monteringshøjde og lysfordeling:
+  `E = Σ I₀·cosⁿθ·cosε / d² × LLMF`, hvor `n` følger af armaturets
+  spredningsvinkel. Oven i lægges et jævnt bidrag for lys reflekteret fra loft,
+  vægge og varer (refleksionstillægget, default 1,15 svarende til 15 %).
+  Gulvet under møblerne tælles ikke med – det er hylder, ikke gangareal.
+  Samme beregning bruges til nøgletal, kravkontrol, varmekortet i planen og
+  3D-billedet, så tallene altid stemmer overens. Det er en direkte beregning
+  uden fuld refleksionsmodel og erstatter ikke en DIALux-rapport.
 * **Gruppeopdeling** følger noterne på lysplanerne: fase 1 til Bricks, maks.
   12 pr. fase; fase 2 til spot, bast lamper og wall washer, maks. 30 pr. fase;
   fase 3 til fast strøm. Antal 3-polede grupper er det største krav af de to.
@@ -68,6 +84,35 @@ Fanen **Krav** holder planen op mod Coops byggeprogram for belysningsanlæg
 Kontrollen kommer med i både CSV-eksporten og udskriften. Den erstatter ikke
 den lysberegning, lysspredning, UGR-dokumentation og måling i butikken, som
 programmet kræver før bestilling – den fanger de fejl, man kan se af planen.
+
+## Inventar fra tegningen
+
+Genkendelsen leder efter rektangler i CAD-tegningen – både polylinjer, blokke
+og rektangler tegnet med fire enkeltlinjer – og samler nabokasser med samme
+retning og dybde til én række. Teksten nærmest rækken bestemmer resten:
+
+* `6 Baby` bliver til 6 fag med varegruppen Baby.
+* `4,37 m Drikkevare køl` bliver til et kølemøbel med længde.
+* `FROST`, `KØL`, `Kasse`, `Slagter` m.fl. bestemmer typen; ellers gættes den
+  ud fra dybden (under 1,05 m = reol, derover køl, over 1,6 m = frostø).
+* Står der flere varegrupper på samme gondolrække, deles rækken op efter dem og
+  efter deres antal fag – som varegrupperne står på planen.
+
+Opgørelsen giver antal, løbende meter og fag pr. type og varegruppe, med
+totaler for reol, køl og frost. Alt kan rettes i listen, og rum og bygningsdele
+(lager, teknik, kontor …) sorteres fra.
+
+## 3D-kig
+
+3D-billedet tegnes uden nogen 3D-motor: gulvet lægges ud i et net på 0,5 m,
+inventaret bliver til kasser i deres rigtige højde, og hver flade får den
+belysningsstyrke, den faktisk modtager fra armaturerne. Farverne kan vises
+realistisk eller som falskfarve i lux, ligesom i et lysberegningsprogram.
+Samme farveskala kan lægges ned over plantegningen som varmekort – det er
+lysspredningen, byggeprogrammet beder om.
+
+Accentspots drejes ca. 25° ud mod reolfronten, skiftevis til hver side, så de
+lyser på varen og ikke på gulvet.
 
 ## Armaturdata
 
@@ -95,6 +140,8 @@ lager/bagbutik. De er ment som et startpunkt, ikke som en norm.
 | `styles.css` | Udseende, lyst og mørkt tema |
 | `catalog.js` | Armaturer, tilbehør, koncepter, skinneopdeling, elregler |
 | `cad.js` | DXF-læser, DWG via LibreDWG, fladgørelse til streger og tekst |
+| `inventar.js` | Genkendelse af reoler, køl og frost samt inventaropgørelse |
+| `tre.js` | Lysberegning punkt for punkt og 3D-billedet |
 | `geom.js` | Geometri: areal, skæringer, projektion, rotation |
 | `app.js` | Tegneflade, værktøjer, beregning, stykliste, eksport |
 
