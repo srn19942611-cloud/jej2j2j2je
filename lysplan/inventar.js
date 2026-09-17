@@ -75,6 +75,56 @@ function maalFraTekst(tekst) {
 /* Rum og bygningsdele der ikke er inventar. */
 const IKKE_INVENTAR = /rum$|rum\b|lager|teknik|kontor|personale|gang|wc|toilet|garderobe|vindfang|salgsareal|areal|omklædning|rampe|varegård|p-plads/i;
 
+
+/* Rumnavne på danske butiksplaner, og hvilken zonetype de svarer til.
+   Rækkefølgen betyder noget: "kølerum" er et rum, ikke et kølemøbel. */
+const RUMNAVNE = [
+  [/salgsareal|salgsomr|salgslokale|butiksareal/i, 'salg'],
+  [/vindfang|indgang|forrum/i, 'vindfang'],
+  [/kasseomr|kasselinje|kasseområde|bager|slagter|delikatesse|kiosk|pakkepost|post\b|information/i, 'betjent'],
+  [/lager|bagbutik|flaskerum|frostrum|kølerum|koelerum|varegård|varegaard|rampe|depot|emballage/i, 'lager'],
+  [/personale|kontor|omklædning|omklaedning|frokost|garderobe|gang\b|wc|toilet|teknik|rengøring|rengoering/i, 'personale'],
+  [/p-plads|parkering|foromr|overdækket|overdaekket|terræn|terraen|udvendig/i, 'ude']
+];
+
+/* Zoner fundet i tegningen: et lukket omrids med et rumnavn indeni.
+   Står arealet i teksten ("SALGSAREAL 779,6 M2"), tages det med til kontrol. */
+function findZoner(lag, valg) {
+  const pxPerM = valg.pxPerMeter;
+  const tekster = (lag.tegning.tekster || []).filter(t => t.t && (!valg.lagFilter || valg.lagFilter[t.lag] !== false));
+
+  // lukkede omrids der er store nok til at være et rum
+  const omrids = [];
+  for (const s of lag.tegning.streger) {
+    if (!s.lukket || s.p.length < 8) continue;
+    const pts = [];
+    for (let i = 0; i < s.p.length; i += 2) pts.push([s.p[i], s.p[i + 1]]);
+    const areal = Geom.polygonArea(pts) / (pxPerM * pxPerM);
+    if (areal < (valg.minAreal || 15)) continue;
+    omrids.push({ pts, areal });
+  }
+  omrids.sort((a, b) => a.areal - b.areal);
+
+  const fundne = [];
+  const brugt = new Set();
+  for (const t of tekster) {
+    let type = null;
+    for (const [mønster, ty] of RUMNAVNE) if (mønster.test(t.t)) { type = ty; break; }
+    if (!type) continue;
+    // det mindste omrids der indeholder teksten, er rummet
+    const rum = omrids.find(o => !brugt.has(o) && Geom.pointInPolygon([t.x, t.y], o.pts));
+    if (!rum) continue;
+    brugt.add(rum);
+    const m2 = /(\d+[.,]?\d*)\s*m2|(\d+[.,]?\d*)\s*m²/i.exec(t.t);
+    fundne.push({
+      type, navn: t.t.replace(/\s*\d+[.,]?\d*\s*m[²2]\s*$/i, '').trim() || type,
+      pts: rum.pts, areal: rum.areal,
+      angivetAreal: m2 ? parseFloat((m2[1] || m2[2]).replace(',', '.')) : null
+    });
+  }
+  return fundne;
+}
+
 const Inventar = (() => {
 
   /* ---- rektangler ---- */
@@ -414,5 +464,5 @@ const Inventar = (() => {
     };
   }
 
-  return { find, stykliste, erRektangel, vælgModel, INVENTAR_TYPER };
+  return { find, findZoner, stykliste, erRektangel, vælgModel, INVENTAR_TYPER, RUMNAVNE };
 })();

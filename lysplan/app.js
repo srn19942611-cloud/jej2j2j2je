@@ -179,7 +179,10 @@ async function importerCad(navn, db) {
   }
   if (state.lag.length === 1) tilpasVisning();
   // møblerne findes med det samme, så lysplanen kan tage højde for dem
-  setTimeout(() => findInventar(true), 0);
+  setTimeout(() => {
+    findInventar(true);
+    if (!state.zoner.length) findZonerITegning(true);
+  }, 0);
   return lag;
 }
 
@@ -1124,6 +1127,74 @@ function vendModButikken(post, ramme) {
   const v = [-Math.sin(post.vinkel), Math.cos(post.vinkel)];
   const mod = [midte[0] - post.centrum[0], midte[1] - post.centrum[1]];
   return (v[0] * mod[0] + v[1] * mod[1]) >= 0 ? 1 : -1;
+}
+
+/* Zoner læst af tegningen: rumnavne som SALGSAREAL og VINDFANG inde i et
+   lukket omrids. Findes ingen, bruges det største omrids som salgsareal. */
+function findZonerITegning(stille) {
+  const cadLag = state.lag.filter(l => l.slags === 'cad' && l.synlig);
+  if (!cadLag.length || !harMaalestok()) {
+    if (!stille) toast('Zoner findes i DWG- og DXF-tegninger med rumnavne', 'fejl');
+    return 0;
+  }
+  gem();
+  let fundet = 0;
+  const afvigelser = [];
+  for (const lag of cadLag) {
+    const flyt = p => [lag.x + p[0] * lag.skala, lag.y + p[1] * lag.skala];
+    const rum = Inventar.findZoner(lag, {
+      pxPerMeter: state.pxPerMeter / (lag.skala || 1),
+      lagFilter: lag.cadLag
+    });
+    for (const r of rum) {
+      const pts = r.pts.map(flyt);
+      const areal = Geom.polygonArea(pts) / (state.pxPerMeter ** 2);
+      state.zoner.push({
+        id: nyId(), type: r.type, navn: r.navn,
+        maalLux: (ZONETYPER[r.type] || ZONETYPER.salg).lux,
+        pts, fraTegning: true
+      });
+      fundet++;
+      // står arealet på tegningen, kan målestokken kontrolleres
+      if (r.angivetAreal && Math.abs(areal - r.angivetAreal) / r.angivetAreal > 0.05) {
+        afvigelser.push(`${r.navn}: tegningen siger ${fmt(r.angivetAreal, 1)} m², polygonen giver ${fmt(areal, 1)} m²`);
+      }
+    }
+  }
+  if (!fundet) {
+    // ingen rumnavne - så tages det største lukkede omrids som salgsareal
+    const største = størsteOmrids(cadLag);
+    if (største) {
+      state.zoner.push({
+        id: nyId(), type: 'salg', navn: ZONETYPER.salg.navn, maalLux: ZONETYPER.salg.lux,
+        pts: største, fraTegning: true
+      });
+      fundet = 1;
+    }
+  }
+  opdater();
+  if (!stille || fundet) {
+    toast(fundet
+      ? `${fundet} zone${fundet > 1 ? 'r' : ''} fundet på tegningen` +
+        (afvigelser.length ? ` · OBS: ${afvigelser[0]}` : '')
+      : 'Ingen rum med navn fundet – tegn zonen med arealværktøjet (A)', fundet ? 'info' : 'fejl');
+  }
+  if (afvigelser.length) console.warn('Lysplan – arealer afviger fra tegningens tekst:', afvigelser);
+  return fundet;
+}
+
+function størsteOmrids(cadLag) {
+  let bedst = null, areal = 0;
+  for (const lag of cadLag) {
+    for (const s of lag.tegning.streger) {
+      if (!s.lukket || s.p.length < 8) continue;
+      const pts = [];
+      for (let i = 0; i < s.p.length; i += 2) pts.push([lag.x + s.p[i] * lag.skala, lag.y + s.p[i + 1] * lag.skala]);
+      const a2 = Geom.polygonArea(pts);
+      if (a2 > areal) { areal = a2; bedst = pts; }
+    }
+  }
+  return bedst;
 }
 
 function tilføjInventarRekt(a, b) {
@@ -2684,6 +2755,7 @@ function bindKnapper() {
   };
   $('#knap-generer').onclick = generer;
   $('#knap-inventar').onclick = () => findInventar(false);
+  $('#knap-zoner').onclick = () => findZonerITegning(false);
   $('#knap-inventar-ryd').onclick = () => {
     if (!state.inventar.length) return;
     gem(); state.inventar = []; opdater();
