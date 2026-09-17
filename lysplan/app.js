@@ -1897,6 +1897,7 @@ function sætTilstand(t) {
   $$('.kun-3d').forEach(el => { el.hidden = t !== '3d'; });
   $$('.kun-plan').forEach(el => { el.hidden = t === '3d'; });
   $('#tre-tal').hidden = t !== '3d';
+  if (t === '3d') $('#resultat').hidden = true;
   if (t === '3d') {
     if (!state.kameraer.length && state.zoner.length) placerStartkamera();
     lærred.style.cursor = 'grab';
@@ -2437,6 +2438,102 @@ function læggUdNet(zone, ccX, ccY) {
   return n;
 }
 
+/* ---------- kør det hele ---------- */
+
+/* Ét tryk: find zoner og inventar, læg lysplanen ud, regn den efter og
+   gør 3D-kigget klar. Hvert skridt melder undervejs, så man kan følge med. */
+async function køralt() {
+  const knap = $('#knap-alt');
+  if (knap.disabled) return;
+  if (!state.lag.length) {
+    toast('Importér en tegning først – DWG, DXF, PDF eller et billede', 'fejl');
+    return;
+  }
+  if (!harMaalestok()) {
+    toast('Målestokken mangler. Mål en kendt længde med målestoksværktøjet (M), og prøv igen.', 'fejl');
+    vælgVærktøj('maalestok');
+    return;
+  }
+  knap.disabled = true;
+  const gammelTekst = knap.textContent;
+  knap.textContent = 'Arbejder …';
+  const trin = [];
+  const vent = () => new Promise(r => setTimeout(r, 30));
+  try {
+    sætTilstand('plan');
+
+    if (!state.inventar.length) {
+      toast('Finder inventar på tegningen …', 'arbejder');
+      await vent();
+      const n = findInventar(true);
+      trin.push(n ? `${n} møbler genkendt` : 'intet inventar fundet på tegningen');
+    } else {
+      trin.push(`${state.inventar.length} møbler var allerede fundet`);
+    }
+
+    if (!state.zoner.length) {
+      toast('Finder zoner på tegningen …', 'arbejder');
+      await vent();
+      const n = findZonerITegning(true);
+      trin.push(n ? `${n} zoner læst af tegningen` : 'ingen zoner fundet');
+    } else {
+      trin.push(`${state.zoner.length} zoner var allerede tegnet`);
+    }
+
+    if (!state.zoner.length) {
+      toast('Jeg kunne ikke finde et salgsareal på tegningen. Tegn det med arealværktøjet (A), og tryk igen.', 'fejl');
+      vælgVærktøj('omraade');
+      return;
+    }
+
+    toast('Lægger skinner og armaturer ud …', 'arbejder');
+    await vent();
+    generer();
+    trin.push(`${state.armaturer.length} armaturer på ${state.skinner.length} skinnerækker`);
+
+    toast('Regner lysniveauet efter …', 'arbejder');
+    await vent();
+    const b = opdater();
+    hentScene();
+    if (!state.kameraer.length) placerStartkamera();
+    trin.push(`${b.zonerOpfyldt} af ${b.zoner.length} zoner opfylder lux-kravet`);
+
+    visResultat(b, trin);
+    $('.panel-faneblad[data-faneblad="beregn"]').click();
+    toast('Lysplanen er klar', 'info');
+  } catch (e) {
+    console.error(e);
+    toast('Der gik noget galt undervejs: ' + (e && e.message ? e.message : e), 'fejl');
+  } finally {
+    knap.disabled = false;
+    knap.textContent = gammelTekst;
+  }
+}
+
+/* Resultatkortet: hvad der blev gjort, nøgletallene og vejen videre. */
+function visResultat(b, trin) {
+  const kort = $('#resultat');
+  const krav = kravTjek(b);
+  const problemer = krav.filter(p => p.status === 'fejl' || p.status === 'advarsel');
+  const linje = (navn, værdi) => `<div class="linje"><span>${navn}</span><span>${værdi}</span></div>`;
+  $('#resultat-titel').textContent = problemer.length
+    ? `Lysplan klar – ${problemer.length} ting at se på`
+    : 'Lysplan klar – alle krav opfyldt';
+  $('#resultat-krop').innerHTML =
+    `<p class="trin">${trin.map(t => `<b>·</b> ${t}`).join('<br>')}</p>` +
+    b.zoner.filter(z => z.areal).map(z =>
+      linje(`${z.navn} (${fmt(z.areal, 0)} m²)`,
+        `${fmt(z.lux, 0)} / ${fmt(z.krav)} lux`)).join('') +
+    linje('Effekt', `${fmt(b.watt, 0)} W · ${fmt(b.wattPrM2, 1)} W/m²`) +
+    linje('Skinner', `${fmt(b.skinne.laengde, 0)} m i ${b.skinne.raekker} rækker`) +
+    linje('3-polede grupper', fmt(b.grupper)) +
+    (problemer.length
+      ? `<ul class="advarsel-liste">${problemer.slice(0, 4).map(p =>
+        `<li><span class="prik ${p.status}"></span><span><b>${p.emne}:</b> ${p.tekst.slice(0, 150)}</span></li>`).join('')}</ul>`
+      : '');
+  kort.hidden = false;
+}
+
 /* ---------- eksport ---------- */
 function download(navn, indhold, type) {
   const blob = indhold instanceof Blob ? indhold : new Blob([indhold], { type });
@@ -2745,6 +2842,16 @@ function bindIndstillinger() {
 
 function bindKnapper() {
   $$('[data-vaerktoej]').forEach(b => b.onclick = () => vælgVærktøj(b.dataset.vaerktoej));
+  $('#knap-alt').onclick = køralt;
+  const resultat = $('#resultat');
+  resultat.querySelector('[data-h="luk"]').onclick = () => { resultat.hidden = true; };
+  resultat.querySelector('[data-h="tre"]').onclick = () => { resultat.hidden = true; sætTilstand('3d'); };
+  resultat.querySelector('[data-h="krav"]').onclick = () => {
+    resultat.hidden = true;
+    $('.panel-faneblad[data-faneblad="krav"]').click();
+  };
+  resultat.querySelector('[data-h="csv"]').onclick = eksporterCsv;
+  resultat.querySelector('[data-h="print"]').onclick = udskriv;
   $('#knap-plan').onclick = () => sætTilstand('plan');
   $('#knap-3d').onclick = () => sætTilstand('3d');
   $('#knap-reference').onclick = gemReference;

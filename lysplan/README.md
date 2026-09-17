@@ -34,6 +34,15 @@ Er repositoriet privat, kræver GitHub Pages en betalt plan; så er en intern
 webserver eller den lokale kørsel vejen frem. Værktøjet er rene statiske filer,
 så det kan også bare lægges i en mappe på et intranet eller et fildrev.
 
+## Ét tryk
+
+Knappen **“Lav lysplan af tegningen”** øverst kører hele kæden: den finder
+inventaret, læser zonerne af tegningen, lægger skinner og armaturer ud,
+regner lysniveauet efter og gør 3D-kigget klar. Til sidst kommer et
+resultatkort med nøgletallene, det der bør ses på, og vejen videre til 3D,
+kravkontrol, stykliste og udskrift. Resten af arbejdsgangen herunder er til,
+når noget skal rettes i hånden.
+
 ## Arbejdsgang
 
 1. **Importér tegning** – træk DWG, DXF, PDF, PNG, JPG eller SVG ind på
@@ -44,11 +53,12 @@ så det kan også bare lægges i en mappe på et intranet eller et fildrev.
    CAD-tegning kan slukkes enkeltvis, så målsætning og møblering ikke støjer.
 2. **Målestok** – kom den ikke med tegningen: klik to punkter med kendt
    indbyrdes afstand og indtast målet. Derefter regnes alt i meter og m².
-3. **Inventar** – tryk “Find inventar i tegningen”. Reoler, køl, frost, kasser
+3. **Inventar** – findes automatisk ved import, eller tryk “Find inventar i tegningen”. Reoler, køl, frost, kasser
    og diske genkendes som rektangler i CAD-tegningen, og teksterne på planen
    bestemmer varegruppe og antal fag. Alt kan rettes i listen, og manglende
    møbler tegnes med inventarværktøjet (I).
-4. **Zoner** – vælg zonetype og tegn polygonen. Salgsareal, betjente områder,
+4. **Zoner** – læses af tegningens rumnavne (`SALGSAREAL 779,6 M2`, `VINDFANG`,
+   `LAGER` …) med knappen “Find zoner i tegningen”. Ellers: vælg zonetype og tegn polygonen. Salgsareal, betjente områder,
    vindfang, lager og personale har hver sit lux-krav, og arealet vises løbende.
 5. **Beregn belysningsplan** – vælg koncept, loftstype og c/c-afstand.
    Skinnerne lægges oven på reol- og kølerækkerne, resten af zonen dækkes med

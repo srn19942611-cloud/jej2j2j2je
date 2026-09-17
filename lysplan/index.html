@@ -20,7 +20,8 @@
     </div>
   </div>
   <div class="top-knapper">
-    <button id="knap-import" class="primær">Importér tegning</button>
+    <button id="knap-import">Importér tegning</button>
+    <button id="knap-alt" class="primær stor">Lav lysplan af tegningen</button>
     <input type="file" id="fil-tegning" accept="image/*,.pdf,.dxf,.dwg" multiple hidden>
     <input type="file" id="fil-projekt" accept=".json,application/json" hidden>
     <button id="knap-hent">Åbn projekt</button>
@@ -98,6 +99,19 @@
     </div>
     <canvas id="lærred"></canvas>
     <div id="tre-tal" class="tre-tal" hidden></div>
+    <div id="resultat" class="resultat" hidden>
+      <div class="resultat-top">
+        <h2 id="resultat-titel">Lysplan klar</h2>
+        <button class="ikon" data-h="luk" title="Luk">✕</button>
+      </div>
+      <div id="resultat-krop"></div>
+      <div class="rk">
+        <button data-h="tre" class="primær">Se i 3D</button>
+        <button data-h="krav">Kravkontrol</button>
+        <button data-h="csv">Stykliste</button>
+        <button data-h="print">Udskriv</button>
+      </div>
+    </div>
     <div class="tom-besked" id="tom-besked">
       <strong>Træk en plantegning herind</strong>
       <span>DWG · DXF · PDF · PNG · JPG – eller brug “Importér tegning”</span>
