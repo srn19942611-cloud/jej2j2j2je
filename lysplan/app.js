@@ -421,6 +421,21 @@ function tegnInventar() {
     ctx.strokeStyle = valgt ? FARVER.skinneValgt : t.farve;
     ctx.lineWidth = (valgt ? 2.2 : 1.2) / z;
     ctx.stroke();
+    // modulopdeling, så møblet ligner en reolopstilling og ikke en kasse
+    const op = Moebler.opgør(i);
+    if (op.moduler > 1 && mToPx(i.laengde) * z > 40) {
+      const c = Math.cos(i.vinkel), sn = Math.sin(i.vinkel);
+      const halvD = mToPx(i.dybde) / 2;
+      ctx.beginPath();
+      for (let k = 1; k < op.moduler; k++) {
+        const u = -mToPx(i.laengde) / 2 + (mToPx(i.laengde) / op.moduler) * k;
+        const x = i.centrum[0] + u * c, y = i.centrum[1] + u * sn;
+        ctx.moveTo(x + sn * halvD, y - c * halvD);
+        ctx.lineTo(x - sn * halvD, y + c * halvD);
+      }
+      ctx.lineWidth = 0.7 / z;
+      ctx.stroke();
+    }
     if (harMaalestok() && mToPx(i.laengde) * z > 60) {
       ctx.save();
       ctx.translate(i.centrum[0], i.centrum[1]);
@@ -1002,16 +1017,28 @@ function findInventar(stille) {
       lagFilter: lag.cadLag,
       graenser: { fagbredde: state.indst.fagbredde }
     });
+    const r = lagRamme(lag);
     for (const f of liste) {
       // lagets egen forskydning og skalering lægges på
       const flyt = p => [lag.x + p[0] * lag.skala, lag.y + p[1] * lag.skala];
-      state.inventar.push({
+      const post = {
         id: nyId(), ...f,
         centrum: flyt(f.centrum),
         hjørner: f.hjørner.map(flyt),
         laengde: f.laengde * lag.skala,
         dybde: f.dybde * lag.skala
-      });
+      };
+      // en reol midt på gulvet er dobbeltsidet; en langs væggen er enkeltsidet
+      if (post.type === 'reol' || post.type === 'vaegreol') {
+        const b = Geom.bbox(post.hjørner);
+        const tilVæg = pxToM(Math.min(b.x0 - r.x0, r.x1 - b.x1, b.y0 - r.y0, r.y1 - b.y1));
+        const midtIButikken = tilVæg > 1.2;
+        post.type = midtIButikken ? 'reol' : 'vaegreol';
+        post.model = midtIButikken ? (post.dybde > 1.15 ? 'gondol2100' : 'gondol1800') : 'vaegreol2200';
+        post.hoejde = Moebler.MØBLER[post.model].hoejde;
+      }
+      post.vendt = vendModButikken(post, r);
+      state.inventar.push(post);
       fundet++;
     }
   }
@@ -1023,6 +1050,14 @@ function findInventar(stille) {
       : 'Der blev ikke fundet inventar – prøv at slå flere lag til, eller tegn møblerne med inventarværktøjet');
   }
   return fundet;
+}
+
+/* Enkeltsidede møbler skal vende fronten ind mod butikken, ikke mod væggen. */
+function vendModButikken(post, ramme) {
+  const midte = [(ramme.x0 + ramme.x1) / 2, (ramme.y0 + ramme.y1) / 2];
+  const v = [-Math.sin(post.vinkel), Math.cos(post.vinkel)];
+  const mod = [midte[0] - post.centrum[0], midte[1] - post.centrum[1]];
+  return (v[0] * mod[0] + v[1] * mod[1]) >= 0 ? 1 : -1;
 }
 
 function tilføjInventarRekt(a, b) {
@@ -1042,6 +1077,8 @@ function tilføjInventarRekt(a, b) {
     fag: t.maaler === 'fag' ? Math.max(1, Math.round(laengde / state.indst.fagbredde)) : null,
     dele: 1
   };
+  const r = state.lag.length ? lagRamme(state.lag[0]) : Geom.bbox(post.hjørner);
+  post.vendt = vendModButikken(post, r);
   state.inventar.push(post);
   return post;
 }
@@ -1404,10 +1441,15 @@ function visInventarPanel() {
     krop.innerHTML = '<tr><td colspan="4" class="tom">Intet inventar endnu.</td></tr>';
   } else {
     krop.innerHTML = st.grupper.map(g => {
+      const detaljer = state.inventar.filter(i => i.type === g.type).map(i => Moebler.opgør(i));
+      const moduler = detaljer.reduce((a, d) => a + d.moduler, 0);
+      const hylder = detaljer.reduce((a, d) => a + d.hylder, 0);
+      const låger = detaljer.reduce((a, d) => a + d.laager + d.laag, 0);
       const under = Object.entries(g.varegrupper)
         .sort((a, b) => b[1].meter - a[1].meter)
         .map(([navn, v]) => `<tr class="under"><td>${navn}</td><td class="tal">${v.antal}</td><td class="tal">${fmt(v.meter, 1)}</td><td class="tal">${v.fag || ''}</td></tr>`).join('');
-      return `<tr><td><strong>${g.navn}</strong></td><td class="tal">${g.antal}</td><td class="tal">${fmt(g.meter, 1)}</td><td class="tal">${g.fag || ''}</td></tr>` + under;
+      return `<tr><td><strong>${g.navn}</strong><span class="sub">${moduler} moduler${hylder ? ` · ${hylder} hylder` : ''}${låger ? ` · ${låger} låger/låg` : ''}</span></td>` +
+        `<td class="tal">${g.antal}</td><td class="tal">${fmt(g.meter, 1)}</td><td class="tal">${g.fag || ''}</td></tr>` + under;
     }).join('');
   }
 
@@ -1422,17 +1464,28 @@ function visInventarPanel() {
     const el = document.createElement('div');
     el.className = 'inv' + (state.valgt && state.valgt.slags === 'inventar' && state.valgt.id === i.id ? ' valgt' : '');
     el.style.borderLeftColor = t.farve;
+    const op = Moebler.opgør(i);
     el.innerHTML = `
       <select data-h="type">${Object.entries(Inventar.INVENTAR_TYPER)
         .map(([k, v]) => `<option value="${k}" ${k === i.type ? 'selected' : ''}>${v.navn}</option>`).join('')}</select>
       <input data-h="kategori" value="${(i.kategori || '').replace(/"/g, '&quot;')}" placeholder="varegruppe">
-      <span class="meter" title="længde × dybde">${fmt(i.laengde, 1)}×${fmt(i.dybde, 1)}</span>
+      <span class="meter" title="længde × dybde × højde">${fmt(i.laengde, 1)}×${fmt(i.dybde, 1)}×${fmt(i.hoejde, 1)}</span>
       <input data-h="fag" type="number" min="0" step="1" value="${i.fag || ''}" title="fag">
-      <button class="ikon" data-h="slet" title="Slet">✕</button>`;
+      <button class="ikon" data-h="slet" title="Slet">✕</button>
+      <select data-h="model" class="model">${Object.entries(Moebler.MØBLER)
+        .map(([k, v]) => `<option value="${k}" ${k === (i.model || Moebler.STANDARDMODEL[i.type]) ? 'selected' : ''}>${v.navn}</option>`).join('')}</select>
+      <span class="detalje">${op.moduler} moduler à ${fmt(op.modulBredde, 2)} m${op.hylder ? ` · ${op.hylder} hylder` : ''}${op.laager ? ` · ${op.laager} låger` : ''}${op.laag ? ` · ${op.laag} låg` : ''}</span>`;
+    el.querySelector('[data-h="model"]').onchange = e => {
+      i.model = e.target.value;
+      const m = Moebler.MØBLER[i.model];
+      if (m) { i.hoejde = m.hoejde; i.type = m.type; }
+      opdater();
+    };
     el.querySelector('[data-h="type"]').onchange = e => {
       i.type = e.target.value;
       const ny = Inventar.INVENTAR_TYPER[i.type];
-      i.hoejde = ny.hoejde;
+      i.model = Inventar.vælgModel(i.type, i.dybde, i.laengde, i.tekst || '');
+      i.hoejde = (Moebler.MØBLER[i.model] || ny).hoejde;
       i.fag = ny.maaler === 'fag' ? Math.max(1, Math.round(i.laengde / state.indst.fagbredde)) : null;
       opdater();
     };
@@ -1637,14 +1690,39 @@ function placerStartkamera() {
   if (!zone) return;
   const m = state.pxPerMeter || 100;
   const r = Geom.bbox(zone.pts);
-  // stil kameraet ved den ene ende og kig ind over arealet
   const langs = (r.x1 - r.x0) >= (r.y1 - r.y0);
-  state.kamera.x = (langs ? r.x0 + (r.x1 - r.x0) * 0.08 : (r.x0 + r.x1) / 2) / m;
-  state.kamera.y = (langs ? (r.y0 + r.y1) / 2 : r.y0 + (r.y1 - r.y0) * 0.08) / m;
+  const start = [
+    langs ? r.x0 + (r.x1 - r.x0) * 0.08 : (r.x0 + r.x1) / 2,
+    langs ? (r.y0 + r.y1) / 2 : r.y0 + (r.y1 - r.y0) * 0.08
+  ];
+  const punkt = frittPunkt(start, zone);
+  state.kamera.x = punkt[0] / m;
+  state.kamera.y = punkt[1] / m;
   state.kamera.retning = langs ? 0 : Math.PI / 2;
   state.kamera.tilt = -0.08;
   state.kameraer.push({ id: nyId(), navn: 'Indgang', ...state.kamera });
   visKameraer();
+}
+
+/* Nærmeste sted i zonen hvor der ikke står et møbel - så man ikke starter inde i en reol. */
+function frittPunkt(p, zone) {
+  const fri = q => Geom.pointInPolygon(q, zone.pts) &&
+    !state.inventar.some(i => Geom.pointInPolygon(q, udvidetRekt(i, mToPx(0.4))));
+  if (fri(p)) return p;
+  for (let radius = mToPx(0.5); radius < mToPx(12); radius += mToPx(0.5)) {
+    for (let v = 0; v < Math.PI * 2; v += Math.PI / 8) {
+      const q = [p[0] + Math.cos(v) * radius, p[1] + Math.sin(v) * radius];
+      if (fri(q)) return q;
+    }
+  }
+  return p;
+}
+
+function udvidetRekt(i, margen) {
+  const c = Math.cos(i.vinkel), s = Math.sin(i.vinkel);
+  const hl = mToPx(i.laengde) / 2 + margen, hd = mToPx(i.dybde) / 2 + margen;
+  const h = (u, v) => [i.centrum[0] + u * c - v * s, i.centrum[1] + u * s + v * c];
+  return [h(-hl, -hd), h(hl, -hd), h(hl, hd), h(-hl, hd)];
 }
 
 function visKameraer() {

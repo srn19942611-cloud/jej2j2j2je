@@ -102,11 +102,46 @@ Opgørelsen giver antal, løbende meter og fag pr. type og varegruppe, med
 totaler for reol, køl og frost. Alt kan rettes i listen, og rum og bygningsdele
 (lager, teknik, kontor …) sorteres fra.
 
+## Møbelbibliotek
+
+Hvert møbel får en model med de mål, der er gængse i dansk detail, og bliver
+bygget op af sokkel, gavle, bagvæg, hylder, varer, skiltefrise og eventuelle
+låger – ikke som en kasse:
+
+| Model | Højde | Dybde | Modul | Hylder |
+| --- | --- | --- | --- | --- |
+| Gondolareol 1800, dobbeltsidet | 1,80 m | 1,00 m | 1,00 m | 5 pr. side |
+| Gondolareol 2100, dobbeltsidet | 2,10 m | 1,00 m | 1,00 m | 6 pr. side |
+| Gondolareol 1400, lav gennemsigt | 1,40 m | 1,00 m | 1,00 m | 4 pr. side |
+| Vægreol 2200, enkeltsidet | 2,20 m | 0,60 m | 1,00 m | 6 |
+| Brødreol med skrå hylder | 1,60 m | 0,70 m | 1,00 m | 4 |
+| Kølereol med glaslåger 2100 | 2,10 m | 0,90 m | 1,25 m | 5, låger à 0,625 m |
+| Åben kølereol (multideck) 2000 | 2,00 m | 0,90 m | 1,25 m | 4, med kappe |
+| Frostreol med glaslåger 2000 | 2,00 m | 0,80 m | 0,75 m | 5, låger à 0,75 m |
+| Frostø med glaslåg 1100 | 1,10 m | 1,35 m | 1,25 m | kurve og låg |
+| Betjeningsdisk med skråt glas | 1,25 m | 1,20 m | 1,25 m | – |
+| Kassebånd med scanner og terminal | 0,95 m | 0,90 m | 3,00 m | bånd og pakkeplads |
+| Selvbetjeningskasse | 1,45 m | 0,70 m | 0,70 m | skærm |
+| Frugt & grønt-podie | 0,95 m | 1,20 m | 1,25 m | skrå kasser |
+| Pallefelt / spotvare | 1,20 m | 1,20 m | 1,20 m | – |
+
+Modellen vælges automatisk ud fra type og de mål, der står på tegningen: en
+reol længere end 1,2 m fra nærmeste ydervæg regnes som dobbeltsidet gondol, en
+langs væggen som vægreol, og enkeltsidede møbler vendes med fronten ind mod
+butikken. Alt kan skiftes i inventarlisten, hvor højden følger med modellen.
+
+Målene er typetal for dansk dagligvarehandel og ikke en bestemt leverandørs
+katalog – ret dem i `moebler.js`, når leverandørens egne mål kendes.
+Opgørelsen giver antal moduler, hylder, låger og hyldemeter oven i de løbende
+meter, så styklisten kan bruges til at bestille efter.
+
 ## 3D-kig
 
 3D-billedet tegnes uden nogen 3D-motor: gulvet lægges ud i et net på 0,5 m,
-inventaret bliver til kasser i deres rigtige højde, og hver flade får den
-belysningsstyrke, den faktisk modtager fra armaturerne. Farverne kan vises
+møblerne bygges op fra møbelbiblioteket med hylder, varer, låger og sokkel, og
+hver flade får den belysningsstyrke, den faktisk modtager fra armaturerne –
+plus det lys, gulvet foran fladen kaster tilbage, så reolsider og gavle ikke
+står sorte. Farverne kan vises
 realistisk eller som falskfarve i lux, ligesom i et lysberegningsprogram.
 Samme farveskala kan lægges ned over plantegningen som varmekort – det er
 lysspredningen, byggeprogrammet beder om.
@@ -141,6 +176,7 @@ lager/bagbutik. De er ment som et startpunkt, ikke som en norm.
 | `catalog.js` | Armaturer, tilbehør, koncepter, skinneopdeling, elregler |
 | `cad.js` | DXF-læser, DWG via LibreDWG, fladgørelse til streger og tekst |
 | `inventar.js` | Genkendelse af reoler, køl og frost samt inventaropgørelse |
+| `moebler.js` | Møbelbibliotek med detailmål og opbygning af møblerne i 3D |
 | `tre.js` | Lysberegning punkt for punkt og 3D-billedet |
 | `geom.js` | Geometri: areal, skæringer, projektion, rotation |
 | `app.js` | Tegneflade, værktøjer, beregning, stykliste, eksport |

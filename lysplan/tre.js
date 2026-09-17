@@ -121,28 +121,33 @@ const Tre = (() => {
     const omgivende = net.omgivende || 0;
     const zoner = state.zoner.filter(z => z.pts.length > 2);
 
+    // møblerne bygges op af flader (sokkel, hylder, varer, låger), så
+    // lyset kan beregnes på den enkelte flade
+    const fladeLys = (midt, n) => {
+      const gulvForan = lux([midt[0] + n[0] * 1.1, midt[1] + n[1] * 1.1, 0], [0, 0, 1], lys, vedligehold);
+      return lux(midt, n, lys, vedligehold) + omgivende + gulvForan * 0.22 * (1 - Math.abs(n[2]));
+    };
+
     const kasser = state.inventar.map(i => {
-      const hj = i.hjørner.map(p => [p[0] / m, p[1] / m]);
-      const højde = i.hoejde || 1.8;
       const t = Inventar.INVENTAR_TYPER[i.type] || Inventar.INVENTAR_TYPER.andet;
-      const sider = [];
-      for (let k = 0; k < 4; k++) {
-        const a = hj[k], b = hj[(k + 1) % 4];
-        const dx = b[0] - a[0], dy = b[1] - a[1];
-        const l = Math.hypot(dx, dy) || 1;
-        const normal = [dy / l, -dx / l, 0];
-        const midt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, højde * 0.55];
-        sider.push({
-          punkter: [[a[0], a[1], 0], [b[0], b[1], 0], [b[0], b[1], højde], [a[0], a[1], højde]],
-          lux: lux(midt, normal, lys, vedligehold) + omgivende, farve: t.farve, normal
-        });
-      }
-      const midtTop = [(hj[0][0] + hj[2][0]) / 2, (hj[0][1] + hj[2][1]) / 2, højde];
-      sider.push({
-        punkter: hj.map(p => [p[0], p[1], højde]),
-        lux: lux(midtTop, [0, 0, 1], lys, vedligehold) + omgivende, farve: t.farve, top: true
+      const iMeter = {
+        ...i,
+        centrum: [i.centrum[0] / m, i.centrum[1] / m],
+        laengde: i.laengde, dybde: i.dybde, hoejde: i.hoejde
+      };
+      const flader = Moebler.byg(iMeter).map(f => {
+        const normal = fladeNormal(f.punkter);
+        const midt = midtpunkt(f.punkter);
+        // Fladens forside kendes ikke af tegnerækkefølgen, så lyset regnes fra
+        // begge sider, og den lyse side vises. Oven i det direkte lys lægges
+        // det, gulvet foran fladen kaster tilbage - ellers står gavle helt sorte.
+        const e = Math.max(fladeLys(midt, normal), fladeLys(midt, [-normal[0], -normal[1], -normal[2]]));
+        return { punkter: f.punkter, farve: f.farve, glas: f.glas, slags: f.slags, lux: e };
       });
-      return { id: i.id, type: i.type, navn: i.kategori || t.navn, sider, højde, centrum: [midtTop[0], midtTop[1]] };
+      return {
+        id: i.id, type: i.type, navn: i.kategori || t.navn, sider: flader,
+        højde: i.hoejde || 1.8, centrum: iMeter.centrum
+      };
     });
 
     const loft = state.indst.loftshoejde || 3.2;
@@ -161,9 +166,10 @@ const Tre = (() => {
         if (nabo) continue;
         const indad = Geom.pointInPolygon([midt[0] - ud[0] * 0.2, midt[1] - ud[1] * 0.2], poly) ? -1 : 1;
         const normal = [ud[0] * indad, ud[1] * indad, 0];
+        const midtVæg = [midt[0], midt[1], loft * 0.45];
         vægge.push({
           punkter: [[a[0], a[1], 0], [b[0], b[1], 0], [b[0], b[1], loft], [a[0], a[1], loft]],
-          lux: lux([midt[0], midt[1], loft * 0.45], normal, lys, vedligehold) + omgivende
+          lux: Math.max(fladeLys(midtVæg, normal), fladeLys(midtVæg, [-normal[0], -normal[1], 0]))
         });
       }
     });
@@ -205,6 +211,26 @@ const Tre = (() => {
     if (!n) return { snit: 0, min: 0, maks: 0, jaevnhed: 0, celler: 0 };
     const snit = sum / n;
     return { snit, min, maks, jaevnhed: snit > 0 ? min / snit : 0, celler: n };
+  }
+
+  function midtpunkt(punkter) {
+    const n = punkter.length;
+    return [
+      punkter.reduce((a, p) => a + p[0], 0) / n,
+      punkter.reduce((a, p) => a + p[1], 0) / n,
+      punkter.reduce((a, p) => a + p[2], 0) / n
+    ];
+  }
+
+  /* Fladens normal, vendt opad eller udad efter hvor lyset kommer fra. */
+  function fladeNormal(p) {
+    const ax = p[1][0] - p[0][0], ay = p[1][1] - p[0][1], az = p[1][2] - p[0][2];
+    const bx = p[2][0] - p[0][0], by = p[2][1] - p[0][1], bz = p[2][2] - p[0][2];
+    let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l; ny /= l; nz /= l;
+    if (nz < -0.001) { nx = -nx; ny = -ny; nz = -nz; }   // vandrette flader vender opad
+    return [nx, ny, nz];
   }
 
   /* ---- kamera og projektion ---- */
@@ -251,6 +277,11 @@ const Tre = (() => {
 
   function fladeFarve(hex, l, maks, tilstand) {
     if (tilstand === 'falsk') return luxFarve(l, maks, 'falsk');
+    if (hex.startsWith('hsl')) {
+      // varernes farve tones op og ned med lyset
+      const b = 0.25 + 0.75 * Math.pow(Math.max(0, Math.min(1, l / Math.max(1, maks))), 0.6);
+      return hex.replace(/(\d+)%\)$/, (mm, lys) => `${Math.round(+lys * b)}%)`);
+    }
     const b = 0.18 + 0.82 * Math.pow(Math.max(0, Math.min(1, l / Math.max(1, maks))), 0.6);
     const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), bl = parseInt(hex.slice(5, 7), 16);
     return `rgb(${Math.round(r * b)},${Math.round(g * b)},${Math.round(bl * b)})`;
@@ -301,7 +332,8 @@ const Tre = (() => {
     }
     for (const k of scene.kasser) {
       for (const side of k.sider) {
-        tilføj(side.punkter, fladeFarve(side.farve, side.lux, maks, tilstand), 'kasse', { kasse: k, side });
+        tilføj(side.punkter, fladeFarve(side.farve, side.lux, maks, tilstand),
+          side.glas ? 'glas' : 'kasse', { kasse: k, side });
       }
     }
     const h = scene.lys.length ? scene.lys[0].z : 3;
@@ -324,11 +356,21 @@ const Tre = (() => {
       ctx.moveTo(fl.skærm[0][0], fl.skærm[0][1]);
       for (const p of fl.skærm.slice(1)) ctx.lineTo(p[0], p[1]);
       ctx.closePath();
+      if (fl.slags === 'glas') {
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = fl.farve;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 0.7;
+        ctx.stroke();
+        continue;
+      }
       ctx.fillStyle = fl.farve;
       ctx.fill();
       if (fl.slags === 'kasse') {
-        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-        ctx.lineWidth = 0.6;
+        ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+        ctx.lineWidth = 0.5;
         ctx.stroke();
       } else if (fl.slags === 'lampe') {
         ctx.shadowColor = 'rgba(255,240,200,0.9)';

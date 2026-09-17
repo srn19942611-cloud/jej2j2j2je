@@ -287,10 +287,11 @@ const Inventar = (() => {
     const c = Math.cos(r.vinkel), s = Math.sin(r.vinkel);
     const hl = laengdePx / 2, hd = r.dybde / 2;
     const hjørne = (u, v) => [centrum[0] + u * c - v * s, centrum[1] + u * s + v * c];
+    const model = vælgModel(type, dybde, laengde, tekst);
     return {
-      type, kategori, tekst, fag,
+      type, kategori, tekst, fag, model,
       laengde, dybde,
-      hoejde: INVENTAR_TYPER[type].hoejde,
+      hoejde: (typeof MØBLER !== 'undefined' && MØBLER[model] ? MØBLER[model].hoejde : INVENTAR_TYPER[type].hoejde),
       vinkel: r.vinkel,
       centrum,
       hjørner: [hjørne(-hl, -hd), hjørne(hl, -hd), hjørne(hl, hd), hjørne(-hl, hd)],
@@ -298,6 +299,26 @@ const Inventar = (() => {
       lag: r.lag,
       kilde: 'cad'
     };
+  }
+
+  /* Møbelmodel ud fra type og de mål, der står på tegningen. */
+  function vælgModel(type, dybde, laengde, tekst) {
+    if (typeof MØBLER === 'undefined') return null;
+    const t = (tekst || '').toLowerCase();
+    switch (type) {
+      case 'reol':
+        if (/brød|broed|bake/.test(t)) return 'broedreol';
+        if (dybde < 0.75) return 'vaegreol2200';
+        return dybde > 1.15 ? 'gondol2100' : 'gondol1800';
+      case 'vaegreol': return 'vaegreol2200';
+      case 'koel': return /åben|aaben|multideck|frugt|grønt|gront/.test(t) ? 'koelAaben' : 'koelLaage';
+      case 'frost': return dybde > 1.2 ? 'frostOe' : 'frostSkab';
+      case 'frostoe': return 'frostOe';
+      case 'betjening': return 'disk';
+      case 'kasse': return laengde < 1.4 ? 'selvkasse' : 'kassebaand';
+      case 'bord': return 'podie';
+      default: return STANDARDMODEL[type] || 'palleplads';
+    }
   }
 
   function afstandTilRektangel(p, r) {
@@ -334,5 +355,5 @@ const Inventar = (() => {
     };
   }
 
-  return { find, stykliste, erRektangel, INVENTAR_TYPER };
+  return { find, stykliste, erRektangel, vælgModel, INVENTAR_TYPER };
 })();
