@@ -108,6 +108,22 @@ trækker med musen for at kigge.
   12 pr. fase; fase 2 til spot, bast lamper og wall washer, maks. 30 pr. fase;
   fase 3 til fast strøm. Antal 3-polede grupper er det største krav af de to.
 
+## At tegne et areal
+
+Zonen tegnes ved at klikke hjørnerne. Den lukkes på fire måder, og de virker
+alle sammen:
+
+* **Klik på det første punkt igen.** Punktet lyser op, og den sidste linje
+  tegnes fuldt optrukket, når musen er tæt nok på.
+* **Knappen "Luk arealet"** i bjælken, der kommer frem, så snart der er sat
+  et punkt. Bjælken viser også, hvor mange punkter der er, og hvor stort
+  arealet er lige nu.
+* **Enter.**
+* **Dobbeltklik.**
+
+Bjælken har også "Fortryd punkt" og "Annullér". Det samme gælder lysskinner,
+hvor knappen hedder "Afslut rækken".
+
 ## Målestok fra tegningen
 
 DWG og DXF bærer deres egen enhed, så målestokken sættes af filen. For PDF

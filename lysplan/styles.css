@@ -308,3 +308,15 @@ button.stor{padding:7px 14px; font-weight:600}
 .dialog .facit{font-size:11.5px; color:var(--muted); min-height:16px; margin:2px 0 0}
 .dialog .facit b{color:var(--ink); font-family:"IBM Plex Mono",monospace}
 .dialog-knapper{justify-content:flex-end; margin-top:12px}
+
+/* ---- bjælken mens man tegner ----
+   Enter og dobbeltklik er ikke til at gætte sig til, så vejen ud står her. */
+.tegnebjaelke{
+  position:absolute; left:50%; transform:translateX(-50%); top:54px; z-index:5;
+  display:flex; align-items:center; gap:8px; padding:7px 9px;
+  background:var(--surface); border:1px solid var(--border); border-radius:10px;
+  box-shadow:var(--skygge); font-size:12px;
+}
+.tegnebjaelke span{color:var(--muted); padding:0 4px; white-space:nowrap}
+.tegnebjaelke span b{color:var(--ink); font-family:"IBM Plex Mono",monospace; font-weight:600}
+.tegnebjaelke button{font-size:12px; padding:5px 10px}

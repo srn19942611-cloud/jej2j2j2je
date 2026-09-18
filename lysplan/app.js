@@ -817,6 +817,7 @@ function tegnKameraer() {
 }
 
 function tegnKladde() {
+  visTegnebjaelke();
   if (!state.kladde.length) return;
   const z = state.visning.zoom;
   const pts = state.muse ? state.kladde.concat([state.muse]) : state.kladde;
@@ -833,6 +834,24 @@ function tegnKladde() {
     ctx.beginPath(); ctx.arc(p[0], p[1], 3 / z, 0, Math.PI * 2);
     ctx.fillStyle = '#fff'; ctx.fill();
     ctx.lineWidth = 1.4 / z; ctx.stroke();
+  }
+  // det første punkt lyser op, når musen er tæt nok på til at lukke ringen
+  if (state.vaerktoej === 'omraade' && state.kladde.length >= 3) {
+    const nær = state.muse && lukkerRingen(state.muse);
+    const a = state.kladde[0];
+    ctx.beginPath(); ctx.arc(a[0], a[1], (nær ? 8 : 5.5) / z, 0, Math.PI * 2);
+    ctx.fillStyle = nær ? ctx.strokeStyle : 'rgba(255,255,255,0.9)';
+    ctx.fill();
+    ctx.lineWidth = 2 / z;
+    ctx.stroke();
+    if (nær) {
+      // linjen tilbage til start tegnes fuldt optrukket, så man ser ringen lukke
+      ctx.beginPath();
+      ctx.moveTo(state.kladde[state.kladde.length - 1][0], state.kladde[state.kladde.length - 1][1]);
+      ctx.lineTo(a[0], a[1]);
+      ctx.lineWidth = 2.2 / z;
+      ctx.stroke();
+    }
   }
 }
 
@@ -916,6 +935,9 @@ lærred.addEventListener('pointerdown', e => {
       tegn();
       break;
     case 'omraade':
+      // klik tilbage på det første punkt lukker ringen - det er sådan et
+      // arealværktøj plejer at virke, og det er lettere end at ramme Enter
+      if (lukkerRingen(p)) { afslutKladde(); break; }
       state.kladde.push(e.altKey ? p : (state.kladde.length ? snapHvisOrtho(e, p) : p));
       tegn();
       break;
@@ -953,6 +975,7 @@ lærred.addEventListener('pointermove', e => {
   if (state.tilstand === '3d') return;
   const p = musePunkt(e);
   state.muse = state.kladde.length ? snapHvisOrtho(e, p) : p;
+  if (lukkerRingen(state.muse)) state.muse = state.kladde[0].slice();
   visStatus(p);
   if (træk && træk.slags === 'pan') {
     const z = state.visning.zoom;
@@ -1065,6 +1088,14 @@ window.addEventListener('keydown', e => {
 function snapHvisOrtho(e, p) {
   if (e.altKey || !state.kladde.length) return p;
   return Geom.snapOrtho(state.kladde[state.kladde.length - 1], p);
+}
+
+/* Er klikket tæt nok på det første punkt til at lukke arealet?
+   Afstanden regnes på skærmen, så den er lige stor uanset zoom. */
+const LUK_PX = 14;
+function lukkerRingen(p) {
+  if (state.vaerktoej !== 'omraade' || state.kladde.length < 3) return false;
+  return Geom.dist(p, state.kladde[0]) * state.visning.zoom <= LUK_PX;
 }
 
 function afslutKladde() {
@@ -1290,14 +1321,40 @@ function vælgVærktøj(v) {
     pan: 'Træk for at flytte tegningen. Scroll for at zoome.',
     vaelg: 'Klik for at vælge. Træk for at flytte. Delete sletter.',
     maalestok: 'Klik to punkter med kendt indbyrdes afstand, og indtast målet.',
-    omraade: 'Klik hjørnerne i zonen. Enter eller dobbeltklik lukker den. Zonetypen vælges i panelet til højre.',
+    omraade: 'Klik hjørnerne i zonen. Klik på det første punkt igen for at lukke den – eller tryk Enter. Zonetypen vælges i panelet til højre.',
     skinne: 'Klik skinnens knækpunkter. Enter eller dobbeltklik afslutter rækken. Alt = fri vinkel.',
     inventar: 'Træk et rektangel hen over møblet. Typen vælges i fanen Inventar.',
     kamera: 'Klik hvor du vil stå, og træk i den retning du kigger. Skift derefter til 3D.',
     slet: 'Klik på et objekt for at slette det.'
   }[v] || 'Klik i planen for at placere armaturet. Det snapper til nærmeste skinne (Alt = fri placering).';
   $('#status-hjælp').textContent = hjælp;
+  visTegnebjaelke();
   tegn();
+}
+
+/* Bjælken mens man tegner: hvor mange punkter der er sat, hvor stort
+   arealet er lige nu, og hvordan man kommer videre. Enter og dobbeltklik
+   er ikke til at gætte sig til. */
+function visTegnebjaelke() {
+  const bjælke = $('#tegnebjaelke');
+  const tegner = (state.vaerktoej === 'omraade' || state.vaerktoej === 'skinne') && state.kladde.length > 0;
+  bjælke.hidden = !tegner || state.tilstand === '3d';
+  if (bjælke.hidden) return;
+  const areal = state.vaerktoej === 'omraade';
+  const n = state.kladde.length;
+  let tekst = `${n} punkt${n === 1 ? '' : 'er'}`;
+  if (areal && n >= 3 && harMaalestok()) {
+    tekst += ` · <b>${fmt(Geom.polygonArea(state.kladde) / (state.pxPerMeter ** 2), 0)} m²</b>`;
+  } else if (!areal && n >= 2 && harMaalestok()) {
+    tekst += ` · <b>${fmt(pxToM(Geom.polylineLength(state.kladde)), 1)} m</b>`;
+  }
+  $('#tegne-tal').innerHTML = tekst;
+  const luk = $('#tegne-luk');
+  luk.textContent = areal ? 'Luk arealet' : 'Afslut rækken';
+  luk.disabled = areal ? n < 3 : n < 2;
+  luk.title = areal
+    ? 'Du kan også trykke Enter, dobbeltklikke, eller klikke på det første punkt'
+    : 'Du kan også trykke Enter eller dobbeltklikke';
 }
 
 /* ---------- inventar ---------- */
@@ -3908,6 +3965,9 @@ function bindKnapper() {
     if (!placerOversigt()) { toast('Tegn eller find en zone først', 'fejl'); return; }
     if (state.tilstand !== '3d') sætTilstand('3d'); else tegn();
   };
+  $('#tegne-luk').onclick = () => afslutKladde();
+  $('#tegne-annuller').onclick = () => { state.kladde = []; opdater(); };
+  $('#tegne-fortryd').onclick = () => { state.kladde.pop(); opdater(); };
   $('#knap-reference').onclick = gemReference;
   $('#knap-vis-reference').onclick = () => {
     state.visReference = !state.visReference;
