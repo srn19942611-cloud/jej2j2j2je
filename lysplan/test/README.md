@@ -58,3 +58,17 @@ ingen af delene, siger værktøjet til og åbner målestoksværktøjet.
 
 På SJOC's egne planer: 365 Discount Kalundborg blev læst som 1:100,
 bekræftet af 48 måltal.
+
+## `zone-inden-for-vaegge.mjs`
+
+Salgsarealet må aldrig række ud over bygningen. `butik.dxf` har sin ydervæg
+som en lukket polylinje på laget `VAEGGE` – et rektangel på 40,0 × 20,0 m.
+Testen lader værktøjet finde zonen selv og tjekker, at hvert eneste punkt
+på omridset ligger inden for det, med højst 0,35 m slør (omridset lægges ud
+på et net på 0,5 m og forenkles bagefter).
+
+Den fangede to fejl, der ikke var til at se på en stor tegning: lagnavnet
+`VAEGGE` matchede ikke vægmønsteret, fordi det var stavet med *ae* og ikke
+*æ*, og fallback-sporet sorterede bygningens eget omrids fra som "et møbel",
+fordi det er et lukket rektangel. Ydervæggen er også et lukket rektangel –
+den er bare 40 m lang.

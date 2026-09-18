@@ -132,6 +132,11 @@ væggene er – enten med et lagnavn på dansk ("Vægge udv."), eller med
 bips/DS-lagkoderne, hvor A20 er ydervægge og A21 indervægge. Målsætnings-
 og tekstlag (A29--M-, A29--T-) sorteres fra; de er streger, ikke mure.
 
+Til at afgøre hvad der er **inde og ude**, tæller hver eneste streg med,
+ikke kun vægglagene: ydervæggen er altid tegnet, også når den ligger på et
+lag, der ikke hedder noget med væg. Til at spærre gangene duer det ikke –
+så ville en gondolkant lukke gangen – og der bruges kun vægglagene.
+
 Væggene bruges tre gange:
 
 1. De spærrer på nettet, så gulvet omkring møblerne ikke kan brede sig
@@ -140,7 +145,11 @@ Væggene bruges tre gange:
    lukker, og der flydes ind fra kanten. Det, der ikke kan nås udefra, er
    inde i bygningen. Står møblerne for det meste "udenfor" bagefter, er
    vægnettet for hullet til at bruge, og trinnet springes over.
-3. Til sidst efterses hvert punkt på omridset: fra de nærmeste møbler – som
+3. Omridset lægges ned **på** væggen: for hver kant søges en væg, der er
+   næsten parallel og tæt på, og kanten projiceres ind på den. Så følger
+   zonen bygningen præcist, hvor der er en væg, og bliver liggende, hvor der
+   ikke er. En forenkling alene ville bare skære hjørnet af.
+4. Til sidst efterses hvert punkt på omridset: fra de nærmeste møbler – som
    med sikkerhed står inde i butikken – trækkes en linje ud til punktet. Er
    punktet spærret set fra dem alle, hører det til på den anden side af
    muren og flyttes ind foran den.

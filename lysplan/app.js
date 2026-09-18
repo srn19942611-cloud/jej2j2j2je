@@ -421,6 +421,8 @@ async function importerPdf(fil, navn) {
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     await side.render({ canvasContext: ctx, viewport: vp }).promise;
     const lag = await tilføjLag(sider > 1 ? `${navn} (s. ${i})` : navn, c.toDataURL('image/png'));
+    // px pr. PDF-punkt: bruges til at vise, hvilken papirmålestok et mål svarer til
+    if (lag) lag.pdfPt = skala;
     // tegningens eget mål læses af PDF'en, så alt andet kan måles ud fra det
     if (lag && i === 1 && !harMaalestok()) {
       const m = await pdfMaalestok(side, skala);
@@ -1028,6 +1030,11 @@ function flytKamera(frem, side, op) {
 }
 
 window.addEventListener('keydown', e => {
+  // en åben dialog tager tastaturet: Esc lukker den
+  if (dialogLuk) {
+    if (e.key === 'Escape') { e.preventDefault(); dialogLuk(); }
+    return;
+  }
   if (/input|textarea|select/i.test(e.target.tagName)) return;
   if (state.tilstand === '3d') {
     const skridt = e.shiftKey ? 1.2 : 0.45;
@@ -1083,14 +1090,110 @@ function afslutKladde() {
   }
 }
 
-function spørgMaalestok(px) {
-  const svar = prompt('Hvor lang er den målte linje i meter?\n(f.eks. en kendt facadelængde eller en målsat kote)', '10');
-  if (svar === null) { state.kalibrering = null; tegn(); return; }
-  const meter = parseFloat(String(svar).replace(',', '.'));
-  if (!(meter > 0)) { toast('Ugyldig længde', 'fejl'); state.kalibrering = null; tegn(); return; }
+/* ---- dialog ----
+   prompt() og confirm() bliver ignoreret, når siden kører i en
+   sandkasse-iframe: "Ignored call to 'prompt()'. The document is sandboxed,
+   and the 'allow-modals' keyword is not set." Derfor spørges der her på
+   siden i stedet, så det virker både lokalt og på nettet. */
+let dialogLuk = null;
+
+function visDialog({ titel, tekst, felter = [], ok = 'OK', nej = 'Annullér' }) {
+  const boks = $('#dialog'), form = $('#dialog-form');
+  $('#dialog-titel').textContent = titel;
+  $('#dialog-tekst').textContent = tekst || '';
+  $('#dialog-tekst').hidden = !tekst;
+  $('#dialog-ja').textContent = ok;
+  $('#dialog-nej').hidden = nej === false;
+  $('#dialog-nej').textContent = nej || 'Annullér';
+  const felt = $('#dialog-felter');
+  felt.innerHTML = felter.map(f => {
+    if (f.slags === 'maal') {
+      return `<div class="maal-rk">
+        <label class="felt">${f.navn}<input type="number" step="any" min="0" name="${f.nøgle}" value="${f.værdi ?? ''}"></label>
+        <label class="felt">Enhed<select name="${f.nøgle}-enhed">
+          <option value="1">m</option><option value="0.01">cm</option><option value="0.001">mm</option>
+        </select></label>
+      </div><p class="facit" data-facit="${f.nøgle}"></p>`;
+    }
+    return `<label class="felt">${f.navn}<input name="${f.nøgle}" value="${f.værdi ?? ''}"></label>`;
+  }).join('');
+
+  boks.hidden = false;
+  const første = form.querySelector('input');
+  if (første) { første.focus(); første.select(); }
+
+  return new Promise(svar => {
+    const luk = værdi => {
+      boks.hidden = true;
+      form.onsubmit = null;
+      dialogLuk = null;
+      svar(værdi);
+    };
+    dialogLuk = () => luk(null);
+    $('#dialog-nej').onclick = () => luk(null);
+    form.onsubmit = e => {
+      e.preventDefault();
+      const d = new FormData(form);
+      const ud = {};
+      for (const f of felter) {
+        const rå = String(d.get(f.nøgle) ?? '').replace(',', '.');
+        const tal = parseFloat(rå);
+        ud[f.nøgle] = f.slags === 'maal'
+          ? (isFinite(tal) ? tal * parseFloat(d.get(f.nøgle + '-enhed')) : NaN)
+          : rå;
+      }
+      luk(ud);
+    };
+    // levende facit, mens der skrives
+    form.oninput = () => {
+      const d = new FormData(form);
+      for (const f of felter) {
+        if (f.slags !== 'maal' || !f.facit) continue;
+        const el = form.querySelector(`[data-facit="${f.nøgle}"]`);
+        if (!el) continue;
+        const tal = parseFloat(String(d.get(f.nøgle) ?? '').replace(',', '.'));
+        const m = isFinite(tal) ? tal * parseFloat(d.get(f.nøgle + '-enhed')) : NaN;
+        el.innerHTML = isFinite(m) && m > 0 ? f.facit(m) : '';
+      }
+    };
+    form.oninput();
+  });
+}
+
+async function spørgJa(titel, tekst, ok) {
+  const svar = await visDialog({ titel, tekst, felter: [], ok: ok || 'Ja' });
+  return svar !== null;
+}
+
+async function spørgMaalestok(px) {
+  // et bud ud fra den målestok, der allerede er sat - så feltet sjældent
+  // skal rettes helt fra bunden
+  const bud = harMaalestok() ? +pxToM(px).toFixed(2) : 10;
+  const svar = await visDialog({
+    titel: 'Hvor lang er den målte linje?',
+    tekst: 'Mål en kendt længde på tegningen – en facade, et målsat stykke eller en dørbredde. Skriv målet, som det står på tegningen; CAD-mål er som regel i millimeter.',
+    felter: [{
+      slags: 'maal', nøgle: 'laengde', navn: 'Målet på tegningen', værdi: bud,
+      facit: m => {
+        const pxPerM = px / m;
+        // hvilken papirmålestok svarer det til, hvis tegningen er et billede?
+        const lag = state.lag.find(l => l.slags === 'billede');
+        const n = lag && lag.pdfPt ? Math.round(1000 / (pxPerM / lag.pdfPt * 25.4 / 72)) : null;
+        return `Giver <b>${fmt(pxPerM, 1)} px pr. meter</b>` + (n ? ` · svarer til ca. 1:${fmt(n, 0)}` : '');
+      }
+    }],
+    ok: 'Sæt målestok'
+  });
+  if (!svar || !(svar.laengde > 0)) {
+    state.kalibrering = null;
+    tegn();
+    if (svar) toast('Målet skal være et tal større end 0', 'fejl');
+    return;
+  }
+  const meter = svar.laengde;
   state.pxPerMeter = px / meter;
   state.kalibrering.meter = meter;
-  toast('Målestok sat: 1 m = ' + fmt(state.pxPerMeter, 1) + ' px');
+  toast(`Målestok sat: ${fmt(meter, meter < 1 ? 3 : 2)} m målt op – 1 m = ${fmt(state.pxPerMeter, 1)} px`);
   vælgVærktøj('vaelg');
   opdater();
 }
@@ -1359,9 +1462,24 @@ function størsteOmrids(cadLag) {
    eller med bips/DS-lagkoderne, hvor A20 er ydervægge, A21 indervægge og
    A2x øvrige bygningsdele. Kundetegningen bruger A20---E, A21---- og
    A29--S-, og det er dér, murene står. */
-const VAEGLAG = /v[æa]gg?e?\b|ydervæg|indervæg|\bwall|\bmur\b|bygning|konstruktion|^a2\d/i;
+const VAEGLAG = /v[æa]e?gg?e?\b|yderv[æa]e?g|innerv[æa]e?g|inderv[æa]e?g|\bwall|\bmur\b|bygning|konstruktion|^a2\d/i;
 /* A29--M- er målsætning og A29--T- tekst - streger, ikke mure. */
 const IKKE_VAEGLAG = /m[åa]ls[æa]t|\bm[åa]l\b|tekst|\bdim\b|kote|signatur|^a2\d[^a-z0-9]*[mt][^a-z0-9]*$/i;
+
+/* Er det lukkede omrids på størrelse med et møbel? Bygningens ydervæg er
+   også et lukket rektangel, men den er meterlang på begge leder. */
+function møbelStort(st, lag) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let k = 0; k + 1 < st.p.length; k += 2) {
+    if (st.p[k] < x0) x0 = st.p[k];
+    if (st.p[k] > x1) x1 = st.p[k];
+    if (st.p[k + 1] < y0) y0 = st.p[k + 1];
+    if (st.p[k + 1] > y1) y1 = st.p[k + 1];
+  }
+  const skala = lag.skala || 1;
+  const kort = Math.min(x1 - x0, y1 - y0) * skala;
+  return pxToM(kort) <= 3;
+}
 
 function vaegLinjer(cadLag) {
   const linjer = [];
@@ -1373,8 +1491,9 @@ function vaegLinjer(cadLag) {
     const mindst = mToPx(brugAlle ? 2.5 : 0.4) / (lag.skala || 1);
     for (const st of lag.tegning.streger) {
       if (brugAlle ? lag.cadLag[st.lag] === false : !vægnavne.has(st.lag)) continue;
-      // et lukket rektangel på møbeldybde er et møbel, ikke en væg
-      if (brugAlle && st.lukket && st.p.length <= 12) continue;
+      // et lukket rektangel på møbeldybde er et møbel - men bygningens eget
+      // omrids er også et lukket rektangel, og det er netop en væg
+      if (brugAlle && st.lukket && st.p.length <= 12 && møbelStort(st, lag)) continue;
       for (let k = 0; k + 3 < st.p.length; k += 2) {
         const a = [st.p[k], st.p[k + 1]], b = [st.p[k + 2], st.p[k + 3]];
         if (Geom.dist(a, b) < mindst) continue;
@@ -1386,6 +1505,34 @@ function vaegLinjer(cadLag) {
     }
   }
   return linjer;
+}
+
+/* Til bygningens ydre grænse tæller hver eneste streg med.
+   Ydervæggen er altid tegnet - også når den ligger på et lag, der ikke
+   hedder noget med væg. Til at spærre gangene duer det ikke (så ville en
+   gondolkant lukke gangen), men til at afgøre hvad der er inde og ude er
+   det den sikreste kilde tegningen har. */
+function alleStreger(cadLag) {
+  const ud = [];
+  for (const lag of cadLag) {
+    for (const st of lag.tegning.streger) {
+      if (lag.cadLag && lag.cadLag[st.lag] === false) continue;
+      for (let k = 0; k + 3 < st.p.length; k += 2) {
+        ud.push([
+          [lag.x + st.p[k] * lag.skala, lag.y + st.p[k + 1] * lag.skala],
+          [lag.x + st.p[k + 2] * lag.skala, lag.y + st.p[k + 3] * lag.skala]
+        ]);
+      }
+      if (st.lukket && st.p.length >= 6) {
+        const n = st.p.length;
+        ud.push([
+          [lag.x + st.p[n - 2] * lag.skala, lag.y + st.p[n - 1] * lag.skala],
+          [lag.x + st.p[0] * lag.skala, lag.y + st.p[1] * lag.skala]
+        ]);
+      }
+    }
+  }
+  return ud;
 }
 
 /* Væggene lægges ned på nettet som spærrede felter, så gulvet omkring
@@ -1404,6 +1551,73 @@ function spaerFelter(linjer, nx, ny, x0, y0, celle) {
     }
   }
   return blok;
+}
+
+/* Omridset lægges på væggen.
+   Nettet giver en trappe med et halvt felts takker langs muren, og en
+   forenkling alene ville bare skære hjørnet af. I stedet søges der for hver
+   kant på omridset en væg, der er næsten parallel og tæt på, og kanten
+   lægges ned på den. Så følger zonen bygningen præcist, hvor der er en væg,
+   og bliver liggende, hvor der ikke er. */
+function snapTilVaegge(pts, mure, tol) {
+  if (!pts || pts.length < 4 || !mure.length) return pts;
+  const vinkelAf = (a, b) => {
+    const v = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    return ((v % Math.PI) + Math.PI) % Math.PI;
+  };
+  // væggene beskrives som linje: retning + afstand fra origo på tværs
+  const linjer = mure
+    .filter(([a, b]) => Geom.dist(a, b) > mToPx(0.8))
+    .map(([a, b]) => {
+      const v = vinkelAf(a, b);
+      const c = Math.cos(v), sn = Math.sin(v);
+      return { v, c, sn, tvaers: -a[0] * sn + a[1] * c,
+        u0: Math.min(a[0] * c + a[1] * sn, b[0] * c + b[1] * sn),
+        u1: Math.max(a[0] * c + a[1] * sn, b[0] * c + b[1] * sn) };
+    });
+  if (!linjer.length) return pts;
+
+  const ud = pts.map(p => p.slice());
+  for (let k = 0; k < pts.length; k++) {
+    const i0 = k, i1 = (k + 1) % pts.length;
+    const a = pts[i0], b = pts[i1];
+    const L = Geom.dist(a, b);
+    if (L < mToPx(0.6)) continue;
+    const v = vinkelAf(a, b);
+    const midt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    let bedst = null, bedstAfstand = tol;
+    for (const l of linjer) {
+      let d = Math.abs(l.v - v);
+      if (d > Math.PI / 2) d = Math.PI - d;
+      if (d > 0.18) continue;                              // ca. 10 grader
+      const u = midt[0] * l.c + midt[1] * l.sn;
+      if (u < l.u0 - mToPx(1) || u > l.u1 + mToPx(1)) continue;
+      const af = Math.abs(-midt[0] * l.sn + midt[1] * l.c - l.tvaers);
+      if (af < bedstAfstand) { bedstAfstand = af; bedst = l; }
+    }
+    if (!bedst) continue;
+    // begge endepunkter projiceres ind på væglinjen
+    for (const i of [i0, i1]) {
+      const q = pts[i];
+      const u = q[0] * bedst.c + q[1] * bedst.sn;
+      ud[i] = [bedst.c * u - bedst.sn * bedst.tvaers, bedst.sn * u + bedst.c * bedst.tvaers];
+    }
+  }
+  return samlRette(ud);
+}
+
+/* Punkter, der er endt på linje efter snappet, tjener intet formål. */
+function samlRette(pts) {
+  const ud = [];
+  for (let i = 0; i < pts.length; i++) {
+    const f = pts[(i - 1 + pts.length) % pts.length], m = pts[i], e = pts[(i + 1) % pts.length];
+    const v1 = Math.atan2(m[1] - f[1], m[0] - f[0]);
+    const v2 = Math.atan2(e[1] - m[1], e[0] - m[0]);
+    let d = Math.abs(v1 - v2);
+    if (d > Math.PI) d = 2 * Math.PI - d;
+    if (d > 0.06 && Geom.dist(f, m) > 1e-6) ud.push(m);
+  }
+  return ud.length >= 4 ? ud : pts;
 }
 
 /* Sidste kontrol mod væggene.
@@ -1498,6 +1712,25 @@ function bygningensIndre(mure, sat, nx, ny) {
     if (jy < ny - 1) naboer.push(j + nx);
     for (const n of naboer) if (!tyk[n] && !ude[n]) { ude[n] = 1; stak.push(n); }
   }
+  /* Tykkelsen var kun til for at lukke dørhuller. De felter, den lagde uden
+     på muren, hører ikke til bygningen - ellers ligger zonen en halv meter
+     uden for væggen hele vejen rundt. De trækkes fra igen, mens de rigtige
+     stregfelter bliver stående, så omridset stadig når helt hen til muren. */
+  for (let runde = 0; runde < 2; runde++) {
+    const tilføj = [];
+    for (let gy = 0; gy < ny; gy++) {
+      for (let gx = 0; gx < nx; gx++) {
+        const i = gy * nx + gx;
+        if (ude[i] || !tyk[i] || mure[i]) continue;
+        const nabo = (gx > 0 && ude[i - 1]) || (gx < nx - 1 && ude[i + 1]) ||
+                     (gy > 0 && ude[i - nx]) || (gy < ny - 1 && ude[i + nx]);
+        if (nabo) tilføj.push(i);
+      }
+    }
+    if (!tilføj.length) break;
+    for (const i of tilføj) ude[i] = 1;
+  }
+
   // kontrol: står møblerne inde i det, vi kalder bygningen?
   let ialt = 0, indenfor = 0;
   for (let i = 0; i < sat.length; i++) {
@@ -1564,11 +1797,14 @@ function salgsarealFraInventar(rækkevidde = 2.4, uglattet) {
       r: mToPx(rækkevidde + i.dybde / 2)
     };
   });
+  /* Nettet skal være stort nok til at rumme de vægge, møblerne står op ad -
+     ellers ligger muren uden for nettet, og så er der intet at spærre med.
+     Derfor lægges der god luft uden om møblernes udstrækning. */
   const b = Geom.bbox(inv.flatMap(i => i.hjørner));
-  const kant = mToPx(rækkevidde) + celle;
+  const kant = mToPx(rækkevidde + 4) + celle;
   const x0 = b.x0 - kant, y0 = b.y0 - kant;
   const nx = Math.ceil((b.x1 + kant - x0) / celle), ny = Math.ceil((b.y1 + kant - y0) / celle);
-  if (nx < 3 || ny < 3 || nx * ny > 250000) return null;
+  if (nx < 3 || ny < 3 || nx * ny > 400000) return null;
 
   // 1. felter der ligger tæt nok på et møbel
   const sat = new Uint8Array(nx * ny);
@@ -1608,7 +1844,10 @@ function salgsarealFraInventar(rækkevidde = 2.4, uglattet) {
   // 1c. væggene spærrer, så arealet ikke kan brede sig ud af bygningen
   const vægge = vaegLinjer(cadLag);
   const mure = spaerFelter(vægge, nx, ny, x0, y0, celle);
-  const inde = bygningensIndre(mure, sat, nx, ny);
+  // inde/ude afgøres af alt, der er tegnet - ellers slipper arealet ud, hvor
+  // ydervæggen ligger på et lag, der ikke hedder noget med væg
+  const alt = spaerFelter(alleStreger(cadLag), nx, ny, x0, y0, celle);
+  const inde = bygningensIndre(alt, sat, nx, ny) || bygningensIndre(mure, sat, nx, ny);
   for (let i = 0; i < sat.length; i++) {
     if (mure[i] || (inde && !inde[i])) sat[i] = 0;
   }
@@ -1668,7 +1907,9 @@ function salgsarealFraInventar(rækkevidde = 2.4, uglattet) {
   }
 
   const omrids = kantOmNet(færdig, nx, ny, x0, y0, celle, uglattet);
-  return klipModVaegge(omrids, vægge, inv, mToPx(rækkevidde + 1));
+  if (uglattet) return omrids;
+  const påVæg = snapTilVaegge(omrids, vægge, mToPx(1.2));
+  return klipModVaegge(påVæg, vægge, inv, mToPx(rækkevidde + 1));
 }
 
 /* Kanten rundt om et sæt netfelter: hver feltside uden nabo bliver en
@@ -1715,7 +1956,7 @@ function kantOmNet(med, nx, ny, x0, y0, celle, uglattet) {
   }
   if (pts.length < 4) return null;
   // trappetrinnene rettes ud, så zonen får vægge og ikke 120 småhak
-  return uglattet ? pts : glatOmrids(pts, mToPx(1.1));
+  return uglattet ? pts : glatOmrids(pts, mToPx(0.6));
 }
 
 /* Omridset forenkles (Douglas-Peucker på en lukket ring), så zonen kan
@@ -3686,8 +3927,8 @@ function bindKnapper() {
   $('#knap-png').onclick = eksporterPng;
   $('#knap-print').onclick = udskriv;
   $('#knap-gem').onclick = gemProjekt;
-  $('#knap-ryd').onclick = () => {
-    if (!confirm('Slet alle zoner, skinner og armaturer? Tegningerne beholdes.')) return;
+  $('#knap-ryd').onclick = async () => {
+    if (!await spørgJa('Ryd planen?', 'Alle zoner, skinner og armaturer slettes. Tegningerne beholdes.', 'Ryd')) return;
     gem();
     state.skinner = []; state.armaturer = []; state.zoner = []; state.valgt = null;
     opdater();
