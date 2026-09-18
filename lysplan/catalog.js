@@ -165,28 +165,45 @@ const BEREGNING = {
       armaturer: [['bricks', 244]], lodret: 789, uo: 0.19, wPrM2: 7.43, wPr100lx: 0.94 }
   ],
 
-  /* Sådan er skinnerne faktisk placeret på SJOC's planer. Målt i vektorerne
-     i lysplanerne (1:100), ikke gættet:
+  /* ---- Sådan er skinnerne faktisk placeret ----
 
-     365 Discount Kalundborg, 08-09-2026 – salgslokale 812 m²
-       c/c mellem skinnerækkerne 3,39 m fem gange i træk: det er
-       gondolafstanden, ikke et fast tal.
-       Armaturafstand på skinnen: median 3,39 m (3,5 m i 37 af 57 spring).
-       Stykliste: 47x4000 + 20x3000 + 10x2000 mm = 268 m skinne til 79 Bricks.
+     Tallene er aflæst af styklisterne på SJOC's egne lysplaner og målt i
+     vektorerne/pixels i selve tegningerne. Intet af det er gættet.
 
-     Kvickly Hvidovre, 02-07-2026 – afdelingsbutik med blandet inventar
-       Armaturafstand på skinnen: median 2,99 m (2,5/3,0/3,5/4,0 m).
-       c/c varierer med afdelingen, median 2,5 m.
+     Butik                     salgsareal  skinne  Bricks  m/m²  m²/Bricks  m skinne/Bricks  spot/Bricks
+     Brugsen Mønsted                343 m²   187 m     70  0,545     4,9          2,67          0,66
+     365 Discount Kalundborg        812 m²   268 m     79  0,330    10,3          3,39          0,63
+     SuperBrugsen Stenstalle             –   493 m    146      –        –          3,38          0,67
+     Kvickly Skibhusvej           1.700 m²   794 m    266  0,467     6,4          2,98          0,33
+     SuperBrugsen Støvring        1.196 m²       –    135      –      8,9             –             –
+     Kvickly Hvidovre             2.318 m²       –    244      –      9,5             –             –
 
-     Fælles for begge: skinnen ligger i GANGEN mellem to møbelrækker, ikke
-     oven på møblet, og gangrækkerne T-samles ind i en ring langs væggene. */
+     Byggeprogrammets eget eksempel (Bilag 1, "Øvrige lofttyper"), målt i
+     pixels med Bricks' 1,20 m som målestok:
+       skinne-c/c 2,73 / 2,92 / 2,94 / 3,07 m  (måltekst 2800/3000/3000/3100)
+       armaturafstand på skinnen 2,56-2,76 m
+       skinnen ligger 35-63 % inde i gangen, gangbredde 1,77-2,46 m
+
+     DET DER HOLDER PÅ TVÆRS AF ALLE PLANER er meter skinne pr. Bricks:
+     2,56 - 3,39 m, median ca. 3,0. Det er den regel, værktøjet styrer efter.
+
+     DET DER IKKE HOLDER er skinne pr. m² (0,33-0,545) og m² pr. Bricks
+     (4,9-10,3). De svinger med en faktor 2, fordi en lille butik har
+     forholdsvis meget vægring og mange smalle gange, mens et discountmarked
+     har brede gange og lidt ring. Tætheden er en FØLGE af butikkens form,
+     ikke et mål man kan sætte. En tidligere udgave af værktøjet låste den
+     til Kalundborgs 0,33 m/m² og 10,3 m²/Bricks - det ville have afvist
+     tre af de fem skinnebutikker her. */
   layout: {
-    ccArmatur: [2.99, 3.39],       // median i de to planer
-    baandArmatur: [2.4, 4.2],      // yderpunkter der forekommer
-    mSkinnePrM2: 0.33,             // Kalundborg: 268 m / 812 m²
-    m2PrGrundarmatur: 10.3,        // Kalundborg: 812 m² / 79 Bricks
-    modul: [4000, 3000, 2000],     // skinnelængder i stykliste
-    iGang: true
+    ccArmatur: 3.0,                // median m skinne pr. Bricks over alle planer
+    baandArmatur: [2.4, 3.6],      // observeret 2,56-3,39; lidt slør i begge ender
+    ccSkinne: [2.7, 3.4],          // skinne-c/c, sat af møbelafstanden
+    andelIGang: [0.35, 0.63],      // hvor i gangen skinnen ligger
+    spotPrGrund: [0.33, 0.67],     // Sirius pr. Bricks
+    modul: [4000, 3000, 2000],
+    iGang: true,
+    // tæthed: kun til orientering, aldrig som mål
+    observeret: { mSkinnePrM2: [0.33, 0.545], m2PrGrundarmatur: [4.9, 10.3] }
   }
 };
 

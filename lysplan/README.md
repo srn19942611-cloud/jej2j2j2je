@@ -172,36 +172,59 @@ Væggene bruges tre gange:
 
 ## Sådan placeres skinnerne
 
-Placeringen er ikke gættet. Den er målt i vektorerne i SJOC's egne
-lysplaner (1:100) og gengivet her:
+Placeringen er ikke gættet. Den er aflæst af styklisterne på SJOC's seks
+lysplaner og målt i vektorerne og pixels i tegningerne – og holdt op mod
+byggeprogrammets eget eksempel i Bilag 1. Hele tabellen står i
+`test/README.md`.
 
-| | 365 Discount Kalundborg | Kvickly Hvidovre |
-|---|---|---|
-| Salgsareal | 812 m² | – |
-| Skinne i stykliste | 47×4000 + 20×3000 + 10×2000 = **268 m** | – |
-| Bricks Track Line | **79 stk.** | 244 stk. |
-| Armaturafstand på skinnen | median **3,39 m** | median **2,99 m** |
-| c/c mellem skinnerækkerne | **3,39 m** fem gange i træk | median 2,5 m |
-| Skinne pr. m² | **0,33 m/m²** | – |
-| m² pr. Bricks | **10,3** | – |
+### Det byggeprogrammet kræver
 
-Tre ting går igen i begge planer:
+* **Spots må ikke anvendes som grundbelysning**, kun til vindfang, F&G
+  frontreol, vægnavigation, endegavle, foliebranding over kølere, vin,
+  spotvarer, pristjekker, slagter, delikatesse og bager. Værktøjet vurderer
+  derfor lux-kravet på **grundbelysningen alene**; accentlyset lægger oveni,
+  men tæller ikke med.
+* **700 lux på salgsarealet**, 1.000 lux i betjente områder og i vindfang,
+  jævnt fordelt på gulvet, målt i 0 m og/eller 0,85 m med ±10 %.
+* **Belysningsplanen skal tage udgangspunkt i kunde-flow og butiksindretning,
+  så lyset fordeles jævnt over hylder og gangarealer**, uden skyggeområder.
+  Det er grunden til, at skinnen ligger i gangen: derfra rammer
+  batwing-fordelingen begge reolfronter.
+* **Systemloft → LED-paneler og indbyggede tilt-spots. Alle øvrige lofter →
+  3-fasede skinner med skinnespots og nedhængte lysskinner.** Det afgøres af
+  loftet, ikke af butikskæden: 365 Discount Kalundborg kører på skinner,
+  365 Discount Rødovrevej på 156 paneler.
+
+### Det planerne viser
+
+**Det der holder på tværs af alle seks planer** er meter skinne pr.
+armatur: **2,56–3,39 m**, median ca. 3,0. Byggeprogrammets eget eksempel
+ligger på 2,56–2,76 m. Det er den regel, værktøjet styrer efter.
+
+**Det der ikke holder** er tætheden. Skinne pr. m² går fra 0,33 (365
+Discount Kalundborg) til 0,545 (Brugsen Mønsted), og m² pr. Bricks fra 10,3
+til 4,9. Tætheden er en følge af butikkens form – en lille butik har
+forholdsvis meget vægring og mange smalle gange – ikke et tal man kan sætte
+som mål.
+
+Tre ting går igen i alle planerne:
 
 1. **Skinnen ligger i gangen mellem to møbelrækker – ikke oven på møblet.**
-   Derfra rammer batwing-fordelingen begge reolfronter. Værktøjet finder
-   møbelrækkerne, lægger dem som bånd på tværs af gangretningen og sætter
-   én skinne midt i hvert mellemrum.
-2. **c/c er ikke et fast tal – det er møbelafstanden.** Kalundborg er
-   regelmæssig, fordi gondolerne står regelmæssigt; Kvickly varierer,
-   fordi afdelingerne har forskelligt inventar. Værktøjet måler butikkens
-   egen takt og bruger den. Er der åbent gulv, fyldes det i samme rytme.
-3. **Armaturerne sidder 3,0–3,5 m fra hinanden.** Lysniveauet reguleres
-   med den afstand inden for 2,4–4,2 m, og først når båndet er brugt op,
-   lægges der flere rækker. Det er den rækkefølge, en lysdesigner
-   arbejder i: layoutet følger butikken, ikke omvendt.
+   I byggeprogrammets eksempel ligger den 35–63 % inde i gangen. Værktøjet
+   finder møbelrækkerne, lægger dem som bånd på tværs af gangretningen og
+   sætter én skinne midt i hvert mellemrum.
+2. **c/c er ikke et fast tal – det er møbelafstanden.** Byggeprogrammets
+   eksempel: 2,73–3,07 m. Kalundborg: 3,39 m fem gange i træk. Kvickly
+   varierer med afdelingen. Værktøjet måler butikkens egen takt og bruger
+   den; åbent gulv fyldes i samme rytme.
+3. **Gangskinnerne T-samles ind i en ring langs væggene.** Det er den, der
+   giver lys på vægreoler, skilte og endegavle.
 
-`test/layout-mod-planer.mjs` holder værktøjets resultat op mod de målte
-tal og siger til, hvis det skrider. Se `test/README.md`.
+Lysniveauet reguleres med armaturafstanden inden for 2,4–3,6 m, og først
+når båndet er brugt op, lægges der flere rækker. Det er den rækkefølge, en
+lysdesigner arbejder i: layoutet følger butikken, ikke omvendt.
+
+`test/layout-mod-planer.mjs` holder værktøjets resultat op mod de målte tal.
 
 ## Kalibrering mod rigtige lysberegninger
 

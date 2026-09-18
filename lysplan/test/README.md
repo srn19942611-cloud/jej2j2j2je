@@ -2,27 +2,44 @@
 
 ## `layout-mod-planer.mjs`
 
-Holder værktøjets skinneplacering op mod SJOC's
-rigtige lysplaner. Tallene i testen er målt i vektorerne i selve
-lysplan-PDF'erne (1:100), ikke gættet:
+Holder værktøjets skinneplacering op mod **alle** SJOC-planerne og mod
+byggeprogrammets eget eksempel. Tallene er aflæst af styklisterne på
+planerne og målt i vektorerne/pixels i tegningerne:
 
-| | 365 Discount Kalundborg | Kvickly Hvidovre |
-|---|---|---|
-| Salgsareal | 812 m² | – |
-| Skinne i stykliste | 47×4000 + 20×3000 + 10×2000 = **268 m** | – |
-| Bricks Track Line | **79 stk.** | 244 stk. |
-| Armaturafstand på skinnen | median **3,39 m** (3,5 m i 37 af 57 spring) | median **2,99 m** |
-| c/c mellem skinnerækkerne | **3,39 m** fem gange i træk | median 2,5 m, stor spredning |
-| Skinne pr. m² | **0,33 m/m²** | – |
-| m² pr. Bricks | **10,3** | – |
+| Butik | Salgsareal | Skinne | Bricks | m/m² | m²/Bricks | **m skinne/Bricks** | spot/Bricks |
+|---|---|---|---|---|---|---|---|
+| Brugsen Mønsted | 343 m² | 187 m | 70 | 0,545 | 4,9 | **2,67** | 0,66 |
+| 365 Discount Kalundborg | 812 m² | 268 m | 79 | 0,330 | 10,3 | **3,39** | 0,63 |
+| SuperBrugsen Stenstalle | – | 493 m | 146 | – | – | **3,38** | 0,67 |
+| Kvickly Skibhusvej | 1.700 m² | 794 m | 266 | 0,467 | 6,4 | **2,98** | 0,33 |
+| SuperBrugsen Støvring | 1.196 m² | – | 135 | – | 8,9 | – | – |
+| Kvickly Hvidovre | 2.318 m² | – | 244 | – | 9,5 | – | – |
 
-Begge planer gør det samme: **skinnen ligger i gangen mellem to
-møbelrækker, ikke oven på møblet.** Gangrækkerne T-samles ind i en ring
-langs væggene. c/c er ikke et fast tal – det er møbelafstanden, og derfor
-er Kalundborg (ens gondoler) helt regelmæssig, mens Kvickly (afdelinger
-med blandet inventar) varierer.
+Byggeprogrammets eget eksempel (Bilag 1, "Øvrige lofttyper") er et
+rasterbillede, så det er målt i pixels med Bricks' 1,20 m som målestok:
 
-## Sådan køres den
+* skinne-c/c **2,73 / 2,92 / 2,94 / 3,07 m** – måltallene på tegningen siger
+  2800 / 3000 / 3000 / 3100, så målestokken passer
+* armaturafstand på skinnen **2,56–2,76 m**
+* skinnen ligger **35–63 %** inde i gangen, gangbredde 1,77–2,46 m
+
+### Hvad der holder, og hvad der ikke gør
+
+**Holder:** meter skinne pr. armatur ligger på **2,56–3,39 m** i alt hvad
+der er målt – styklister, vektorer og byggeprogrammets eksempel. Median ca.
+3,0. Det er den regel, værktøjet styrer efter, og den testen kræver.
+
+**Holder ikke:** tætheden. Skinne pr. m² går fra 0,33 til 0,545 og m² pr.
+Bricks fra 10,3 til 4,9 – en faktor 2. En lille butik har forholdsvis meget
+vægring og mange smalle gange; et discountmarked har brede gange og lidt
+ring. Tætheden er en **følge** af butikkens form, ikke et mål.
+
+En tidligere udgave af denne test låste tætheden til Kalundborgs 0,33 m/m²
+og 10,3 m²/Bricks, fordi den var kalibreret på den ene butik. Den ville
+have afvist tre af de fem skinnebutikker ovenfor. Nu kontrolleres kun hele
+det observerede spænd, og tallene står ellers som oplysning.
+
+## Sådan køres den## Sådan køres den
 
 Testen kører mod en lokal server, fordi browseren ellers ikke må læse
 modulerne fra disk:

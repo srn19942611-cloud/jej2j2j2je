@@ -2151,7 +2151,7 @@ function beregn() {
   const zoner = state.zoner.map(z => {
     const areal = harMaalestok() && z.pts.length > 2
       ? Geom.polygonArea(z.pts) / (state.pxPerMeter ** 2) : 0;
-    let lm = 0, w = 0, lmGrund = 0, lmAccent = 0, stk = 0;
+    let lm = 0, w = 0, lmGrund = 0, lmAccent = 0, stk = 0, stkAccent = 0;
     const typer = {};
     for (const a of state.armaturer) {
       const f = FIXTURES[a.type];
@@ -2159,7 +2159,7 @@ function beregn() {
       lm += f.lm; w += f.w; stk++;
       typer[a.type] = (typer[a.type] || 0) + 1;
       if (f.rolle === 'grund') lmGrund += f.lm;
-      else if (f.rolle === 'accent') lmAccent += f.lm;
+      else if (f.rolle === 'accent') { lmAccent += f.lm; stkAccent++; }
     }
     const krav = zoneKrav(z);
     const tal = Tre.zoneTal(net, z.id);
@@ -2168,11 +2168,14 @@ function beregn() {
     const luxGrund = lm > 0 ? lux * (lmGrund / lm) : 0;
     return {
       id: z.id, navn: zoneNavn(z), type: z.type, farve: zoneFarve(z), krav,
-      areal, lm, w, stk, typer, lux, luxGrund, jaevnhed: tal.jaevnhed, minLux: tal.min,
+      areal, lm, w, stk, stkAccent, typer, lux, luxGrund, jaevnhed: tal.jaevnhed, minLux: tal.min,
       wattPrM2: areal > 0 ? w / areal : 0,
       iProgram: !!(ZONETYPER[z.type] || {}).iProgram,
-      opfyldt: areal > 0 && lux >= krav,
-      indenforTolerance: areal > 0 && lux >= krav * (1 - KRAV.tolerance)
+      /* Kravet skal holdes af grundbelysningen alene: byggeprogrammet siger
+         "Spots må ikke anvendes som grundbelysning". Accentlyset lægger
+         oveni, men tæller ikke med, når zonen vurderes. */
+      opfyldt: areal > 0 && (lmGrund > 0 ? luxGrund : lux) >= krav,
+      indenforTolerance: areal > 0 && (lmGrund > 0 ? luxGrund : lux) >= krav * (1 - KRAV.tolerance)
     };
   });
   const arealInde = zoner.filter(z => z.type !== 'ude').reduce((a, z) => a + z.areal, 0);
@@ -2220,17 +2223,25 @@ function kravTjek(b) {
       tilføj('info', z.navn, 'Udvendigt areal dimensioneres efter DS/EN 12464-2: klasse E-1 ved bygning og E-3 på P-plads. Lyskilder 3000K.');
       continue;
     }
-    const status = z.lux >= z.krav ? 'ok' : (z.indenforTolerance ? 'advarsel' : 'fejl');
+    /* Byggeprogrammet: "Spots må ikke anvendes som grundbelysning". Kravet
+       skal derfor holdes af grundbelysningen alene - accentspots lægger
+       oveni, men de tæller ikke med i kontrollen. */
+    const bærende = z.luxGrund > 0 ? z.luxGrund : z.lux;
+    const status = bærende >= z.krav ? 'ok'
+      : (bærende >= z.krav * (1 - KRAV.tolerance) ? 'advarsel' : 'fejl');
     const zone = state.zoner.find(x => x.id === z.id);
     const lod = zone ? zoneLodret(zone) : null;
     tilføj(status, z.navn,
-      `${fmt(z.lux, 0)} lux på gulvet mod krav ${fmt(z.krav)} lux${z.iProgram ? ' (byggeprogram)' : ' (eget krav)'}` +
+      `${fmt(bærende, 0)} lux på gulvet fra grundbelysningen mod krav ${fmt(z.krav)} lux${z.iProgram ? ' (byggeprogram)' : ' (eget krav)'}` +
+      (z.lux > z.luxGrund + 1 ? ` – ${fmt(z.lux, 0)} lux med accentspots oveni, men spots må ikke regnes som grundbelysning` : '') +
       ` – ${fmt(z.areal, 0)} m², ${z.stk} armaturer, ${fmt(z.wattPrM2, 1)} W/m²` +
       (z.lux > 0 ? `, ${fmt(z.wattPrM2 / (z.lux / 100), 2)} W/m²/100lx` : '') + '.' +
       (lod ? ` Lodret i ${fmt(BEREGNING.beregningshoejde, 1)} m: ${fmt(lod.snit, 0)} lux (Uo ${fmt(lod.uo, 2)}) – det tal SJOC's DIALux-rapporter opgiver mod normens ${BEREGNING.norm.salgsomraade} lux.` : ''));
-    if (z.lux > 0 && z.luxGrund < z.krav) {
-      tilføj(z.luxGrund >= z.krav * (1 - KRAV.tolerance) ? 'advarsel' : 'fejl', z.navn + ': grundbelysning',
-        `Grundbelysningen alene giver ${fmt(z.luxGrund, 0)} lux. Spots må ikke anvendes som grundbelysning, kun til fremhævning af ${KRAV.spotOmraader.slice(0, 4).join(', ').toLowerCase()} m.fl.`);
+    // kravlinjen ovenfor bæres nu af grundbelysningen, så den gentages ikke her.
+    // Til gengæld siges det, hvor spots må bruges, når der er nogen i zonen.
+    if (z.stkAccent) {
+      tilføj('info', z.navn + ': accentspots',
+        `${fmt(z.stkAccent, 0)} spots. Byggeprogrammet tillader kun spots til ${KRAV.spotOmraader.slice(0, 5).join(', ').toLowerCase()} m.fl. – kontrollér at de sidder de rigtige steder.`);
     }
   }
 
@@ -3133,9 +3144,11 @@ function klipModPolygon(a, b, poly) {
    * Skinnen bygges af 4 m moduler plus et reststykke.
 */
 const SKINNE = {
-  ccArmatur: 3.3,          // sigtet langs skinnen
+  // meter skinne pr. armatur - det eneste tal der holder på tværs af alle
+  // seks lysplaner og byggeprogrammets eget eksempel (2,56-3,39 m)
+  ccArmatur: (BEREGNING.layout && BEREGNING.layout.ccArmatur) || 3.0,
   minArmatur: 2.4,
-  maksArmatur: 4.2,
+  maksArmatur: 3.6,
   mindsteGang: 1.1,        // smallere end det er ikke en gang, men en spalte
   ccFald: [2.0, 4.0]       // møbelafstanden holdes inden for det, planerne viser
 };
