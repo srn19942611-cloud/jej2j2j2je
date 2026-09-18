@@ -292,6 +292,112 @@ function indlæsScript(url) {
   });
 }
 
+/* ---- målestok læst af PDF'en selv ----
+
+   En plantegning i PDF bærer sit eget mål med to steder, og begge bruges:
+
+   1. Målestoksangivelsen i tegningshovedet ("1:100"). Den er eksakt:
+      ved 1:N fylder én meter (1000/N) mm på papiret, og en mm er 72/25,4 pt.
+
+   2. Måltallene på tegningen. På en CAD-plan står tallet midt i det stykke,
+      det måler, så afstanden mellem to nabotal i en målkæde er gennemsnittet
+      af de to mål. Har man tre tal på række, kan skalaen regnes ud - og
+      kæden kontrollerer sig selv, fordi hvert par skal give det samme svar.
+
+   Findes begge, og er de uenige, vinder målestoksangivelsen, og der siges til. */
+
+const PT_PR_MM = 72 / 25.4;
+
+function maalestokFraTekst(tekster) {
+  // "1:100", "M 1:50", "Målestok 1:200", "Mål. 1:100"
+  for (const t of tekster) {
+    const m = /(?:^|[^\d])1\s*[:/]\s*(\d{1,4})(?![\d])/.exec(t.str || '');
+    if (!m) continue;
+    const n = +m[1];
+    if (n >= 10 && n <= 2000) return n;
+  }
+  return null;
+}
+
+/* Måltal i en kæde: tallet står midt i sit eget stykke, så afstanden mellem
+   tal k og k+1 svarer til (mål_k + mål_k+1) / 2. */
+function maalestokFraMaalkaede(tekster) {
+  const tal = [];
+  for (const t of tekster) {
+    const rå = (t.str || '').trim();
+    if (!/^\d{3,5}$/.test(rå)) continue;
+    const v = +rå;
+    if (v < 200 || v > 30000) continue;          // typiske byggemål i mm
+    tal.push({ v, x: t.x, y: t.y });
+  }
+  if (tal.length < 3) return null;
+
+  const forhold = [];
+  const kæder = (akse, tvær) => {
+    const grupper = new Map();
+    for (const p of tal) {
+      const n = Math.round(p[tvær] / 6);          // samme linje i målkæden
+      if (!grupper.has(n)) grupper.set(n, []);
+      grupper.get(n).push(p);
+    }
+    for (const g of grupper.values()) {
+      if (g.length < 3) continue;
+      g.sort((a, b) => a[akse] - b[akse]);
+      for (let k = 0; k < g.length - 1; k++) {
+        const afstand = g[k + 1][akse] - g[k][akse];
+        const mål = (g[k].v + g[k + 1].v) / 2;
+        if (afstand < 4 || mål <= 0) continue;
+        const mmPrPt = mål / afstand;
+        if (mmPrPt > 2 && mmPrPt < 400) forhold.push(mmPrPt);
+      }
+    }
+  };
+  kæder('x', 'y');
+  kæder('y', 'x');
+  if (forhold.length < 2) return null;
+
+  forhold.sort((a, b) => a - b);
+  const median = forhold[forhold.length >> 1];
+  // kæden skal være enig med sig selv, ellers er det ikke måltal.
+  // Er der kun to spring at gå efter, skal de være meget enige.
+  const grænse = forhold.length < 3 ? 0.04 : 0.12;
+  const enige = forhold.filter(f => Math.abs(f - median) / median < grænse);
+  if (enige.length < Math.max(2, forhold.length * 0.5)) return null;
+  const snit = enige.reduce((a, b) => a + b, 0) / enige.length;
+  return { mmPrPt: snit, antal: enige.length, afN: Math.round(snit * 1000 / (1000 * PT_PR_MM) * 1000) / 1000 };
+}
+
+async function pdfMaalestok(side, skala) {
+  let tekst;
+  try {
+    tekst = await side.getTextContent();
+  } catch (e) { return null; }
+  const tekster = (tekst.items || []).map(i => ({
+    str: i.str, x: i.transform ? i.transform[4] : 0, y: i.transform ? i.transform[5] : 0
+  }));
+  if (!tekster.length) return null;
+
+  const n = maalestokFraTekst(tekster);
+  const kæde = maalestokFraMaalkaede(tekster);
+  // px pr. meter = 1 m på papiret i pt, gange rasteringens skala
+  const fraN = n ? (1000 / n) * PT_PR_MM * skala : null;
+  const fraKæde = kæde ? (1000 / kæde.mmPrPt) * skala : null;
+
+  if (fraN && fraKæde) {
+    const afvig = Math.abs(fraN - fraKæde) / fraN;
+    return { pxPerMeter: fraN, kilde: `målestok 1:${n} i tegningshovedet`,
+      note: afvig > 0.12
+        ? `OBS: måltallene på tegningen svarer til 1:${fmt(1000 / (kæde.mmPrPt * PT_PR_MM) * 1, 0)}. Kontrollér med målestoksværktøjet.`
+        : `bekræftet af ${kæde.antal} måltal på tegningen` };
+  }
+  if (fraN) return { pxPerMeter: fraN, kilde: `målestok 1:${n} i tegningshovedet` };
+  if (fraKæde) {
+    return { pxPerMeter: fraKæde, kilde: `${kæde.antal} måltal på tegningen`,
+      note: 'Kontrollér gerne et kendt mål med målestoksværktøjet (M).' };
+  }
+  return null;
+}
+
 async function importerPdf(fil, navn) {
   let lib;
   try {
@@ -314,7 +420,21 @@ async function importerPdf(fil, navn) {
     const ctx = c.getContext('2d');
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     await side.render({ canvasContext: ctx, viewport: vp }).promise;
-    await tilføjLag(sider > 1 ? `${navn} (s. ${i})` : navn, c.toDataURL('image/png'));
+    const lag = await tilføjLag(sider > 1 ? `${navn} (s. ${i})` : navn, c.toDataURL('image/png'));
+    // tegningens eget mål læses af PDF'en, så alt andet kan måles ud fra det
+    if (lag && i === 1 && !harMaalestok()) {
+      const m = await pdfMaalestok(side, skala);
+      if (m) {
+        state.pxPerMeter = m.pxPerMeter;
+        lag.maalestokKilde = m.kilde;
+        opdater();
+        toast(`Målestok sat efter ${m.kilde}${m.note ? ' – ' + m.note : ''}`,
+          m.note && m.note.startsWith('OBS') ? 'fejl' : 'info');
+      } else {
+        toast('Jeg kunne ikke finde et mål på PDF-tegningen. Mål en kendt længde med målestoksværktøjet (M).', 'fejl');
+        vælgVærktøj('maalestok');
+      }
+    }
   }
 }
 
@@ -1233,6 +1353,164 @@ function størsteOmrids(cadLag) {
   return bedst;
 }
 
+/* ---- vægge ----
+   Salgsarealet må aldrig løbe ud gennem en væg. Tegningerne siger selv, hvor
+   væggene er, på to måder: enten med et lagnavn på dansk ("Vægge udv."),
+   eller med bips/DS-lagkoderne, hvor A20 er ydervægge, A21 indervægge og
+   A2x øvrige bygningsdele. Kundetegningen bruger A20---E, A21---- og
+   A29--S-, og det er dér, murene står. */
+const VAEGLAG = /v[æa]gg?e?\b|ydervæg|indervæg|\bwall|\bmur\b|bygning|konstruktion|^a2\d/i;
+/* A29--M- er målsætning og A29--T- tekst - streger, ikke mure. */
+const IKKE_VAEGLAG = /m[åa]ls[æa]t|\bm[åa]l\b|tekst|\bdim\b|kote|signatur|^a2\d[^a-z0-9]*[mt][^a-z0-9]*$/i;
+
+function vaegLinjer(cadLag) {
+  const linjer = [];
+  for (const lag of cadLag) {
+    const navne = Object.keys(lag.cadLag || {}).filter(n => lag.cadLag[n] !== false);
+    const vægnavne = new Set(navne.filter(n => VAEGLAG.test(n) && !IKKE_VAEGLAG.test(n)));
+    // uden vægnavne tages de lange streger, der ikke er møbelkanter
+    const brugAlle = vægnavne.size === 0;
+    const mindst = mToPx(brugAlle ? 2.5 : 0.4) / (lag.skala || 1);
+    for (const st of lag.tegning.streger) {
+      if (brugAlle ? lag.cadLag[st.lag] === false : !vægnavne.has(st.lag)) continue;
+      // et lukket rektangel på møbeldybde er et møbel, ikke en væg
+      if (brugAlle && st.lukket && st.p.length <= 12) continue;
+      for (let k = 0; k + 3 < st.p.length; k += 2) {
+        const a = [st.p[k], st.p[k + 1]], b = [st.p[k + 2], st.p[k + 3]];
+        if (Geom.dist(a, b) < mindst) continue;
+        linjer.push([
+          [lag.x + a[0] * lag.skala, lag.y + a[1] * lag.skala],
+          [lag.x + b[0] * lag.skala, lag.y + b[1] * lag.skala]
+        ]);
+      }
+    }
+  }
+  return linjer;
+}
+
+/* Væggene lægges ned på nettet som spærrede felter, så gulvet omkring
+   møblerne ikke kan brede sig ud gennem en mur. */
+function spaerFelter(linjer, nx, ny, x0, y0, celle) {
+  const blok = new Uint8Array(nx * ny);
+  const sæt = (gx, gy) => { if (gx >= 0 && gy >= 0 && gx < nx && gy < ny) blok[gy * nx + gx] = 1; };
+  for (const [a, b] of linjer) {
+    const L = Geom.dist(a, b);
+    const trin = Math.max(1, Math.ceil(L / (celle * 0.5)));
+    for (let k = 0; k <= trin; k++) {
+      const t = k / trin;
+      const gx = Math.floor((a[0] + (b[0] - a[0]) * t - x0) / celle);
+      const gy = Math.floor((a[1] + (b[1] - a[1]) * t - y0) / celle);
+      sæt(gx, gy);
+    }
+  }
+  return blok;
+}
+
+/* Sidste kontrol mod væggene.
+   Netbilledet kan slippe et hjørne igennem, hvor muren er tegnet i et hul
+   eller på et lag, der ikke ligner en væg. Derfor efterses hvert punkt på
+   omridset til sidst: fra det nærmeste møbel - som med sikkerhed står inde i
+   butikken - trækkes en linje ud til punktet. Krydser den en væg, hører
+   punktet til på den anden side, og det flyttes ind foran muren. */
+function klipModVaegge(pts, mure, inventar, maksTræk) {
+  if (!pts || !mure.length || !inventar.length) return pts;
+  const skæring = (a, b, c, d) => {
+    const r = [b[0] - a[0], b[1] - a[1]], sx = [d[0] - c[0], d[1] - c[1]];
+    const n = r[0] * sx[1] - r[1] * sx[0];
+    if (Math.abs(n) < 1e-9) return null;
+    const t = ((c[0] - a[0]) * sx[1] - (c[1] - a[1]) * sx[0]) / n;
+    const u = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / n;
+    return (t > 0.02 && t < 1 && u >= 0 && u <= 1) ? t : null;
+  };
+  const luft = mToPx(0.12);
+  const midter = inventar.map(i => i.centrum);
+  return pts.map(p => {
+    // de nærmeste møbler prøves; er punktet frit set fra bare ét af dem,
+    // hører det til inde i butikken. Ét møbel alene er for spinkelt et
+    // udgangspunkt - en skillevæg eller en søjle kan ligge i vejen.
+    const nære = midter
+      .map(c => [Geom.dist(p, c), c])
+      .sort((a, b) => a[0] - b[0])
+      .slice(0, 6);
+    let bedstT = 0, bedstFra = null;
+    for (const [, fra] of nære) {
+      let tættest = 1;
+      for (const [a, b] of mure) {
+        const t = skæring(fra, p, a, b);
+        if (t !== null && t < tættest) tættest = t;
+      }
+      if (tættest >= 1) return p;                 // frit udsyn - punktet står
+      if (tættest > bedstT) { bedstT = tættest; bedstFra = fra; }
+    }
+    if (!bedstFra) return p;
+    const L = Geom.dist(bedstFra, p);
+    const k = Math.max(0, (L * bedstT - luft) / Math.max(1e-6, L));
+    const ny = [bedstFra[0] + (p[0] - bedstFra[0]) * k, bedstFra[1] + (p[1] - bedstFra[1]) * k];
+    // et punkt kan højst ligge rækkevidden uden for butikken; skal det
+    // flyttes længere, er det ikke en væg, der er fundet, og punktet står
+    // - ellers foldes omridset ind over sig selv
+    return Geom.dist(p, ny) > maksTræk ? p : ny;
+  });
+}
+
+/* Bygningens indre.
+   Vægge på en tegning er sjældent en lukket ring - der er huller ved døre,
+   vinduer og porte. Derfor tykkes murene ét felt, så huller op til ca. en
+   meter lukker, og der flydes ind fra kanten af nettet. Det, der ikke kan
+   nås udefra, er inde i bygningen.
+
+   Kan resultatet ikke passe - står møblerne for det meste "udenfor" - er
+   vægnettet for hullet til at bruge, og så springes det over. */
+function bygningensIndre(mure, sat, nx, ny) {
+  const tyk = new Uint8Array(nx * ny);
+  for (let gy = 0; gy < ny; gy++) {
+    for (let gx = 0; gx < nx; gx++) {
+      if (!mure[gy * nx + gx]) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const x = gx + dx, y = gy + dy;
+          if (x >= 0 && y >= 0 && x < nx && y < ny) tyk[y * nx + x] = 1;
+        }
+      }
+    }
+  }
+  const ude = new Uint8Array(nx * ny);
+  const stak = [];
+  for (let gx = 0; gx < nx; gx++) {
+    for (const gy of [0, ny - 1]) {
+      const i = gy * nx + gx;
+      if (!tyk[i] && !ude[i]) { ude[i] = 1; stak.push(i); }
+    }
+  }
+  for (let gy = 0; gy < ny; gy++) {
+    for (const gx of [0, nx - 1]) {
+      const i = gy * nx + gx;
+      if (!tyk[i] && !ude[i]) { ude[i] = 1; stak.push(i); }
+    }
+  }
+  while (stak.length) {
+    const j = stak.pop();
+    const jx = j % nx, jy = (j - jx) / nx;
+    const naboer = [];
+    if (jx > 0) naboer.push(j - 1);
+    if (jx < nx - 1) naboer.push(j + 1);
+    if (jy > 0) naboer.push(j - nx);
+    if (jy < ny - 1) naboer.push(j + nx);
+    for (const n of naboer) if (!tyk[n] && !ude[n]) { ude[n] = 1; stak.push(n); }
+  }
+  // kontrol: står møblerne inde i det, vi kalder bygningen?
+  let ialt = 0, indenfor = 0;
+  for (let i = 0; i < sat.length; i++) {
+    if (!sat[i]) continue;
+    ialt++;
+    if (!ude[i]) indenfor++;
+  }
+  if (!ialt || indenfor / ialt < 0.7) return null;
+  const inde = new Uint8Array(nx * ny);
+  for (let i = 0; i < inde.length; i++) inde[i] = ude[i] ? 0 : 1;
+  return inde;
+}
+
 /* Rum på tegningen der ikke er salgsareal: lager, personale, terræn og alt
    der er mærket "ikke udnyttet". De trækkes fra, så salgsarealet ikke løber
    ind i baglokalerne. */
@@ -1273,10 +1551,10 @@ function ikkeSalgsOmraader(cadLag) {
    omkring hvert møbel ud på et net, de sammenhængende felter samles, og
    kanten trækkes rundt om dem. Tomme haller og baglokaler kommer ikke med,
    fordi der ikke står inventar. */
-function salgsarealFraInventar(rækkevidde = 3.2) {
+function salgsarealFraInventar(rækkevidde = 2.4, uglattet) {
   const inv = state.inventar.filter(i => i.laengde > 0.4);
   if (inv.length < 4) return null;
-  const celle = mToPx(0.75);
+  const celle = mToPx(0.5);
   const stykker = inv.map(i => {
     const halv = mToPx(i.laengde) / 2;
     const c = Math.cos(i.vinkel), sn = Math.sin(i.vinkel);
@@ -1314,7 +1592,8 @@ function salgsarealFraInventar(rækkevidde = 3.2) {
   }
 
   // 1b. rum tegningen selv kalder lager, personale eller "ikke udnyttet"
-  const udenfor = ikkeSalgsOmraader(state.lag.filter(l => l.slags === 'cad' && l.synlig));
+  const cadLag = state.lag.filter(l => l.slags === 'cad' && l.synlig);
+  const udenfor = ikkeSalgsOmraader(cadLag);
   if (udenfor.length) {
     for (let gy = 0; gy < ny; gy++) {
       for (let gx = 0; gx < nx; gx++) {
@@ -1324,6 +1603,14 @@ function salgsarealFraInventar(rækkevidde = 3.2) {
         if (udenfor.some(o => Geom.pointInPolygon([px, py], o))) sat[i] = 0;
       }
     }
+  }
+
+  // 1c. væggene spærrer, så arealet ikke kan brede sig ud af bygningen
+  const vægge = vaegLinjer(cadLag);
+  const mure = spaerFelter(vægge, nx, ny, x0, y0, celle);
+  const inde = bygningensIndre(mure, sat, nx, ny);
+  for (let i = 0; i < sat.length; i++) {
+    if (mure[i] || (inde && !inde[i])) sat[i] = 0;
   }
 
   // 2. største sammenhængende område
@@ -1367,12 +1654,26 @@ function salgsarealFraInventar(rækkevidde = 3.2) {
   }
   for (let i = 0; i < med.length; i++) if (!med[i] && !ude[i]) med[i] = 1;
 
-  return kantOmNet(med, nx, ny, x0, y0, celle);
+  // 4. ét felt ud i muren, så arealet når helt hen til væggen uden at krydse
+  //    den: nabofeltet på den anden side af muren er ikke med i området
+  const færdig = new Uint8Array(med);
+  for (let gy = 0; gy < ny; gy++) {
+    for (let gx = 0; gx < nx; gx++) {
+      const i = gy * nx + gx;
+      if (med[i] || !mure[i]) continue;
+      const nabo = (gx > 0 && med[i - 1]) || (gx < nx - 1 && med[i + 1]) ||
+                   (gy > 0 && med[i - nx]) || (gy < ny - 1 && med[i + nx]);
+      if (nabo) færdig[i] = 1;
+    }
+  }
+
+  const omrids = kantOmNet(færdig, nx, ny, x0, y0, celle, uglattet);
+  return klipModVaegge(omrids, vægge, inv, mToPx(rækkevidde + 1));
 }
 
 /* Kanten rundt om et sæt netfelter: hver feltside uden nabo bliver en
    kant, og kanterne sættes sammen ende mod ende til en lukket polygon. */
-function kantOmNet(med, nx, ny, x0, y0, celle) {
+function kantOmNet(med, nx, ny, x0, y0, celle, uglattet) {
   const nøgle = (gx, gy) => gy * (nx + 1) + gx;
   const fra = new Map();
   const læg = (a, b) => {
@@ -1414,7 +1715,7 @@ function kantOmNet(med, nx, ny, x0, y0, celle) {
   }
   if (pts.length < 4) return null;
   // trappetrinnene rettes ud, så zonen får vægge og ikke 120 småhak
-  return glatOmrids(pts, mToPx(1.1));
+  return uglattet ? pts : glatOmrids(pts, mToPx(1.1));
 }
 
 /* Omridset forenkles (Douglas-Peucker på en lukket ring), så zonen kan
@@ -2541,6 +2842,15 @@ const SKINNE = {
   ccFald: [2.0, 4.0]       // møbelafstanden holdes inden for det, planerne viser
 };
 
+const zoneMidte = zone => {
+  const r = Geom.bbox(zone.pts);
+  return [(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2];
+};
+const zoneDiameter = zone => {
+  const r = Geom.bbox(zone.pts);
+  return Math.hypot(r.x1 - r.x0, r.y1 - r.y0);
+};
+
 /* Butikkens egen rytme: hvor langt der er fra en møbelrække til den næste.
    Det er den afstand, skinnerne skal ligge med - i Kalundborg 3,39 m fem
    gange i træk, fordi gondolerne står sådan. */
@@ -2626,11 +2936,15 @@ function skinnerIGange(zone, cc) {
   for (let k = 0; k < baand.length - 1; k++) læg(baand[k].høj, baand[k + 1].lav);
   læg(baand[baand.length - 1].høj, zHøj - margen);        // og i den anden
 
-  // aksen skæres mod zonen, så skinnen følger butikkens form
+  /* Aksen skæres mod zonen, så skinnen følger butikkens form.
+     Linjen skal lægges ud fra zonens egen midte - en tegning kan ligge
+     tusind meter fra nulpunktet, og så rammer en linje gennem origo intet. */
   const linjer = [];
-  const langt = mToPx(400);
+  const midte = zoneMidte(zone);
+  const uMidt = midte[0] * c + midte[1] * sn;
+  const langt = zoneDiameter(zone);
   for (const t of akser) {
-    const midt = [-sn * t, c * t];
+    const midt = [c * uMidt - sn * t, sn * uMidt + c * t];
     const a = [midt[0] - c * langt, midt[1] - sn * langt];
     const b = [midt[0] + c * langt, midt[1] + sn * langt];
     for (const stk of klipModPolygon(a, b, zone.pts)) {
@@ -2662,10 +2976,12 @@ function endeSkinner(zone) {
   }
   const margen = mToPx(state.indst.margin || 1);
   if (høj - lav < margen * 4) return [];
-  const langt = mToPx(400);
+  const midte = zoneMidte(zone);
+  const tMidt = -midte[0] * sn + midte[1] * c;
+  const langt = zoneDiameter(zone);
   const ud = [];
   for (const u of [lav + margen, høj - margen]) {
-    const midt = [c * u, sn * u];
+    const midt = [c * u - sn * tMidt, sn * u + c * tMidt];
     const a = [midt[0] + sn * langt, midt[1] - c * langt];
     const b = [midt[0] - sn * langt, midt[1] + c * langt];
     for (const stk of klipModPolygon(a, b, zone.pts)) {

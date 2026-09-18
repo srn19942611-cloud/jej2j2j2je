@@ -108,6 +108,43 @@ trækker med musen for at kigge.
   12 pr. fase; fase 2 til spot, bast lamper og wall washer, maks. 30 pr. fase;
   fase 3 til fast strøm. Antal 3-polede grupper er det største krav af de to.
 
+## Målestok fra tegningen
+
+DWG og DXF bærer deres egen enhed, så målestokken sættes af filen. For PDF
+læses målet af tegningen selv, på to måder:
+
+* **Målestoksangivelsen** i tegningshovedet ("1:100"). Ved 1:N fylder én
+  meter (1000/N) mm på papiret. Eksakt.
+* **Måltallene på tegningen.** Et måltal står midt i det stykke, det måler,
+  så afstanden mellem to nabotal i en målkæde er gennemsnittet af de to mål.
+  Tre tal på række rækker, og kæden kontrollerer sig selv, fordi hvert par
+  skal give det samme svar.
+
+Står begge dele på tegningen, bruges angivelsen, og måltallene bekræfter
+den – er de uenige, bliver der sagt til. På 365 Discount Kalundborg læses
+1:100 og bekræftes af 48 måltal. Er der intet af delene, åbnes
+målestoksværktøjet, så et kendt mål kan trækkes op i hånden.
+
+## Bygningens vægge
+
+Salgsarealet må ikke løbe ud gennem en væg. Tegningen siger selv, hvor
+væggene er – enten med et lagnavn på dansk ("Vægge udv."), eller med
+bips/DS-lagkoderne, hvor A20 er ydervægge og A21 indervægge. Målsætnings-
+og tekstlag (A29--M-, A29--T-) sorteres fra; de er streger, ikke mure.
+
+Væggene bruges tre gange:
+
+1. De spærrer på nettet, så gulvet omkring møblerne ikke kan brede sig
+   gennem en mur.
+2. Murene tykkes ét felt, så huller ved døre og vinduer op til ca. en meter
+   lukker, og der flydes ind fra kanten. Det, der ikke kan nås udefra, er
+   inde i bygningen. Står møblerne for det meste "udenfor" bagefter, er
+   vægnettet for hullet til at bruge, og trinnet springes over.
+3. Til sidst efterses hvert punkt på omridset: fra de nærmeste møbler – som
+   med sikkerhed står inde i butikken – trækkes en linje ud til punktet. Er
+   punktet spærret set fra dem alle, hører det til på den anden side af
+   muren og flyttes ind foran den.
+
 ## Sådan placeres skinnerne
 
 Placeringen er ikke gættet. Den er målt i vektorerne i SJOC's egne

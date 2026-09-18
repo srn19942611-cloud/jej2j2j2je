@@ -1,6 +1,8 @@
-# Test af skinnelayoutet
+# Tests
 
-`layout-mod-planer.mjs` holder værktøjets skinneplacering op mod SJOC's
+## `layout-mod-planer.mjs`
+
+Holder værktøjets skinneplacering op mod SJOC's
 rigtige lysplaner. Tallene i testen er målt i vektorerne i selve
 lysplan-PDF'erne (1:100), ikke gættet:
 
@@ -35,3 +37,24 @@ node test/layout-mod-planer.mjs
 Den kræver Playwright (`npm i -g playwright && npx playwright install chromium`).
 Den skriver hvert krav ud som OK eller FEJL og slutter med, om layoutet
 følger planerne.
+
+## `pdf-maalestok.mjs`
+
+En PDF-plantegning bærer sit eget mål, og værktøjet skal finde det selv.
+`maalestok.pdf` er en prøvetegning i 1:100 med et rektangel på 16,0 × 7,0 m
+og en målkæde 4000 + 5000 + 3000 + 4000 mm under det. Testen tjekker begge
+veje til målestokken:
+
+1. **Målestoksangivelsen** i tegningshovedet ("1:100"). Ved 1:N fylder én
+   meter (1000/N) mm på papiret, og en mm er 72/25,4 pt. Eksakt.
+2. **Måltallene på tegningen.** På en CAD-plan står tallet midt i det
+   stykke, det måler, så afstanden mellem to nabotal i en kæde er
+   gennemsnittet af de to mål. Tre tal på række er nok til at regne skalaen
+   ud – og kæden kontrollerer sig selv, fordi hvert par skal give det samme.
+
+Findes begge, bruges angivelsen, og måltallene bekræfter den. Findes kun
+måltallene, bruges de, og der bliver bedt om en kontrolmåling. Findes
+ingen af delene, siger værktøjet til og åbner målestoksværktøjet.
+
+På SJOC's egne planer: 365 Discount Kalundborg blev læst som 1:100,
+bekræftet af 48 måltal.
