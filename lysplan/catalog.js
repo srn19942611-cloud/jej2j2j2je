@@ -163,7 +163,31 @@ const BEREGNING = {
       armaturer: [['bricks', 135], ['panmax', 13]], lodret: 889, uo: 0.17, wPrM2: 8.21, wPr100lx: 0.92 },
     { navn: 'Kvickly Hvidovre', dato: '02-07-2026', areal: 2317.70, montage: 3.2,
       armaturer: [['bricks', 244]], lodret: 789, uo: 0.19, wPrM2: 7.43, wPr100lx: 0.94 }
-  ]
+  ],
+
+  /* Sådan er skinnerne faktisk placeret på SJOC's planer. Målt i vektorerne
+     i lysplanerne (1:100), ikke gættet:
+
+     365 Discount Kalundborg, 08-09-2026 – salgslokale 812 m²
+       c/c mellem skinnerækkerne 3,39 m fem gange i træk: det er
+       gondolafstanden, ikke et fast tal.
+       Armaturafstand på skinnen: median 3,39 m (3,5 m i 37 af 57 spring).
+       Stykliste: 47x4000 + 20x3000 + 10x2000 mm = 268 m skinne til 79 Bricks.
+
+     Kvickly Hvidovre, 02-07-2026 – afdelingsbutik med blandet inventar
+       Armaturafstand på skinnen: median 2,99 m (2,5/3,0/3,5/4,0 m).
+       c/c varierer med afdelingen, median 2,5 m.
+
+     Fælles for begge: skinnen ligger i GANGEN mellem to møbelrækker, ikke
+     oven på møblet, og gangrækkerne T-samles ind i en ring langs væggene. */
+  layout: {
+    ccArmatur: [2.99, 3.39],       // median i de to planer
+    baandArmatur: [2.4, 4.2],      // yderpunkter der forekommer
+    mSkinnePrM2: 0.33,             // Kalundborg: 268 m / 812 m²
+    m2PrGrundarmatur: 10.3,        // Kalundborg: 812 m² / 79 Bricks
+    modul: [4000, 3000, 2000],     // skinnelængder i stykliste
+    iGang: true
+  }
 };
 
 const KRAV = {

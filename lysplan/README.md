@@ -108,6 +108,39 @@ trækker med musen for at kigge.
   12 pr. fase; fase 2 til spot, bast lamper og wall washer, maks. 30 pr. fase;
   fase 3 til fast strøm. Antal 3-polede grupper er det største krav af de to.
 
+## Sådan placeres skinnerne
+
+Placeringen er ikke gættet. Den er målt i vektorerne i SJOC's egne
+lysplaner (1:100) og gengivet her:
+
+| | 365 Discount Kalundborg | Kvickly Hvidovre |
+|---|---|---|
+| Salgsareal | 812 m² | – |
+| Skinne i stykliste | 47×4000 + 20×3000 + 10×2000 = **268 m** | – |
+| Bricks Track Line | **79 stk.** | 244 stk. |
+| Armaturafstand på skinnen | median **3,39 m** | median **2,99 m** |
+| c/c mellem skinnerækkerne | **3,39 m** fem gange i træk | median 2,5 m |
+| Skinne pr. m² | **0,33 m/m²** | – |
+| m² pr. Bricks | **10,3** | – |
+
+Tre ting går igen i begge planer:
+
+1. **Skinnen ligger i gangen mellem to møbelrækker – ikke oven på møblet.**
+   Derfra rammer batwing-fordelingen begge reolfronter. Værktøjet finder
+   møbelrækkerne, lægger dem som bånd på tværs af gangretningen og sætter
+   én skinne midt i hvert mellemrum.
+2. **c/c er ikke et fast tal – det er møbelafstanden.** Kalundborg er
+   regelmæssig, fordi gondolerne står regelmæssigt; Kvickly varierer,
+   fordi afdelingerne har forskelligt inventar. Værktøjet måler butikkens
+   egen takt og bruger den. Er der åbent gulv, fyldes det i samme rytme.
+3. **Armaturerne sidder 3,0–3,5 m fra hinanden.** Lysniveauet reguleres
+   med den afstand inden for 2,4–4,2 m, og først når båndet er brugt op,
+   lægges der flere rækker. Det er den rækkefølge, en lysdesigner
+   arbejder i: layoutet følger butikken, ikke omvendt.
+
+`test/layout-mod-planer.mjs` holder værktøjets resultat op mod de målte
+tal og siger til, hvis det skrider. Se `test/README.md`.
+
 ## Kalibrering mod rigtige lysberegninger
 
 Værktøjet er holdt op mod to af SJOC's egne DIALux-rapporter, og

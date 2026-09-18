@@ -2517,129 +2517,245 @@ function klipModPolygon(a, b, poly) {
   return stykker;
 }
 
-/* En gondolrække kan være delt i flere varegrupper. Skinnerne over dem
-   ligger på linje og samles til én række, så samlinger og endestykker passer. */
-function samlCollinear(linjer) {
-  const grupper = new Map();
-  for (const l of linjer) {
-    let v = Math.atan2(l.pts[1][1] - l.pts[0][1], l.pts[1][0] - l.pts[0][0]);
-    v = ((v % Math.PI) + Math.PI) % Math.PI;               // retning uden fortegn
-    const c = Math.cos(v), sn = Math.sin(v);
-    const tvaers = -l.pts[0][0] * sn + l.pts[0][1] * c;    // afstand fra origo på tværs
-    const nøgle = Math.round(v * 40) + ':' + Math.round(tvaers / mToPx(0.25));
-    let g = grupper.get(nøgle);
-    if (!g) { g = { c, sn, tvaers, inventarId: l.inventarId, stykker: [] }; grupper.set(nøgle, g); }
-    const u0 = l.pts[0][0] * c + l.pts[0][1] * sn;
-    const u1 = l.pts[1][0] * c + l.pts[1][1] * sn;
-    g.stykker.push([Math.min(u0, u1), Math.max(u0, u1)]);
+
+/* ---- skinneplacering efter SJOC's rigtige lysplaner ----
+
+   Målt i 365 Discount Kalundborg og Kvickly Hvidovre:
+
+   * Skinnen ligger i GANGEN mellem to møbelrækker, ikke oven på møblet.
+     Én skinne pr. gang. Derfra rammer batwing-fordelingen begge reolfronter.
+   * c/c mellem skinnerne er ikke et fast tal - det er møbelafstanden.
+     Kalundborg har 3,39 m fem gange i træk, fordi gondolerne står sådan.
+     Kvickly, der har afdelinger med forskelligt inventar, ligger på 2,5 m
+     i median med stor spredning.
+   * Armaturerne sidder 3,0-3,5 m fra hinanden på skinnen (median 3,39 m i
+     Kalundborg, 2,99 m i Kvickly).
+   * Der løber en ring rundt langs væggene, som ganglinjerne T-samles ind i.
+   * Skinnen bygges af 4 m moduler plus et reststykke.
+*/
+const SKINNE = {
+  ccArmatur: 3.3,          // sigtet langs skinnen
+  minArmatur: 2.4,
+  maksArmatur: 4.2,
+  mindsteGang: 1.1,        // smallere end det er ikke en gang, men en spalte
+  ccFald: [2.0, 4.0]       // møbelafstanden holdes inden for det, planerne viser
+};
+
+/* Butikkens egen rytme: hvor langt der er fra en møbelrække til den næste.
+   Det er den afstand, skinnerne skal ligge med - i Kalundborg 3,39 m fem
+   gange i træk, fordi gondolerne står sådan. */
+function moebelTakt(baand, standard) {
+  if (baand.length < 3) return standard;
+  const midte = baand.map(b => (b.lav + b.høj) / 2).sort((a, b) => a - b);
+  const spring = [];
+  for (let k = 0; k < midte.length - 1; k++) {
+    const d = pxToM(midte[k + 1] - midte[k]);
+    if (d >= SKINNE.ccFald[0] && d <= SKINNE.ccFald[1] * 1.6) spring.push(d);
   }
-  const ud = [];
-  for (const g of grupper.values()) {
-    g.stykker.sort((a, b) => a[0] - b[0]);
-    const punkt = u => [u * g.c - g.tvaers * g.sn, u * g.sn + g.tvaers * g.c];
-    let [a, b] = g.stykker[0];
-    const luk = () => ud.push({ pts: [punkt(a), punkt(b)], inventarId: g.inventarId });
-    const spring = mToPx(state.indst.skinneSpring || 2.5);
-    for (const [u0, u1] of g.stykker.slice(1)) {
-      // en gondolrække er tegnet som enkeltreoler med mellemrum; skinnen går hen over dem
-      if (u0 - b > spring) { luk(); a = u0; b = u1; }
-      else b = Math.max(b, u1);
+  if (spring.length < 2) return standard;
+  spring.sort((a, b) => a - b);
+  const median = spring[spring.length >> 1];
+  return Math.max(SKINNE.ccFald[0], Math.min(SKINNE.ccFald[1], median));
+}
+
+/* Møblernes rækker set på tværs af gangretningen. Hver række bliver et bånd
+   på tværs-aksen; mellemrummene mellem båndene er gangene. */
+function moebelBaand(zone, v) {
+  const c = Math.cos(v), sn = Math.sin(v);
+  const baand = [];
+  for (const inv of inventarIZone(zone)) {
+    if (inv.laengde < 0.8) continue;
+    // kun møbler der står på langs af gangen, danner en reolrække; en
+    // fryseø eller et kassebånd på tværs er ikke en gangvæg
+    if (Math.abs(Math.cos(inv.vinkel - v)) < 0.7) continue;
+    // møblets udstrækning på tværs af gangretningen
+    let lav = Infinity, høj = -Infinity;
+    for (const h of inv.hjørner) {
+      const t = -h[0] * sn + h[1] * c;
+      if (t < lav) lav = t;
+      if (t > høj) høj = t;
     }
-    luk();
+    baand.push({ lav, høj, vægt: inv.laengde });
+  }
+  baand.sort((a, b) => a.lav - b.lav);
+  // overlappende møbler er samme række
+  const samlet = [];
+  for (const b of baand) {
+    const sidste = samlet[samlet.length - 1];
+    if (sidste && b.lav <= sidste.høj + mToPx(0.25)) {
+      sidste.høj = Math.max(sidste.høj, b.høj);
+      sidste.vægt += b.vægt;
+    } else samlet.push({ ...b });
+  }
+  // en enlig kurv eller et podie er ikke en reolrække
+  return samlet.filter(b => b.vægt >= 1.5);
+}
+
+/* Én skinne midt i hver gang mellem møbelrækkerne, plus langs væggene.
+   Er der åbent gulv mellem to rækker, fyldes det med flere rækker, så der
+   ikke opstår et mørkt felt. */
+function skinnerIGange(zone, cc) {
+  const v = gangretning(zone, Geom.longestEdgeAngle(zone.pts));
+  const c = Math.cos(v), sn = Math.sin(v);
+  const baand = moebelBaand(zone, v);
+  if (!baand.length) return null;
+
+  // zonens udstrækning på tværs
+  let zLav = Infinity, zHøj = -Infinity;
+  for (const p of zone.pts) {
+    const t = -p[0] * sn + p[1] * c;
+    if (t < zLav) zLav = t;
+    if (t > zHøj) zHøj = t;
+  }
+  const margen = mToPx(state.indst.margin || 1);
+  // takten sættes af butikken selv, ikke af et tal i feltet - men brugerens
+  // c/c vinder, hvis det er strammere end møblernes egen rytme
+  const takt = Math.min(moebelTakt(baand, cc), cc);
+  const akser = [];
+  const læg = (a, b) => {
+    const bredde = pxToM(b - a);
+    if (bredde < SKINNE.mindsteGang) return;
+    // én skinne i gangen; er mellemrummet bredere end butikkens takt,
+    // er det åbent gulv og skal have flere rækker i samme rytme
+    const antal = Math.max(1, Math.round(bredde / takt));
+    if (antal === 1) { akser.push((a + b) / 2); return; }
+    for (let k = 0; k < antal; k++) akser.push(a + ((b - a) * (k + 0.5)) / antal);
+  };
+
+  læg(zLav + margen, baand[0].lav);                       // langs væggen i den ene side
+  for (let k = 0; k < baand.length - 1; k++) læg(baand[k].høj, baand[k + 1].lav);
+  læg(baand[baand.length - 1].høj, zHøj - margen);        // og i den anden
+
+  // aksen skæres mod zonen, så skinnen følger butikkens form
+  const linjer = [];
+  const langt = mToPx(400);
+  for (const t of akser) {
+    const midt = [-sn * t, c * t];
+    const a = [midt[0] - c * langt, midt[1] - sn * langt];
+    const b = [midt[0] + c * langt, midt[1] + sn * langt];
+    for (const stk of klipModPolygon(a, b, zone.pts)) {
+      if (pxToM(Geom.dist(stk[0], stk[1])) >= 2) linjer.push(trækInd(stk, margen));
+    }
+  }
+  return linjer.length ? linjer : null;
+}
+
+/* Skinnen skal ikke røre væggen; den stopper et stykke inde, som på planerne. */
+function trækInd(stk, margen) {
+  const [a, b] = stk;
+  const L = Geom.dist(a, b);
+  if (L <= margen * 2.2) return stk;
+  const ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L;
+  return [[a[0] + ux * margen, a[1] + uy * margen], [b[0] - ux * margen, b[1] - uy * margen]];
+}
+
+/* Skinnerne for enden af gangene, på tværs. Det er dem, ganglinjerne
+   T-samles ind i på planerne, og dem der lyser endegavle og skilte. */
+function endeSkinner(zone) {
+  const v = gangretning(zone, Geom.longestEdgeAngle(zone.pts));
+  const c = Math.cos(v), sn = Math.sin(v);
+  let lav = Infinity, høj = -Infinity;
+  for (const p of zone.pts) {
+    const u = p[0] * c + p[1] * sn;
+    if (u < lav) lav = u;
+    if (u > høj) høj = u;
+  }
+  const margen = mToPx(state.indst.margin || 1);
+  if (høj - lav < margen * 4) return [];
+  const langt = mToPx(400);
+  const ud = [];
+  for (const u of [lav + margen, høj - margen]) {
+    const midt = [c * u, sn * u];
+    const a = [midt[0] + sn * langt, midt[1] - c * langt];
+    const b = [midt[0] - sn * langt, midt[1] + c * langt];
+    for (const stk of klipModPolygon(a, b, zone.pts)) {
+      if (pxToM(Geom.dist(stk[0], stk[1])) >= 2.5) ud.push(trækInd(stk, margen));
+    }
   }
   return ud;
 }
 
-/* Skinnerækker lagt oven på møblerne: én skinne pr. reol-, køle- eller frostrække. */
-function skinnerOverInventar(zone) {
-  const forlæng = mToPx(0.15);
-  const linjer = [];
-  for (const inv of inventarIZone(zone)) {
-    const halv = mToPx(inv.laengde) / 2 + forlæng;
-    const c = Math.cos(inv.vinkel), sn = Math.sin(inv.vinkel);
-    const a = [inv.centrum[0] - c * halv, inv.centrum[1] - sn * halv];
-    const b = [inv.centrum[0] + c * halv, inv.centrum[1] + sn * halv];
-    for (const stk of klipModPolygon(a, b, zone.pts)) {
-      if (pxToM(Geom.dist(stk[0], stk[1])) >= 1.2) linjer.push({ pts: stk, inventarId: inv.id });
-    }
-  }
-  return samlCollinear(linjer);
-}
-
-
 function genererSkinner(zone) {
   const i = state.indst;
-  const areal = Geom.polygonArea(zone.pts) / (state.pxPerMeter ** 2);
-  const primær = FIXTURES[i.primaer];
-  const accent = i.accent ? FIXTURES[i.accent] : null;
   const krav = zoneKrav(zone);
-  const overInventar = i.følgInventar ? skinnerOverInventar(zone) : [];
-  // startgæt; det rettes bagefter af den punktvise beregning på gulvet
-  const førsteBud = Math.ceil(nødvendigLumen(areal, krav) / Math.max(1, primær.lm));
+  const accent = i.accent ? FIXTURES[i.accent] : null;
 
   const ryd = () => {
     state.skinner = state.skinner.filter(sk => !(sk.auto && sk.zoneId === zone.id));
     state.armaturer = state.armaturer.filter(a => !(a.auto && a.zoneId === zone.id));
   };
+  const rydArmaturer = () => {
+    state.armaturer = state.armaturer.filter(a => !(a.auto && a.zoneId === zone.id));
+  };
 
-  let cc = i.ccSkinner, nye = [], længder = [], antalPrimær = 0, målt = 0, maks = 0;
-  for (let forsøg = 0; forsøg < 6; forsøg++) {
+  /* 1. Skinnerne lægges efter inventaret, ikke efter lysniveauet.
+        Det er sådan planerne er tegnet: layoutet følger butikken, og
+        lysniveauet reguleres bagefter med afstanden mellem armaturerne. */
+  let cc = i.ccSkinner, nye = [], længder = [];
+  const læg = () => {
     ryd();
-    let linjer = overInventar.map(l => l.pts);
-    const fraInventar = linjer.length;
-    // resten af zonen dækkes med parallelle rækker, men ikke oven i de første
-    for (const r of rækkerIAreal(zone.pts, cc, i.margin, i.retning || 'auto')) {
-      const midt = [(r[0][0] + r[1][0]) / 2, (r[0][1] + r[1][1]) / 2];
-      const tætPå = linjer.slice(0, fraInventar).some(l => {
-        const pr = Geom.projectOnPolyline(midt, l);
-        return pr && pr.afstand < mToPx(Math.max(0.9, i.ccSkinner * 0.45));
-      });
-      if (!tætPå) linjer.push(r);
-    }
-    if (!linjer.length) {
-      toast(`${zoneNavn(zone)}: for lille til c/c ${fmt(cc, 1)} m og ${fmt(i.margin, 1)} m til væg`, 'fejl');
-      return 0;
-    }
-    nye = linjer.map((pts, idx) => {
-      const sk = {
-        id: nyId(), pts, montage: i.wireMontage, auto: true, zoneId: zone.id,
-        overInventar: idx < overInventar.length ? overInventar[idx].inventarId : null
-      };
+    const gange = i.følgInventar ? skinnerIGange(zone, cc) : null;
+    let linjer = gange ? gange.concat(endeSkinner(zone))
+      : rækkerIAreal(zone.pts, cc, i.margin, i.retning || 'auto');
+    linjer = fjernDubletter(linjer, mToPx(0.8));
+    if (!linjer.length) return false;
+    nye = linjer.map(pts => {
+      const sk = { id: nyId(), pts, montage: i.wireMontage, auto: true, zoneId: zone.id, iGang: !!gange };
       state.skinner.push(sk);
       return sk;
     });
     længder = nye.map(sk => pxToM(Geom.polylineLength(sk.pts)));
-    const total = længder.reduce((a, b) => a + b, 0);
-    maks = Math.floor(total / Math.max(0.3, i.minAfstand));
-    antalPrimær = Math.max(1, Math.min(maks, førsteBud));
-
-    // grundbelysningen lægges ud, og antallet rettes op eller ned efter
-    // det beregnede lysniveau, så der hverken mangler eller spildes lys
-    for (let runde = 0; runde < 5; runde++) {
-      state.armaturer = state.armaturer.filter(a => !(a.auto && a.zoneId === zone.id));
-      const pr = fordelAntal(antalPrimær, længder);
-      nye.forEach((sk, idx) => fordelPåSkinne(sk, i.primaer, pr[idx], 0, zone.id));
-      målt = Tre.zoneSnit(state, zone.pts, 0.7, 'grund').snit;
-      const forHøjt = målt > krav * 1.08 && antalPrimær > 1;
-      const forLavt = målt < krav * 0.99 && antalPrimær < maks;
-      if (!forHøjt && !forLavt) break;
-      let nyt = Math.round(antalPrimær * (krav / Math.max(1, målt)));
-      if (forLavt) nyt = Math.max(nyt, antalPrimær + 1);
-      if (forHøjt) nyt = Math.min(nyt, antalPrimær - 1);
-      nyt = Math.max(1, Math.min(maks, nyt));
-      if (nyt === antalPrimær) break;
-      antalPrimær = nyt;
-    }
-    if (målt >= krav * 0.98 || cc <= 1.2001) break;
-    // rækkerne rykkes tættere, så der er plads til mere lys
-    const énRækkeMere = (cc * nye.length) / (nye.length + 1);
-    cc = Math.max(1.2, Math.min(cc * Math.sqrt(Math.max(0.4, målt / krav)), énRækkeMere));
+    return true;
+  };
+  if (!læg()) {
+    toast(`${zoneNavn(zone)}: for lille til c/c ${fmt(cc, 1)} m og ${fmt(i.margin, 1)} m til væg`, 'fejl');
+    return 0;
   }
 
+  /* 2. Armaturerne sættes med den afstand, planerne bruger, og afstanden
+        strammes eller slækkes indtil lux-kravet er ramt. Først når båndet
+        er brugt op, lægges der flere skinnerækker. */
+  const sæt = afstand => {
+    rydArmaturer();
+    for (const sk of nye) {
+      const L = pxToM(Geom.polylineLength(sk.pts));
+      const antal = Math.max(1, Math.round(L / afstand));
+      fordelPåSkinne(sk, i.primaer, antal, 0, zone.id);
+    }
+    return state.armaturer.filter(a => a.auto && a.zoneId === zone.id).length;
+  };
+
+  let afstand = SKINNE.ccArmatur, antalPrimær = 0, målt = 0;
+  for (let ydre = 0; ydre < 3; ydre++) {
+    if (ydre > 0) {
+      // båndet for armaturafstanden er brugt op - så skal der flere rækker til
+      const tættere = Math.max(1.4, cc * 0.8);
+      if (Math.abs(tættere - cc) < 0.05 || !i.følgInventar) break;
+      const forrige = cc;
+      cc = tættere;
+      // læg() rydder først; slår den fejl, lægges det forrige layout igen,
+      // så zonen aldrig ender uden skinner
+      if (!læg()) { cc = forrige; læg(); break; }
+      afstand = SKINNE.ccArmatur;
+    }
+    for (let runde = 0; runde < 7; runde++) {
+      antalPrimær = sæt(afstand);
+      målt = Tre.zoneSnit(state, zone.pts, 0.7, 'grund').snit;
+      if (målt >= krav * 0.99 && målt <= krav * 1.08) break;
+      const ny = afstand * Math.sqrt(Math.max(0.35, Math.min(2.8, målt / Math.max(1, krav))));
+      const klemt = Math.max(SKINNE.minArmatur, Math.min(SKINNE.maksArmatur, ny));
+      if (Math.abs(klemt - afstand) < 0.05) break;
+      afstand = klemt;
+    }
+    if (målt >= krav * 0.99) break;
+  }
+  // efter en mislykket sidste runde kan armaturerne være ryddet
+  if (!state.armaturer.some(a => a.auto && a.zoneId === zone.id)) antalPrimær = sæt(afstand);
+
   if (målt < krav * 0.98) {
-    toast(`${zoneNavn(zone)}: ${fmt(krav)} lux kan ikke nås med ${kortNavn(i.primaer)} – der beregnes ${fmt(målt, 0)} lux. Vælg et kraftigere armatur eller mindre afstand.`, 'fejl');
-  } else if (Math.abs(cc - i.ccSkinner) > 0.05) {
-    toast(`${zoneNavn(zone)}: skinnerækkerne er rykket til c/c ${fmt(cc, 1)} m for at nå ${fmt(krav)} lux`);
+    toast(`${zoneNavn(zone)}: ${fmt(krav)} lux kan ikke nås med ${kortNavn(i.primaer)} – der beregnes ${fmt(målt, 0)} lux. Vælg et kraftigere armatur.`, 'fejl');
+  } else if (afstand > SKINNE.maksArmatur - 0.05) {
+    toast(`${zoneNavn(zone)}: armaturerne sidder ${fmt(afstand, 1)} m fra hinanden – planerne ligger på 3,0–3,5 m. Butikken har flere gange, end lyskravet kræver.`);
   }
 
   // skinner uden armaturer tjener ikke noget formål
@@ -2650,15 +2766,34 @@ function genererSkinner(zone) {
     for (let k = nye.length - 1; k >= 0; k--) if (tomme.has(nye[k].id)) { nye.splice(k, 1); længder.splice(k, 1); }
   }
 
+  /* 3. Spots er accent, ikke grundbelysning. På planerne sidder de ved
+        endegavlene - altså på enderne af skinnerne og på endeskinnerne. */
   const antalAccent = accent ? Math.round(antalPrimær * i.accentRatio) : 0;
   const accentPrRække = fordelAntal(antalAccent, længder);
   nye.forEach((sk, idx) => {
     if (!accent || accentPrRække[idx] <= 0) return;
-    // over et møbel sættes accentlyset i enderne, hvor endegavl og skilte sidder
-    if (sk.overInventar) fordelIEnder(sk, i.accent, accentPrRække[idx], zone.id);
+    if (sk.iGang) fordelIEnder(sk, i.accent, accentPrRække[idx], zone.id);
     else fordelPåSkinne(sk, i.accent, accentPrRække[idx], 0.5, zone.id, true);
   });
   return antalPrimær + antalAccent;
+}
+
+/* To skinner oven i hinanden giver dobbelt lys og dobbelt pris. */
+function fjernDubletter(linjer, tol) {
+  const ud = [];
+  for (const l of linjer) {
+    const midt = [(l[0][0] + l[1][0]) / 2, (l[0][1] + l[1][1]) / 2];
+    const dublet = ud.some(u => {
+      const pr = Geom.projectOnPolyline(midt, u);
+      if (!pr || pr.afstand > tol) return false;
+      const v1 = Math.atan2(l[1][1] - l[0][1], l[1][0] - l[0][0]);
+      const v2 = Math.atan2(u[1][1] - u[0][1], u[1][0] - u[0][0]);
+      const d = Math.abs(((v1 - v2) % Math.PI + Math.PI) % Math.PI);
+      return d < 0.12 || d > Math.PI - 0.12;
+    });
+    if (!dublet) ud.push(l);
+  }
+  return ud;
 }
 
 /* Retter antallet af armaturer i en zone, når resten af butikken er på plads.
@@ -2687,7 +2822,7 @@ function efterjuster(zone) {
     const accentPr = fordelAntal(accent, længder);
     skinner.forEach((sk, idx) => {
       if (!accent || accentPr[idx] <= 0) return;
-      if (sk.overInventar) fordelIEnder(sk, i.accent, accentPr[idx], zone.id);
+      if (sk.iGang) fordelIEnder(sk, i.accent, accentPr[idx], zone.id);
       else fordelPåSkinne(sk, i.accent, accentPr[idx], 0.5, zone.id, true);
     });
   }
