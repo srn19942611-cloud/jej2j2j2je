@@ -387,6 +387,28 @@ const Tre = (() => {
   }
 
   /* ---- farver ---- */
+  /* Farverne regnes som [r,g,b], så lysriggen kan lægges oven på uden
+     strengfusk, og først sættes sammen til en css-farve når fladen tegnes. */
+  function tilRgb(farve) {
+    if (Array.isArray(farve)) return farve;
+    if (farve[0] === '#') {
+      return [parseInt(farve.slice(1, 3), 16), parseInt(farve.slice(3, 5), 16), parseInt(farve.slice(5, 7), 16)];
+    }
+    const t = (farve.match(/[\d.]+/g) || [0, 0, 0]).map(Number);
+    if (farve.startsWith('rgb')) return [t[0], t[1], t[2]];
+    // hsl(h, s%, l%)
+    const h = t[0] / 360, sa = t[1] / 100, li = t[2] / 100;
+    const a = sa * Math.min(li, 1 - li);
+    const k = n => {
+      const q = (n + h * 12) % 12;
+      return Math.round(255 * (li - a * Math.max(-1, Math.min(q - 3, 9 - q, 1))));
+    };
+    return [k(0), k(8), k(4)];
+  }
+
+  const css = c => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+  const spænd = v => v < 0 ? 0 : v > 255 ? 255 : v;
+
   function luxFarve(l, maks, tilstand) {
     const t = Math.max(0, Math.min(1, l / Math.max(1, maks)));
     if (tilstand === 'falsk') {
@@ -395,24 +417,58 @@ const Tre = (() => {
       const p = t * (trin.length - 1);
       const i = Math.min(trin.length - 2, Math.floor(p));
       const f = p - i;
-      const c = trin[i].map((v, k) => Math.round(v + (trin[i + 1][k] - v) * f));
-      return `rgb(${c[0]},${c[1]},${c[2]})`;
+      return trin[i].map((v, k) => Math.round(v + (trin[i + 1][k] - v) * f));
     }
     // realistisk: varmt lys på en lys grå flade
     const b = 0.12 + 0.88 * Math.pow(t, 0.65);
-    return `rgb(${Math.round(232 * b)},${Math.round(226 * b)},${Math.round(212 * b)})`;
+    return [Math.round(232 * b), Math.round(226 * b), Math.round(212 * b)];
   }
 
   function fladeFarve(hex, l, maks, tilstand) {
     if (tilstand === 'falsk') return luxFarve(l, maks, 'falsk');
-    if (hex.startsWith('hsl')) {
-      // varernes farve tones op og ned med lyset
-      const b = 0.25 + 0.75 * Math.pow(Math.max(0, Math.min(1, l / Math.max(1, maks))), 0.6);
-      return hex.replace(/(\d+)%\)$/, (mm, lys) => `${Math.round(+lys * b)}%)`);
-    }
+    const c = tilRgb(hex);
+    // varernes farve tones op og ned med lyset
     const b = 0.18 + 0.82 * Math.pow(Math.max(0, Math.min(1, l / Math.max(1, maks))), 0.6);
-    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), bl = parseInt(hex.slice(5, 7), 16);
-    return `rgb(${Math.round(r * b)},${Math.round(g * b)},${Math.round(bl * b)})`;
+    return [c[0] * b, c[1] * b, c[2] * b];
+  }
+
+  /* ---- lysrig ----
+     Lysberegningen alene giver en flad tegning: to sider af samme reol har
+     samme lux og dermed samme farve, så kanten forsvinder. Derfor lægges et
+     lille rig oven på billedet - et hovedlys, et udfyldningslys, et ambient
+     niveau og en svag spejling, som et CAD-program gør det. Det ændrer kun
+     billedet, aldrig lux-tallene, og i falske farver er det slået fra, fordi
+     farven dér ER måleresultatet. */
+  const enhed = v => {
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / l, v[1] / l, v[2] / l];
+  };
+  const RIG = {
+    ambient: 0.34,
+    lys: [
+      { retning: enhed([0.45, 0.35, 0.82]), styrke: 0.68 },
+      { retning: enhed([-0.55, -0.45, 0.30]), styrke: 0.28 }
+    ],
+    spejl: 0.20, haardhed: 18
+  };
+
+  function fladeNormal(p) {
+    const u = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
+    const v = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]];
+    return enhed([u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]);
+  }
+
+  /* To-sidet belysning: fladernes omløbsretning er ikke ensrettet, så
+     der regnes på den numeriske vinkel, ikke på fortegnet. */
+  function rigSkygge(n, modØje) {
+    let d = RIG.ambient;
+    for (const l of RIG.lys) {
+      d += l.styrke * Math.abs(n[0] * l.retning[0] + n[1] * l.retning[1] + n[2] * l.retning[2]);
+    }
+    const l0 = RIG.lys[0].retning;
+    const h = enhed([l0[0] + modØje[0], l0[1] + modØje[1], l0[2] + modØje[2]]);
+    const nh = Math.abs(n[0] * h[0] + n[1] * h[1] + n[2] * h[2]);
+    return { diffus: Math.min(1.25, d), spejl: RIG.spejl * Math.pow(nh, RIG.haardhed) };
   }
 
   /* ---- tegning ---- */
@@ -434,10 +490,17 @@ const Tre = (() => {
     };
     const tilSkærm = q => [bredde / 2 + (f * q[0]) / q[2], højde / 2 - (f * q[1]) / q[2]];
 
-    // himmel/loft og gulvtone
-    ctx.fillStyle = tilstand === 'falsk' ? '#0C1220' : '#20242C';
+    // loftrummet får en svag overgang, så rummet får en top og ikke en flad væg
+    const himmel = ctx.createLinearGradient(0, 0, 0, højde);
+    if (tilstand === 'falsk') {
+      himmel.addColorStop(0, '#080C16'); himmel.addColorStop(1, '#131B2C');
+    } else {
+      himmel.addColorStop(0, '#171A21'); himmel.addColorStop(1, '#2A2F38');
+    }
+    ctx.fillStyle = himmel;
     ctx.fillRect(0, 0, bredde, højde);
 
+    const rig = tilstand !== 'falsk';
     const flader = [];
     const tilføj = (punkter, farve, slags, ekstra) => {
       const syn = punkter.map(tilSyn);
@@ -446,7 +509,17 @@ const Tre = (() => {
       if (klippet.length < 3) return;
       const skærm = klippet.map(tilSkærm);
       const dybde = klippet.reduce((a, q) => a + q[2], 0) / klippet.length;
-      flader.push({ skærm, farve, dybde, slags, ekstra });
+      let c = tilRgb(farve);
+      if (rig && slags !== 'lampe' && punkter.length >= 3) {
+        const n = fladeNormal(punkter);
+        const midt = punkter.reduce((a, q) => [a[0] + q[0], a[1] + q[1], a[2] + q[2]], [0, 0, 0])
+          .map(v => v / punkter.length);
+        const modØje = enhed([øje[0] - midt[0], øje[1] - midt[1], øje[2] - midt[2]]);
+        const sk = rigSkygge(n, modØje);
+        const glans = 255 * sk.spejl;
+        c = [spænd(c[0] * sk.diffus + glans), spænd(c[1] * sk.diffus + glans), spænd(c[2] * sk.diffus + glans)];
+      }
+      flader.push({ skærm, farve: css(c), kant: css([c[0] * 0.68, c[1] * 0.68, c[2] * 0.68]), dybde, slags, ekstra });
     };
 
     for (const g of scene.gulv) {
@@ -496,9 +569,11 @@ const Tre = (() => {
       }
       ctx.fillStyle = fl.farve;
       ctx.fill();
-      if (fl.slags === 'kasse') {
-        ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-        ctx.lineWidth = 0.5;
+      if (fl.slags === 'kasse' || fl.slags === 'væg') {
+        // kanten tegnes i fladens egen tone, så to sider af samme møbel
+        // skiller sig ad uden at billedet bliver et trådnet
+        ctx.strokeStyle = fl.kant;
+        ctx.lineWidth = 0.6;
         ctx.stroke();
       } else if (fl.slags === 'lampe') {
         ctx.shadowColor = 'rgba(255,240,200,0.9)';

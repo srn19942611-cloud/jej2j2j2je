@@ -2142,12 +2142,18 @@ function hentScene() {
   return state.scene;
 }
 
-function tegn3d() {
+/* Billedet tegnes med det samme, mens man drejer, og tegnes om et øjeblik
+   efter i dobbelt opløsning og skaleres ned - så kanterne bliver rene uden
+   at det hakker, mens man kigger sig omkring. */
+let ssLærred = null, skarpTimer = null;
+const SS_MAAL = 2;
+
+function tegn3d(skarp) {
   const { b, h } = visningsStørrelse();
-  ctx.save();
-  ctx.setTransform(lærred.width / b, 0, 0, lærred.height / h, 0, 0);
   const scene = hentScene();
   if (!scene) {
+    ctx.save();
+    ctx.setTransform(lærred.width / b, 0, 0, lærred.height / h, 0, 0);
     ctx.fillStyle = '#20242C';
     ctx.fillRect(0, 0, b, h);
     ctx.fillStyle = '#8A8F9C';
@@ -2158,10 +2164,35 @@ function tegn3d() {
     ctx.restore();
     return;
   }
-  Tre.tegn(ctx, b, h, state.kamera, scene, {
+  const valg = {
     fov: state.indst.fov, farvetilstand: state.indst.farvetilstand, maksLux: state.indst.maksLux
-  });
-  ctx.restore();
+  };
+  const opløsning = lærred.width / Math.max(1, b);
+  const ss = (skarp || eksportStørrelse) ? Math.max(1, SS_MAAL / opløsning) : 1;
+
+  clearTimeout(skarpTimer);
+  if (ss > 1.01) {
+    if (!ssLærred) ssLærred = document.createElement('canvas');
+    ssLærred.width = Math.round(lærred.width * ss);
+    ssLærred.height = Math.round(lærred.height * ss);
+    const sctx = ssLærred.getContext('2d');
+    sctx.setTransform(ssLærred.width / b, 0, 0, ssLærred.height / h, 0, 0);
+    Tre.tegn(sctx, b, h, state.kamera, scene, valg);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(ssLærred, 0, 0, lærred.width, lærred.height);
+    ctx.restore();
+  } else {
+    ctx.save();
+    ctx.setTransform(lærred.width / b, 0, 0, lærred.height / h, 0, 0);
+    Tre.tegn(ctx, b, h, state.kamera, scene, valg);
+    ctx.restore();
+    if (!eksportStørrelse) {
+      skarpTimer = setTimeout(() => { if (state.tilstand === '3d') tegn3d(true); }, 140);
+    }
+  }
   visTreTal(scene);
 }
 
@@ -2221,6 +2252,32 @@ function placerStartkamera() {
   state.kamera.tilt = -0.08;
   state.kameraer.push({ id: nyId(), navn: 'Indgang', ...state.kamera });
   visKameraer();
+}
+
+/* Fugleperspektiv over hele butikken - samme vinkel som et CAD-program
+   bruger til sit iso-billede: fra hjørnet og lidt over. */
+function placerOversigt() {
+  const zoner = state.zoner.filter(z => z.type !== 'ude');
+  if (!zoner.length) return false;
+  const m = state.pxPerMeter || 100;
+  const r = Geom.bbox([].concat(...zoner.map(z => z.pts)));
+  const midt = [(r.x0 + r.x1) / 2 / m, (r.y0 + r.y1) / 2 / m];
+  const bredde = (r.x1 - r.x0) / m, dybde = (r.y1 - r.y0) / m;
+  // afstanden sættes efter synsvinklen, så butikken lige akkurat er i billedet
+  const halvFov = ((state.indst.fov || 70) * Math.PI / 180) / 2;
+  const spænd = Math.max(bredde, dybde, 4);
+  const behov = (spænd * 0.62) / Math.max(0.2, Math.tan(halvFov));
+  const højdevinkel = 0.62;                             // ca. 35° over gulvet
+  const vandret = behov * Math.cos(højdevinkel);
+  const højde = Math.max(6, behov * Math.sin(højdevinkel));
+  // fra hjørnet, som iso-billedet i et CAD-program
+  const retning = -Math.PI / 4;
+  state.kamera.x = midt[0] - Math.cos(retning) * vandret;
+  state.kamera.y = midt[1] - Math.sin(retning) * vandret;
+  state.kamera.h = højde;
+  state.kamera.retning = retning;
+  state.kamera.tilt = -Math.atan2(højde - 1.2, vandret);
+  return true;
 }
 
 /* Man ser mest af butikken ved at kigge ned ad en gang, altså på langs af
@@ -3155,6 +3212,10 @@ function bindKnapper() {
   resultat.querySelector('[data-h="print"]').onclick = udskriv;
   $('#knap-plan').onclick = () => sætTilstand('plan');
   $('#knap-3d').onclick = () => sætTilstand('3d');
+  $('#knap-oversigt').onclick = () => {
+    if (!placerOversigt()) { toast('Tegn eller find en zone først', 'fejl'); return; }
+    if (state.tilstand !== '3d') sætTilstand('3d'); else tegn();
+  };
   $('#knap-reference').onclick = gemReference;
   $('#knap-vis-reference').onclick = () => {
     state.visReference = !state.visReference;

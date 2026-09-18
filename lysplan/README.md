@@ -226,6 +226,22 @@ lysspredningen, byggeprogrammet beder om.
 Accentspots drejes ca. 25° ud mod reolfronten, skiftevis til hver side, så de
 lyser på varen og ikke på gulvet.
 
+Oven på lysberegningen ligger et lille lysrig, som et CAD-program bruger det:
+et hovedlys skråt oppefra, et svagere udfyldningslys fra modsat side, et
+ambient niveau og en svag spejling. Uden det har to sider af samme reol samme
+lux og dermed samme farve, så kanten forsvinder. Riggen ændrer kun billedet,
+aldrig lux-tallene, og den er slået fra i falskfarve, hvor farven **er**
+måleresultatet. Hver flade får desuden en kantstreg i sin egen tone, så
+møblerne står skarpt uden at billedet bliver et trådnet.
+
+Billedet tegnes med det samme, mens man drejer, og tegnes om et øjeblik efter i
+dobbelt opløsning og skaleres ned, så kanterne bliver rene uden at det hakker.
+
+**Oversigt over butikken** stiller kameraet i hjørnet og lidt over taghøjde, så
+hele salgsarealet er i billedet på én gang – afstanden regnes ud fra
+synsvinklen. I falskfarve er det den hurtigste måde at se, om lyset ligger, hvor
+varerne står.
+
 ## Armaturdata
 
 Kataloget i `catalog.js` er bygget på armaturteksterne fra lysplanerne
