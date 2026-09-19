@@ -494,6 +494,7 @@ function musePunkt(e) {
 /* ---------- tegning af planen ---------- */
 const FARVER = {
   skinne: '#E02B20',
+  spor: '#F2938B',          // selve den 3-fasede skinne - tynd, som på planerne
   skinneValgt: '#0B7BD4',
   bricks: '#1F9D4D',
   omraade: '#0B7BD4',
@@ -681,27 +682,98 @@ function tegnZoner() {
   }
 }
 
+/* Skinnen tegnes som på SJOC's planer og i byggeprogrammets signatur:
+   den 3-fasede skinne er en TYND streg, og armaturerne er de fede bjælker
+   ovenpå (se tegnArmatur). Er der zoomet nok ind, sættes modulmål og
+   samlingskoder på, så tegningen kan bygges efter. */
 function tegnSkinne(s) {
   const valgt = state.valgt && state.valgt.slags === 'skinne' && state.valgt.id === s.id;
   const z = state.visning.zoom;
   ctx.beginPath();
   ctx.moveTo(s.pts[0][0], s.pts[0][1]);
   for (const p of s.pts.slice(1)) ctx.lineTo(p[0], p[1]);
-  ctx.strokeStyle = valgt ? FARVER.skinneValgt : FARVER.skinne;
-  ctx.lineWidth = linjebredde(0.05, 2.4);
-  ctx.lineCap = 'round';
+  ctx.strokeStyle = valgt ? FARVER.skinneValgt : FARVER.spor;
+  ctx.lineWidth = Math.max(1.1 / z, harMaalestok() ? mToPx(0.012) : 1.5 / z);
+  ctx.lineCap = 'butt';
   ctx.lineJoin = 'round';
-  if (s.montage === 'loft') ctx.setLineDash([]);
-  else ctx.setLineDash([]);
+  ctx.setLineDash([]);
   ctx.stroke();
+  tegnSkinneMaal(s, valgt);
+}
 
-  // endemarkeringer
-  for (const p of [s.pts[0], s.pts[s.pts.length - 1]]) {
-    ctx.beginPath();
-    ctx.arc(p[0], p[1], Math.max(2.5 / z, linjebredde(0.06)), 0, Math.PI * 2);
-    ctx.fillStyle = valgt ? FARVER.skinneValgt : FARVER.skinne;
-    ctx.fill();
+/* Skinnelængderne 4000/3000/2000 lagt ud i rækkefølge, resten forrest -
+   sådan står det på planerne ("1500 · S.S. · 3000 · S.S. · 4000"). */
+function skinneStykker(længdeM) {
+  const seg = segmenterSkinne(længdeM);
+  if (!seg.antal) return [];
+  const stykker = [];
+  for (const mm of [2000, 3000, 4000]) {
+    for (let k = 0; k < (seg.stykker[mm] || 0); k++) stykker.push(mm / 1000);
   }
+  return stykker;
+}
+
+/* Ender enden af skinnen midt på en anden skinne, er det en T-samling -
+   samme regel som styklisten tæller efter, så plan og stykliste er enige. */
+function enderI(p, egenId) {
+  const tol = harMaalestok() ? mToPx(0.3) : 12;
+  for (const s of state.skinner) {
+    if (s.id === egenId) continue;
+    const pr = Geom.projectOnPolyline(p, s.pts);
+    if (!pr || pr.afstand > tol) continue;
+    const vedEnde = Geom.dist(pr.punkt, s.pts[0]) < tol ||
+                    Geom.dist(pr.punkt, s.pts[s.pts.length - 1]) < tol;
+    if (!vedEnde) return 'T.S.';
+  }
+  return null;
+}
+
+function tegnSkinneMaal(s, valgt) {
+  if (!harMaalestok() || state.tilstand === '3d') return;
+  const z = state.visning.zoom;
+  const L = Geom.polylineLength(s.pts);
+  const px = mToPx(1) * z;                       // skærmpixels pr. meter
+  if (px < 14) return;                           // for lille til at kunne læses
+  const stykker = skinneStykker(pxToM(L));
+  if (!stykker.length) return;
+  const farve = valgt ? FARVER.skinneValgt : FARVER.skinne;
+  const tekst = Math.max(7, Math.min(11, px * 0.16)) / z;
+  ctx.save();
+  ctx.strokeStyle = farve;
+  ctx.fillStyle = farve;
+  ctx.font = `${tekst}px "IBM Plex Mono", monospace`;
+  ctx.textAlign = 'center';
+  const hak = Math.max(3 / z, mToPx(0.09));
+
+  const kode = (d, navn) => {
+    const { punkt, vinkel } = Geom.pointAtLength(s.pts, Math.max(0, Math.min(L, d)));
+    ctx.save();
+    ctx.translate(punkt[0], punkt[1]);
+    ctx.rotate(vinkel);
+    ctx.lineWidth = Math.max(0.9 / z, mToPx(0.01));
+    ctx.beginPath(); ctx.moveTo(0, -hak); ctx.lineTo(0, hak); ctx.stroke();
+    if (px >= 22) ctx.fillText(navn, 0, hak + tekst * 1.25);
+    ctx.restore();
+  };
+
+  kode(0, enderI(s.pts[0], s.id) || 'S.');        // start/tilslutning eller T-samling
+  let d = 0;
+  for (let k = 0; k < stykker.length; k++) {
+    const m = stykker[k];
+    if (px >= 22) {
+      // modulmålet midt i sit eget stykke, som på planerne
+      const { punkt, vinkel } = Geom.pointAtLength(s.pts, d + mToPx(m) / 2);
+      ctx.save();
+      ctx.translate(punkt[0], punkt[1]);
+      ctx.rotate(vinkel);
+      ctx.fillText(String(Math.round(m * 1000)), 0, -hak - tekst * 0.5);  // "4000", ikke "4.000"
+      ctx.restore();
+    }
+    d += mToPx(m);
+    if (k < stykker.length - 1) kode(d, 'S.S.');
+  }
+  kode(L, enderI(s.pts[s.pts.length - 1], s.id) || 'E.');   // endestykke eller T-samling
+  ctx.restore();
 }
 
 function tegnArmatur(a) {
@@ -717,15 +789,22 @@ function tegnArmatur(a) {
 
   const L = f.laengde * enhed;
   switch (f.symbol) {
-    case 'bricks':
-      ctx.strokeStyle = FARVER.skinne;
-      ctx.lineWidth = Math.max(2 / z, enhed * 0.05);
+    case 'bricks': {
+      // lysskinnen er en fed bjælke i sin rigtige længde oven på sporet -
+      // præcis som "Lysskinne" i byggeprogrammets signatur
+      const tyk = Math.max(2.6 / z, enhed * 0.075);
+      ctx.strokeStyle = valgt ? FARVER.skinneValgt : FARVER.skinne;
+      ctx.lineCap = 'butt';
+      ctx.lineWidth = tyk;
       ctx.beginPath(); ctx.moveTo(-L / 2, 0); ctx.lineTo(L / 2, 0); ctx.stroke();
-      ctx.strokeStyle = FARVER.bricks;
-      ctx.lineWidth = Math.max(1.4 / z, enhed * 0.03);
-      ctx.beginPath(); ctx.moveTo(-L / 2, -enhed * 0.05); ctx.lineTo(-L / 2, enhed * 0.05);
-      ctx.moveTo(L / 2, -enhed * 0.05); ctx.lineTo(L / 2, enhed * 0.05); ctx.stroke();
+      if (enhed * state.visning.zoom >= 22) {
+        ctx.fillStyle = FARVER.bricks;
+        ctx.font = `${Math.max(6, Math.min(9, enhed * state.visning.zoom * 0.13)) / state.visning.zoom}px "IBM Plex Sans", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText('BRICKS', 0, -tyk * 0.9);
+      }
       break;
+    }
     case 'spot':
       ctx.fillStyle = FARVER.spot;
       ctx.beginPath();

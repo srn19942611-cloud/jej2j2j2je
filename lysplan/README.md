@@ -170,6 +170,22 @@ Væggene bruges tre gange:
    punktet spærret set fra dem alle, hører det til på den anden side af
    muren og flyttes ind foran den.
 
+## Sådan tegnes planen
+
+Planen følger samme signatur som SJOC's lysplaner og byggeprogrammets
+Bilag 1, hvor tre ting holdes adskilt:
+
+* **3-faset skinne** – en tynd streg. Det er den, armaturerne hænger på.
+* **Lysskinne** – den fede bjælke i sin rigtige længde (Bricks er 1,20 m),
+  tegnet oven på sporet og mærket BRICKS.
+* **Spot** – sit eget symbol.
+
+Er der zoomet nok ind, sættes modulmålene (4000/3000/2000) og
+samlingskoderne på: **S.** ved tilslutningen, **S.S.** ved hver lige
+samling, **T.S.** hvor en skinne ender midt på en anden, og **E.** ved en
+fri ende. T-samlingerne findes efter samme regel, som styklisten tæller
+efter, så plan og stykliste er enige.
+
 ## Sådan placeres skinnerne
 
 Placeringen er ikke gættet. Den er aflæst af styklisterne på SJOC's seks
