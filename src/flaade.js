@@ -24,6 +24,7 @@
 
 import { median, mad } from './statistik.js';
 import { AARSAG } from './aarsag.js';
+import { normButik } from './korrelation.js';
 import { fgNavn } from './taxonomy.js';
 
 /* ---- 1 · Gaten ------------------------------------------------------------
@@ -189,7 +190,7 @@ export function systematiskeFejl(varsler, { minButikker = 4, minAndel = 0.25, vi
 
   const fund = [];
   for (const [n, liste] of grupper) {
-    const butikker = new Set(liste.map((v) => v.butiksnummer));
+    const butikker = new Set(liste.map((v) => normButik(v.butiksnummer)));
     if (butikker.size < minButikker) continue;
 
     /* Ligger de tæt i tid?
@@ -437,7 +438,7 @@ export function foersteKoersel(varsler, { budget = STANDARDBUDGET, personer = 9,
   const kampagner = [];
   const iKampagne = new Set();
   for (const [n, liste] of prAarsag) {
-    const butikker = new Set(liste.map((v) => v.butiksnummer));
+    const butikker = new Set(liste.map((v) => normButik(v.butiksnummer)));
     if (butikker.size < minKampagne) continue;
     const [faggruppe, aarsagId] = n.split('|');
     const a = AARSAG[aarsagId];

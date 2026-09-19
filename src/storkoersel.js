@@ -24,7 +24,7 @@
 import { klassificerMaalepunkt } from './anlaeg.js';
 import { energistroem } from './kobling.js';
 import { signaturFraMaaling } from './maaling.js';
-import { fordelOpgaver } from './korrelation.js';
+import { fordelOpgaver, normButik } from './korrelation.js';
 import { varselFraSignatur, PRISER } from './agent.js';
 import { sigt, foersteKoersel, STANDARDBUDGET } from './flaade.js';
 import { fgNavn } from './taxonomy.js';
@@ -71,6 +71,37 @@ export function opgaveFraDb(r) {
 }
 
 /**
+ * En arbejdsordre direkte fra Dalux' API til den form korrelation.js læser.
+ *
+ * Kun 9 af 40 ordrer på Aarhus C havde et anlæg (assetRefs) på sig — resten
+ * har kun en fritekst i placement.description. Så koblingen skal kunne bruge
+ * begge: anlægs-id'et, når det findes, og ellers teksten. Status er et tal
+ * og skal slås op i statuslisten; det samme med firmaet.
+ */
+export function opgaveFraDalux(wo, { statusNavne = {}, anlaegNavne = {}, firmaNavne = {}, butiksnummer = null } = {}) {
+  const w = wo?.data || wo || {};
+  const pl = w.placement || {};
+  const assetId = (pl.assetRefs || [])[0]?.assetId ?? null;
+  const bygning = (pl.buildingRefs || [])[0]?.buildingId ?? null;
+  return {
+    opgavenr: tekst(w.number), workOrderId: tekst(w.workOrderId),
+    butiksnummer: butiksnummer ? normButik(butiksnummer) : null,
+    daluxBuildingId: bygning != null ? tekst(bygning) : null,
+    anlaegId: assetId != null ? tekst(assetId) : null,
+    anlaeg: [assetId != null ? anlaegNavne[tekst(assetId)] : null, pl.description].filter(Boolean).join(' · '),
+    dato: w.createdDate ? tekst(w.createdDate).slice(0, 10) : null,
+    lukket: w.completedDate ? tekst(w.completedDate).slice(0, 10) : null,
+    fagomraade: null,                                   // Dalux' template/team er ikke vores fagområde; kobles i taxonomy
+    tekst: [tekst(w.name), tekst(w.description)].filter(Boolean).join(' — '),
+    titel: tekst(w.name),
+    status: statusNavne[tekst(w.status)] || tekst(w.status) || null,
+    type: tekst(w.type) || null,
+    udfoerende: firmaNavne[tekst((w.companyRef || {}).companyId)] || null,
+    afvistAf: null, afvistBegrundelse: null,            // ligger i historikloggen, ikke på ordren
+  };
+}
+
+/**
  * Opgaver, der kun kender Dalux-bygningen, får butiksnummeret fra locations.
  * Kan bygningen ikke slås op, bliver opgaven stående uden — og falder så som
  * ufordelt i fordelOpgaver med den grund. Den bliver ikke gættet på plads.
@@ -78,7 +109,7 @@ export function opgaveFraDb(r) {
 export function butiksnummerFraBygning(opgaver, locations) {
   const prBygning = new Map();
   for (const l of locations || []) {
-    if (l.dalux_building_id && l.butiksnummer) prBygning.set(String(l.dalux_building_id), String(l.butiksnummer));
+    if (l.dalux_building_id && l.butiksnummer) prBygning.set(String(l.dalux_building_id), normButik(l.butiksnummer));
   }
   let koblet = 0;
   const ud = (opgaver || []).map((o) => {
@@ -139,7 +170,7 @@ export function enhedFraSignatur(s, { anlaeg = [] } = {}) {
   return {
     id: `E-${s.maalerId}`,
     slags: anlaeg.length > 1 ? 'gruppe' : 'anlæg',
-    navn: s.navn, meterId: s.maalerId, meterNavn: s.navn, maaler: s.navn,
+    navn: s.navn, meterId: s.maalerId, meterNavn: s.navn, maaler: s.navn, tags: s.tags,
     butik: s.butiksnavn || s.butiksnummer, butiksnummer: s.butiksnummer,
     anlaeg,
     faggruppe: fg,
@@ -234,7 +265,7 @@ function grupper(liste, noegle, navn) {
     /* Tre beløbsklasser, aldrig lagt sammen. */
     besparelseKr: sum(vs.filter((v) => v.krKlasse === 'besparelse'), 'kr'),
     potentialeKr: sum(vs.filter((v) => v.krKlasse === 'potentiale'), 'kr'),
-    butikker: new Set(vs.map((v) => v.butiksnummer)).size,
+    butikker: new Set(vs.map((v) => normButik(v.butiksnummer))).size,
     aarsager: taelAf(vs, (v) => v.aarsagNavn),
     varsler: vs.sort((a, b) => Number(b.hastende) - Number(a.hastende) || b.kr - a.kr),
   })).sort((a, b) => b.hastende - a.hastende || b.antal - a.antal);

@@ -577,15 +577,35 @@ export const WEEKENDFORVENTNING = [
  * Svarer 'ukendt', når teksten ikke rækker — og det er et bedre svar end at
  * gætte, for det afgør, om et fund overhovedet er et fund.
  */
-export function weekendforventning(tekst) {
+/* L3-tagget siger området direkte, og det slår navnet.
+ *
+ * Fundet på rigtige tags: 02020 548524 hedder "Teknik Tavle (Butik Vent)" og
+ * blev kastet ud som blandet tavle — men taggene siger L4 Kun ventilation og
+ * L3 Salgsområde. Det ER butiksventilationen, og weekenddrift er dér det
+ * rigtige. Navnet var en nødløsning på de første fyrre rækker; hvor tagget
+ * findes, skal det bruges. */
+const L3_OMRAADE = [
+  { proev: /^L3 (Alt i butikken blandet)/i, weekenddrift: 'kan ikke afgøres', note: 'L3 «Alt i butikken blandet» — måleren dækker både butik og produktion.' },
+  { proev: /^L3 (Kontor|Personale|Kantine|Mødelokale|Administration)/i, weekenddrift: 'uventet', note: 'Kontor og personaleområder er tomme i weekenden.' },
+  { proev: /^L3 (Bager|Slagter|Køkken|Produktion|Delikatesse|Opskæring)/i, weekenddrift: 'uventet', note: 'Produktionen kører ikke i weekenden, selv om disken er åben.' },
+  { proev: /^L3 (Lager|Varemodtagelse|Teknik)/i, weekenddrift: 'uventet', note: 'Lager og varemodtagelse har ikke weekenddrift.' },
+  { proev: /^L3 (Salgsområde|Butik|Indgang|Kasse|Frugt)/i, weekenddrift: 'forventet', note: 'Butikken har åbent i weekenden. Drift på samme tid er det rigtige.' },
+  { proev: /^L3 (Udvendigt|Parkering)/i, weekenddrift: 'forventet', note: 'Udendørs område — drift følger ikke ugedagen.' },
+];
+
+export function weekendforventning(tekst, tags = null) {
+  const liste = Array.isArray(tags) ? tags.map((t) => String(t).replace(/^custom:/, '').trim()) : [];
+  for (const t of liste) {
+    for (const r of L3_OMRAADE) if (r.proev.test(t)) return { weekenddrift: r.weekenddrift, note: r.note, kilde: t };
+  }
   const t = String(tekst || '');
   for (const r of WEEKENDFORVENTNING) {
-    if (r.proev.test(t)) return { weekenddrift: r.weekenddrift, note: r.note };
+    if (r.proev.test(t)) return { weekenddrift: r.weekenddrift, note: r.note, kilde: 'navn' };
   }
-  return { weekenddrift: 'ukendt', note: 'Målerens navn siger ikke, hvilket område den dækker.' };
+  return { weekenddrift: 'ukendt', note: 'Hverken tag eller navn siger, hvilket område måleren dækker.', kilde: null };
 }
 
-export function weekendnedsaettelse(punkter, { minForskelPct = 12, omraade = null } = {}) {
+export function weekendnedsaettelse(punkter, { minForskelPct = 12, omraade = null, tags = null } = {}) {
   const pr = doegnprofil(punkter);
   if (!pr.brugbar) return { brugbar: false, opløsning: pr.opløsning, grund: pr.grund };
 
@@ -613,7 +633,7 @@ export function weekendnedsaettelse(punkter, { minForskelPct = 12, omraade = nul
   const ingenNedsaettelse = sammeTider && forskel < minForskelPct;
 
   /* Og så det afgørende spørgsmål: BURDE der være en nedsættelse? */
-  const forventning = weekendforventning(omraade);
+  const forventning = weekendforventning(omraade, tags);
   const taeller = ingenNedsaettelse && forventning.weekenddrift === 'uventet';
 
   let tolkning;

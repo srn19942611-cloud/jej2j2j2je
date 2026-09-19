@@ -276,6 +276,28 @@ export function varslingsstatistik(koblinger) {
  * kobling.js henter kun fra anlaeg.js, så der er ingen ring her. */
 import { udtraekKoder } from './kobling.js';
 
+/**
+ * Butiksnummeret skrives forskelligt alt efter kilden: "02020" i Enity,
+ * "2020" i databasen, og begge dele i Dalux. Sammenlignes de som tekst, er
+ * Aarhus C to forskellige butikker, og ingen opgave finder sin måler. Det
+ * blev fundet ved et tomt svar på en forespørgsel, der skulle have givet 38.
+ */
+export const normButik = (x) => String(x ?? '').trim().replace(/^0+(?=\d)/, '');
+
+/**
+ * Kan måleren overhovedet bære en opgave? Taggene afgør det, hvor de findes;
+ * navnet kun som fallback. "Teknik Tavle (Butik Vent)" lød blandet og var
+ * L4 Kun ventilation — en navneregel kastede den ud af den forkerte grund.
+ */
+export function erBlandet(e) {
+  const tags = (e.tags || []).map((t) => String(t).replace(/^custom:/, '').trim());
+  if (tags.length) {
+    if (tags.some((t) => /^L3 Alt i butikken blandet|^L2 Tavle uden specifikt|^L2 Blandet HVAC|^L4 Samlet anlæg|^L0\/1 (Forsyningsmåler|Hovedmåler|Lejere)/i.test(t))) return true;
+    if (tags.some((t) => /^L4 |^L2 /.test(t))) return false;   // et konkret underniveau: ikke blandet
+  }
+  return /teknik.?tavle|tavle uden|blandet|alt i butikken|el total|hovedmåler|forsynings/i.test(e.meterNavn || '');
+}
+
 /** Ord, der findes i næsten alle målernavne og derfor ikke kan skille noget ad. */
 const GENERISKE_ORD = new Set([
   'ventilation', 'vent', 'anlæg', 'anlaeg', 'tavle', 'butik', 'lys', 'el', 'måler', 'maaler',
@@ -305,20 +327,19 @@ export function fordelOpgaver(enheder, opgaver, { kunSammeButik = true } = {}) {
    * 12.000 målere. Det er ikke langsomt, det er umuligt. */
   const prButik = new Map();
   for (const e of enheder || []) {
-    const k = String(e.butiksnummer);
+    const k = normButik(e.butiksnummer);
     if (!prButik.has(k)) prButik.set(k, []);
     prButik.get(k).push(e);
   }
 
   for (const o of opgaver || []) {
-    const mulige = kunSammeButik ? (prButik.get(String(o.butiksnummer)) || []) : (enheder || []);
+    const mulige = kunSammeButik ? (prButik.get(normButik(o.butiksnummer)) || []) : (enheder || []);
 
     /* En blandet tavle eller en samlemåler kan aldrig bære en opgave. Den
      * dækker både butik og produktion, så et navnesammenfald er netop dét —
      * et sammenfald. Fælden er reel: 02020 548524 "Teknik Tavle (Butik V)"
      * ville ellers optage enhver ventilationsopgave i butikken. */
-    const kandidater = mulige.filter((e) =>
-      !/teknik.?tavle|tavle uden|blandet|alt i butikken|el total|hovedmåler|forsynings/i.test(e.meterNavn || ''));
+    const kandidater = mulige.filter((e) => !erBlandet(e));
 
     /* 1 · Anlægs-id. Det eneste, der er sikkert. */
     let traf = kandidater.filter((e) => (e.anlaeg || []).some((a) => o.anlaegId && String(a.id) === String(o.anlaegId)));
