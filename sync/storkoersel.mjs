@@ -18,7 +18,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  storkoersel, rapportTekst, signaturFraDb, opgaveFraDb, butiksnummerFraBygning,
+  storkoersel, rapportTekst, signaturFraDb, opgaveFraDb, butiksnummerFraBygning, koblingFraTabeller,
 } from '../src/storkoersel.js';
 
 const argv = process.argv.slice(2);
@@ -44,6 +44,9 @@ async function fraFiler(mappe) {
     opgaver: await laes('dalux_opgaver'),
     kvarter: await laes('kvarter_detektorer'),
     locations: await laes('locations'),
+    anlaegPrMaaler: (await laes('anlaegPrMaaler')) || {},
+    anlaeg: await laes('anlaeg'),
+    meters: await laes('meters'),
   };
 }
 
@@ -70,7 +73,11 @@ async function fraDatabase(url, key) {
     signaturer: await hent('signatur_koersel', { filter: kf }),
     opgaver: await hent('dalux_opgaver'),
     kvarter: await hent('kvarter_detektorer', { filter: kf }),
-    locations: await hent('locations', { vaelg: 'butiksnummer,dalux_building_id,enity_building_id,navn' }),
+    locations: await hent('locations', { vaelg: 'butiksnummer,dalux_building_id,enity_building_id,navn,id' }),
+    /* Kun kodede anlæg hentes — det er dem, koblingen kan bruge. */
+    anlaeg: await hent('anlaeg', { vaelg: 'dalux_asset_id,navn,klassifikation_navn,location_id', filter: '&navn=imatch.(VE|K%C3%98|KO|AC|VP|CTS)[%5Cs.-]%3F%5Cd' }),
+    meters: await hent('meters', { vaelg: 'enity_meter_id,navn,location_id' }),
+    anlaegPrMaaler: {},
   };
 }
 
@@ -93,7 +100,19 @@ const opgaverRaa = kilde.opgaver.map(opgaveFraDb);
 const { opgaver, koblet, udenButik } = butiksnummerFraBygning(opgaverRaa, kilde.locations);
 log(`signaturer ${signaturer.length} · opgaver ${opgaver.length} (bygning→butik: ${koblet}, uden butik: ${udenButik}) · kvarter ${kilde.kvarter.length}`);
 
-const rapport = storkoersel({ signaturer, opgaver, kvarter: kilde.kvarter });
+/* Koblingen: den, filen bærer, ellers regnet af anlæg og målere. */
+let anlaegPrMaaler = kilde.anlaegPrMaaler || {};
+if (!Object.keys(anlaegPrMaaler).length && kilde.anlaeg?.length && kilde.meters?.length) {
+  const bn = new Map((kilde.locations || []).map((l) => [l.id, l.butiksnummer]));
+  const medButik = (r) => ({ ...r, butiksnummer: r.butiksnummer ?? bn.get(r.location_id) ?? null });
+  const k = koblingFraTabeller(kilde.anlaeg.map(medButik), kilde.meters.map(medButik));
+  anlaegPrMaaler = k.anlaegPrMaaler;
+  log(`kobling regnet: ${k.par} par på ${k.maalere} målere`);
+} else if (Object.keys(anlaegPrMaaler).length) {
+  log(`kobling læst: ${Object.keys(anlaegPrMaaler).length} målere`);
+}
+
+const rapport = storkoersel({ signaturer, opgaver, kvarter: kilde.kvarter, anlaegPrMaaler });
 const tekst = rapportTekst(rapport);
 console.log(tekst);
 

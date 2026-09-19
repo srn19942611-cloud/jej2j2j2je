@@ -22,7 +22,7 @@
  */
 
 import { klassificerMaalepunkt } from './anlaeg.js';
-import { energistroem } from './kobling.js';
+import { energistroem, udtraekKoder } from './kobling.js';
 import { signaturFraMaaling } from './maaling.js';
 import { fordelOpgaver, normButik } from './korrelation.js';
 import { varselFraSignatur, PRISER } from './agent.js';
@@ -156,6 +156,42 @@ export function bekraeftelserFraDb(rows) {
     }
   }
   return pr;
+}
+
+/* ---- Anlæg ↔ måler for hele porteføljen ------------------------------------
+ *
+ * anlaeg_maalepunkt i databasen er tom — koblingen blev aldrig udfyldt. Men
+ * anlæggene ligger dér (38.752 i 530 butikker), og målerne ligeså, så den
+ * sikre del af koblingen kan regnes: anlægskoden, der står i begge navne.
+ * VE02.1 i Dalux og "VE.02 Slagter" i Enity er den samme kode.
+ *
+ * Det gav 330 par, 232 målere, 50 butikker første gang. Det er lidt, og det
+ * er ærligt: kun 1.594 af 22.374 energirelevante anlæg bærer overhovedet en
+ * kode i navnet. Resten kan kun kobles på klasse mod tag, og det gør
+ * kobling.koblButik pr. butik — men den kræver hele anlægslisten pr. butik
+ * og køres derfor kun dér, hvor der er noget at koble til.
+ */
+export function koblingFraTabeller(anlaegRows, meterRows) {
+  const prButikAnlaeg = new Map();
+  for (const a of anlaegRows || []) {
+    const koder = udtraekKoder(a.navn);
+    if (!koder.size) continue;
+    const b = normButik(a.butiksnummer);
+    if (!prButikAnlaeg.has(b)) prButikAnlaeg.set(b, []);
+    prButikAnlaeg.get(b).push({ id: tekst(a.dalux_asset_id), navn: tekst(a.navn), klasse: tekst(a.klassifikation_navn), koder });
+  }
+  const ud = {};
+  let par = 0;
+  for (const m of meterRows || []) {
+    const koder = udtraekKoder(m.navn ?? m.maaler_navn);
+    if (!koder.size) continue;
+    const liste = prButikAnlaeg.get(normButik(m.butiksnummer)) || [];
+    const traef = liste.filter((a) => [...a.koder].some((k) => koder.has(k)));
+    if (!traef.length) continue;
+    ud[tekst(m.enity_meter_id)] = traef.map((a) => ({ id: a.id, navn: a.navn, klasse: a.klasse }));
+    par += traef.length;
+  }
+  return { anlaegPrMaaler: ud, par, maalere: Object.keys(ud).length };
 }
 
 /* ---- Enheden: måleren som analyseenhed ------------------------------------ */
