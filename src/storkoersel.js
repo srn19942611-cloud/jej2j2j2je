@@ -158,6 +158,51 @@ export function bekraeftelserFraDb(rows) {
   return pr;
 }
 
+/* ---- Årsniveau: forrige 12 måneder mod sidste 12 --------------------------------
+ *
+ * Trin 1 på observerbarhedstrappen, og det eneste trin, hele porteføljen
+ * står på i dag: consumption_monthly dækker 1.145 butikker, døgndata kun
+ * elleve. Så det her er den kørsel, der faktisk kan nå alle.
+ *
+ * Det, den ikke kan: vejrkorrigere, finde en bruddato, eller give en
+ * p-værdi. Uden z falder rækken i FDR-sigten — og det er rigtigt, for en
+ * varm sommer kan alene flytte et køleanlæg 15 %. Det, der bærer sig selv,
+ * er de direkte aflæsninger: måleren i nul, anlægget på en tiendedel.
+ * Resten er "kig nærmere, når døgndata kommer", og det siges i forbeholdet.
+ *
+ * Og før nogen række overhovedet regnes, skal butiksniveauet skilles fra
+ * anlægsniveauet. Første kørsel fandt 611 målere "i nul" — 451 af dem faldt
+ * i marts–april 2025, 289 hovedmålere, og en stribe brugsforeninger mistede
+ * alle målere på én gang i november 2025. Det er lukkede butikker og
+ * leveringsskift, ikke 611 anlæg. Filtreringen ligger i `aarsudvalg`.
+ */
+export function signaturFraAarsforhold(r, { koerselId = 'AAR', doegnPrAar = 365 } = {}) {
+  const f = Number(r.f) / doegnPrAar, s = Number(r.s) / doegnPrAar;
+  return signaturFraDb({
+    koersel_id: koerselId, butiksnummer: r.b, butiksnavn: r.bn, enity_meter_id: r.m, maaler_navn: r.n, tags: r.t,
+    energitype: 'Electricity', status: 'ok', reference_doegn: doegnPrAar, segment_doegn: doegnPrAar,
+    median_forudsagt: f, median_residual: s - f, afvig_pct: f > 0 ? 100 * (s - f) / f : null, restniveau: f > 0 ? s / f : null,
+  });
+}
+
+/**
+ * Hvilke årsrækker må regnes på? Returnerer de brugbare og et regnskab over
+ * resten — hver med den grund, der holdt den ude.
+ */
+export function aarsudvalg(rows, { scope = 'coop', butiksfald = new Set(), boelgeMaaneder = ['2025-02', '2025-03', '2025-04'] } = {}) {
+  const regnskab = { ialt: rows.length, ikkeScope: 0, butiksfald: 0, boelge: 0, brugt: 0 };
+  const brugbare = [];
+  for (const x of rows) {
+    if (scope && x.sc !== scope) { regnskab.ikkeScope++; continue; }
+    if (butiksfald.has(normButik(x.b))) { regnskab.butiksfald++; continue; }
+    const sn = String(x.sn || '').slice(0, 7);
+    if ((x.k === 'nul' || x.k === 'staar') && boelgeMaaneder.includes(sn)) { regnskab.boelge++; continue; }
+    regnskab.brugt++;
+    brugbare.push(x);
+  }
+  return { brugbare, regnskab };
+}
+
 /* ---- Anlæg ↔ måler for hele porteføljen ------------------------------------
  *
  * anlaeg_maalepunkt i databasen er tom — koblingen blev aldrig udfyldt. Men
