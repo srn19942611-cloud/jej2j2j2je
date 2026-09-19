@@ -3177,6 +3177,16 @@ function inventarIZone(zone) {
   return state.inventar.filter(i => medRække[i.type] && Geom.pointInPolygon(i.centrum, zone.pts));
 }
 
+/* Alt hvad en skinne ikke må ligge oven på.
+
+   inventarIZone giver kun det rækkedannende inventar, for det er rækkerne, der
+   bestemmer gangretningen og midten. Men en skinne må heller ikke ligge hen
+   over en kasselinje, en ø eller en reol lige uden for zonekanten, så spærret
+   tælles på alt inventar med en krop. */
+function spaerrendeMoebler() {
+  return state.inventar.filter(i => i.laengde >= 0.4 && i.dybde >= 0.2);
+}
+
 /* Klipper et linjestykke mod zonens kant, så skinner ikke løber udenfor. */
 function klipModPolygon(a, b, poly) {
   const ts = [0, 1];
@@ -3226,10 +3236,27 @@ const SKINNE = {
   // meter skinne pr. armatur - det eneste tal der holder på tværs af alle
   // seks lysplaner og byggeprogrammets eget eksempel (2,56-3,39 m)
   ccArmatur: (BEREGNING.layout && BEREGNING.layout.ccArmatur) || 3.0,
-  minArmatur: 2.4,
+  minArmatur: 2.4,        // hård grænse: tættere sættes der aldrig
   maksArmatur: 3.6,
+  // planerne kommer aldrig under 2,56 m skinne pr. armatur. Ligger vi under,
+  // er der for lidt skinne i butikken, og så skal der flere rækker til - ikke
+  // armaturerne tættere sammen.
+  taethedsMaal: 2.56,
   mindsteGang: 1.1,        // smallere end det er ikke en gang, men en spalte
+  mindsteStykke: 2.5,      // en stump kortere end det bærer ikke et armatur fornuftigt
   ccFald: [2.0, 4.0]       // møbelafstanden holdes inden for det, planerne viser
+};
+
+/* Hvad der er en gang, og hvad der bare er gulv.
+
+   Bilag 1 i byggeprogrammet har gange på 1,77-2,46 m, og skinnen ligger
+   35-63 % inde i gangen. Står den nærmeste reol 5 m væk, er det ikke gangens
+   anden side, men næste række på den anden side af et åbent gulv - og så er
+   der ingen midte at centrere imod. Derfor tæller kun møbler inden for
+   maksRelevant med, når skinnen skal ligge midt i gangen. */
+const GANG = {
+  maksRelevant: 3.0,       // længere væk definerer ikke gangen
+  ensidetMaal: 1.1         // én række alene: hold denne afstand til dens forkant
 };
 
 const zoneMidte = zone => {
@@ -3258,17 +3285,316 @@ function moebelTakt(baand, standard) {
   return Math.max(SKINNE.ccFald[0], Math.min(SKINNE.ccFald[1], median));
 }
 
-/* Møblernes rækker set på tværs af gangretningen. Hver række bliver et bånd
-   på tværs-aksen; mellemrummene mellem båndene er gangene. */
-function moebelBaand(zone, v) {
+/* Én skinne midt i hver gang mellem møbelrækkerne, plus langs væggene.
+   Er der åbent gulv mellem to rækker, fyldes det med flere rækker, så der
+   ikke opstår et mørkt felt. */
+/* ---- retningsfelter ----
+
+   På SJOC's planer skifter skinnerne retning inde i butikken, fordi
+   inventaret gør det. Kalundborg har 58 vandrette og 24 lodrette
+   Bricks-mærker; Kvickly Hvidovre 133 mod 114. Én global retning for hele
+   salgsarealet er derfor forkert - skinnerne skal følge møblerne lokalt.
+
+   Salgsarealet deles i felter efter, hvilken retning møblerne omkring hvert
+   sted vender, og hvert felt får sine egne gangskinner i sin egen retning. */
+function retningsFelter(zone) {
+  const inv = inventarIZone(zone).filter(i => i.laengde >= 0.8);
+  if (inv.length < 4) return null;
+
+  // retninger der fylder nok til at tælle som en egen retning
+  const BIN = Math.PI / 12;                       // 15 grader
+  const vægt = new Map();
+  for (const i of inv) {
+    const v = ((i.vinkel % Math.PI) + Math.PI) % Math.PI;
+    const n = Math.round(v / BIN) % 12;
+    vægt.set(n, (vægt.get(n) || 0) + i.laengde);
+  }
+  const total = [...vægt.values()].reduce((a, b) => a + b, 0);
+  const retninger = [...vægt.entries()]
+    .filter(([, m]) => m / total >= 0.15)
+    .sort((a, b) => b[1] - a[1])
+    .map(([n]) => (n % 12) * BIN);
+  if (retninger.length < 2) return null;          // én retning - som før
+
+  // hvert felt på nettet stemmer om retningen ud fra møblerne omkring det
+  const celle = mToPx(1.0);
+  const r = Geom.bbox(zone.pts);
+  const nx = Math.ceil((r.x1 - r.x0) / celle), ny = Math.ceil((r.y1 - r.y0) / celle);
+  if (nx < 3 || ny < 3 || nx * ny > 120000) return null;
+  const rækkevidde = mToPx(6);
+  const valg = new Int8Array(nx * ny).fill(-1);
+  for (let gy = 0; gy < ny; gy++) {
+    for (let gx = 0; gx < nx; gx++) {
+      const p = [r.x0 + (gx + 0.5) * celle, r.y0 + (gy + 0.5) * celle];
+      if (!Geom.pointInPolygon(p, zone.pts)) continue;
+      const stemmer = new Array(retninger.length).fill(0);
+      for (const i of inv) {
+        const d = Geom.dist(p, i.centrum);
+        if (d > rækkevidde) continue;
+        const v = ((i.vinkel % Math.PI) + Math.PI) % Math.PI;
+        let bedst = 0, nær = Infinity;
+        retninger.forEach((rv, k) => {
+          let dv = Math.abs(v - rv);
+          if (dv > Math.PI / 2) dv = Math.PI - dv;
+          if (dv < nær) { nær = dv; bedst = k; }
+        });
+        if (nær > BIN) continue;                  // møblet hører ikke til nogen retning
+        // nære og lange møbler vejer tungest
+        stemmer[bedst] += i.laengde / (1 + pxToM(d));
+      }
+      let bedst = -1, mest = 0;
+      stemmer.forEach((v2, k) => { if (v2 > mest) { mest = v2; bedst = k; } });
+      valg[gy * nx + gx] = bedst;
+    }
+  }
+
+  // en enlig afviger midt i et felt er støj - naboerne bestemmer
+  for (let runde = 0; runde < 2; runde++) {
+    const kopi = Int8Array.from(valg);
+    for (let gy = 1; gy < ny - 1; gy++) {
+      for (let gx = 1; gx < nx - 1; gx++) {
+        const i = gy * nx + gx;
+        if (kopi[i] < 0) continue;
+        const tæl = new Array(retninger.length).fill(0);
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const k = kopi[(gy + dy) * nx + gx + dx];
+            if (k >= 0) tæl[k]++;
+          }
+        }
+        let bedst = kopi[i], mest = 0;
+        tæl.forEach((v2, k) => { if (v2 > mest) { mest = v2; bedst = k; } });
+        valg[i] = bedst;
+      }
+    }
+  }
+
+  // felterne trækkes ud som sammenhængende områder pr. retning
+  const felter = [];
+  for (let k = 0; k < retninger.length; k++) {
+    const med = new Uint8Array(nx * ny);
+    let antal = 0;
+    for (let i = 0; i < med.length; i++) if (valg[i] === k) { med[i] = 1; antal++; }
+    if (antal * (celle / state.pxPerMeter) ** 2 < 25) continue;   // for lille til et felt
+    const kant = kantOmNet(med, nx, ny, r.x0, r.y0, celle);
+    if (kant && kant.length >= 4 && Geom.polygonArea(kant) / (state.pxPerMeter ** 2) >= 25) {
+      felter.push({ pts: kant, vinkel: retninger[k] });
+    }
+  }
+  return felter.length >= 2 ? felter : null;
+}
+
+/* ---- skinnen midt imellem møblerne ----
+
+   Båndene giver den grove akse, men de måler på rækkens yderste møbel.
+   Stikker ét møbel længere frem end de andre, bliver skinnen centreret mod
+   det - og ikke mod de reoler og kølere, der faktisk står ud for skinnen.
+   Derfor efterjusteres hver skinne lokalt: der måles på tværs til nærmeste
+   møbel til hver side på ni steder langs skinnen. */
+function tvaersTilMoebler(p, nx, ny, inv, pxPerM, maksRelevant) {
+  const grænse = maksRelevant || GANG.maksRelevant;
+  let venstre = Infinity, højre = Infinity, på = false, ud = Infinity;
+  for (const i of inv) {
+    const c = Math.cos(i.vinkel), sn = Math.sin(i.vinkel);
+    const hl = i.laengde * pxPerM / 2, hd = i.dybde * pxPerM / 2;
+    const dx = p[0] - i.centrum[0], dy = p[1] - i.centrum[1];
+    const u = dx * c + dy * sn, w = -dx * sn + dy * c;
+    if (Math.abs(u) > hl + pxPerM * 0.2) continue;        // ikke ud for møblet
+    if (Math.abs(w) <= hd) {
+      på = true;
+      // korteste vej ud af møblet, plus lidt luft, målt på tværs af skinnen
+      const side = (i.centrum[0] - p[0]) * nx + (i.centrum[1] - p[1]) * ny >= 0 ? -1 : 1;
+      const vej = side * (hd - Math.abs(w) + pxPerM * 0.4) / pxPerM;
+      if (Math.abs(vej) < Math.abs(ud)) ud = vej;
+      continue;
+    }
+    const afstand = (Math.abs(w) - hd) / pxPerM;
+    if (afstand > grænse) continue;
+    const side = (i.centrum[0] - p[0]) * nx + (i.centrum[1] - p[1]) * ny;
+    if (side >= 0) højre = Math.min(højre, afstand);
+    else venstre = Math.min(venstre, afstand);
+  }
+  return { venstre, højre, på, ud };
+}
+
+/* Ni prøver på tværs af et stykke skinne, plus stykkets tværretning. */
+function tvaersProever(stk, inv, m, maksRelevant) {
+  const [a, b] = stk;
+  const v = Math.atan2(b[1] - a[1], b[0] - a[0]);
+  const nx = -Math.sin(v), ny = Math.cos(v);
+  const prøver = [];
+  for (let k = 1; k <= 9; k++) {
+    const t = k / 10;
+    const p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    prøver.push(tvaersTilMoebler(p, nx, ny, inv, m, maksRelevant));
+  }
+  return { nx, ny, prøver };
+}
+
+function flytStykke(stk, nx, ny, d) {
+  return [[stk[0][0] + nx * d, stk[0][1] + ny * d],
+          [stk[1][0] + nx * d, stk[1][1] + ny * d]];
+}
+
+/* To adskilte ting, i den rækkefølge:
+
+   1. fri af inventaret. Ligger stykket oven på en reol eller en køler,
+      skubbes hele stykket ud til den side, hvor færrest prøver sidder fast,
+      og så langt at den dybeste af dem kommer fri.
+   2. midt imellem. Nu måles kun de prøver, der har møbler til begge sider,
+      og stykket flyttes den halve medianforskel.
+
+   De to signaler må ikke blandes: en flugtvektor er "så langt skal du ud",
+   en centrering er "så langt skal du hen" - lægges de i samme median, bliver
+   resultatet ingen af dem. Er stykket kun fri af møbler (endeskinner langs
+   gavlen), køres alene trin 1. */
+function centrerMellemMoebler(stk, inv, maksFlyt, kunFri) {
+  const m = state.pxPerMeter || 100;
+  if (Geom.dist(stk[0], stk[1]) < mToPx(1)) return stk;
+  let nuv = stk;
+
+  for (let runde = 0; runde < 2; runde++) {
+    const t = tvaersProever(nuv, inv, m);
+    const ud = t.prøver.filter(p => p.på && isFinite(p.ud)).map(p => p.ud);
+    if (!ud.length) break;
+    const højre = ud.filter(x => x > 0), venstre = ud.filter(x => x < 0);
+    const vælg = højre.length >= venstre.length ? højre : venstre;
+    if (!vælg.length) break;
+    let d = mToPx(vælg.reduce((s2, x) => (Math.abs(x) > Math.abs(s2) ? x : s2), vælg[0]));
+    if (Math.abs(d) > maksFlyt) d = Math.sign(d) * maksFlyt;
+    nuv = flytStykke(nuv, t.nx, t.ny, d);
+  }
+  if (kunFri) return nuv;
+
+  const t = tvaersProever(nuv, inv, m);
+  const fri = t.prøver.filter(p => !p.på);
+  // en rigtig gang - møbler til begge sider - bestemmer altid frem for en
+  // enkelt række, og de to slags prøver blandes aldrig i samme median
+  let flyt = fri.filter(p => isFinite(p.venstre) && isFinite(p.højre))
+                .map(p => (p.højre - p.venstre) / 2);
+  if (flyt.length < 3) {
+    // to prøver ud af ni er for løst et grundlag til at kalde det en gang;
+    // så er der reelt kun én række, og den faste gangafstand holdes i stedet
+    flyt = fri.filter(p => isFinite(p.venstre) !== isFinite(p.højre))
+              .map(p => (isFinite(p.højre) ? p.højre : -p.venstre))
+              .map(d => d - Math.sign(d) * GANG.ensidetMaal);
+  }
+  if (!flyt.length) return nuv;
+  flyt.sort((x, y) => x - y);
+  let d = mToPx(flyt[flyt.length >> 1]);
+  if (Math.abs(d) > maksFlyt) d = Math.sign(d) * maksFlyt;
+  if (Math.abs(d) < mToPx(0.03)) return nuv;
+  // centreringen må ikke lægge skinnen oven på et møbel, den lige er kommet fri af
+  const prøve = flytStykke(nuv, t.nx, t.ny, d);
+  const fastFør = t.prøver.filter(p => p.på).length;
+  const fastEfter = tvaersProever(prøve, inv, m).prøver.filter(p => p.på).length;
+  return fastEfter > fastFør ? nuv : prøve;
+}
+
+/* Sidste udvej: en skinne, der skærer tværs gennem en møbelrække.
+
+   Den slags findes ikke på planerne - en skinne ligger i gangen, hele vejen.
+   Kan hele stykket ikke skubbes fri (rækken ligger skævt for gangen), klippes
+   stykket i stedet, og kun de frie stumper beholdes. */
+function klipFriAfMoebler(stk, inv, m) {
+  const [a, b] = stk;
+  const L = Geom.dist(a, b);
+  if (pxToM(L) < SKINNE.mindsteStykke) return [];
+  const v = Math.atan2(b[1] - a[1], b[0] - a[0]);
+  const nx = -Math.sin(v), ny = Math.cos(v);
+  const trin = Math.max(8, Math.ceil(L / mToPx(0.25)));
+  const punkt = k => [a[0] + (b[0] - a[0]) * (k / trin), a[1] + (b[1] - a[1]) * (k / trin)];
+  const fri = [];
+  for (let k = 0; k <= trin; k++) fri.push(!tvaersTilMoebler(punkt(k), nx, ny, inv, m).på);
+  if (fri.every(Boolean)) return pxToM(L) >= SKINNE.mindsteStykke ? [stk] : [];
+  const ud = [];
+  let start = -1;
+  for (let k = 0; k <= trin + 1; k++) {
+    const inde = k <= trin && fri[k];
+    if (inde && start < 0) start = k;
+    if (!inde && start >= 0) {
+      const p0 = punkt(start), p1 = punkt(k - 1);
+      if (pxToM(Geom.dist(p0, p1)) >= SKINNE.mindsteStykke) ud.push([p0, p1]);
+      start = -1;
+    }
+  }
+  return ud;
+}
+
+/* Ét råt stykke skinne gjort færdigt: fri af møblerne, klippet hvor det
+   alligevel skærer igennem, og hvert stykke derefter centreret for sig.
+
+   Rækkefølgen betyder noget. Centreres der først og klippes bagefter, arver
+   stumperne en midte, der blev målt på hele det oprindelige stykke - og en
+   stump, der ender ud for en helt anden reol, ligger så skævt. Derfor
+   centreres hver stump igen, efter den er klippet. */
+function skinneStykkeFaerdigt(stk, inv, spær, maksFlyt, m) {
+  const ud = [];
+  for (const del of klipFriAfMoebler(centrerMellemMoebler(stk, inv, maksFlyt), spær, m)) {
+    const midtet = centrerMellemMoebler(del, inv, maksFlyt);
+    for (const d2 of klipFriAfMoebler(midtet, spær, m)) ud.push(d2);
+  }
+  return ud;
+}
+
+/* Gangskinner i ét felt, i feltets egen retning. */
+function gangskinnerIFelt(pts, v, cc, zone) {
+  const c = Math.cos(v), sn = Math.sin(v);
+  const baand = moebelBaandIFelt(pts, v, zone);
+  if (!baand.length) return [];
+
+  let zLav = Infinity, zHøj = -Infinity;
+  for (const p of pts) {
+    const t = -p[0] * sn + p[1] * c;
+    if (t < zLav) zLav = t;
+    if (t > zHøj) zHøj = t;
+  }
+  const margen = mToPx(state.indst.margin || 1);
+  const takt = Math.min(moebelTakt(baand, cc), cc);
+  const akser = [];
+  const læg = (a, b) => {
+    const bredde = pxToM(b - a);
+    if (bredde < SKINNE.mindsteGang) return;
+    // skinnen midt imellem to møbelrækker - aldrig oven på dem
+    const antal = Math.max(1, Math.round(bredde / takt));
+    if (antal === 1) { akser.push((a + b) / 2); return; }
+    for (let k = 0; k < antal; k++) akser.push(a + ((b - a) * (k + 0.5)) / antal);
+  };
+  læg(zLav + margen, baand[0].lav);
+  for (let k = 0; k < baand.length - 1; k++) læg(baand[k].høj, baand[k + 1].lav);
+  læg(baand[baand.length - 1].høj, zHøj - margen);
+
+  const linjer = [];
+  const r = Geom.bbox(pts);
+  const midte = [(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2];
+  const uMidt = midte[0] * c + midte[1] * sn;
+  const langt = Math.hypot(r.x1 - r.x0, r.y1 - r.y0);
+  const inv = inventarIZone(zone).filter(i => i.laengde >= 0.5);
+  const spær = spaerrendeMoebler();
+  const maksFlyt = mToPx(Math.max(0.6, takt * 0.45));
+  for (const t of akser) {
+    const midt = [c * uMidt - sn * t, sn * uMidt + c * t];
+    const a = [midt[0] - c * langt, midt[1] - sn * langt];
+    const b = [midt[0] + c * langt, midt[1] + sn * langt];
+    for (const stk of klipModPolygon(a, b, pts)) {
+      if (pxToM(Geom.dist(stk[0], stk[1])) < 2) continue;
+      // hvert stykke gøres færdigt for sig: butikken er ikke ens hele vejen
+      const m = state.pxPerMeter || 100;
+      for (const del of skinneStykkeFaerdigt(trækInd(stk, margen), inv, spær, maksFlyt, m)) linjer.push(del);
+    }
+  }
+  return linjer;
+}
+
+/* Møbelrækkerne inden for ét felt, set på tværs af feltets retning. */
+function moebelBaandIFelt(pts, v, zone) {
   const c = Math.cos(v), sn = Math.sin(v);
   const baand = [];
   for (const inv of inventarIZone(zone)) {
     if (inv.laengde < 0.8) continue;
-    // kun møbler der står på langs af gangen, danner en reolrække; en
-    // fryseø eller et kassebånd på tværs er ikke en gangvæg
+    if (!Geom.pointInPolygon(inv.centrum, pts)) continue;
+    // kun møbler der står på langs af gangen, danner en gangvæg
     if (Math.abs(Math.cos(inv.vinkel - v)) < 0.7) continue;
-    // møblets udstrækning på tværs af gangretningen
     let lav = Infinity, høj = -Infinity;
     for (const h of inv.hjørner) {
       const t = -h[0] * sn + h[1] * c;
@@ -3278,7 +3604,6 @@ function moebelBaand(zone, v) {
     baand.push({ lav, høj, vægt: inv.laengde });
   }
   baand.sort((a, b) => a.lav - b.lav);
-  // overlappende møbler er samme række
   const samlet = [];
   for (const b of baand) {
     const sidste = samlet[samlet.length - 1];
@@ -3287,60 +3612,21 @@ function moebelBaand(zone, v) {
       sidste.vægt += b.vægt;
     } else samlet.push({ ...b });
   }
-  // en enlig kurv eller et podie er ikke en reolrække
   return samlet.filter(b => b.vægt >= 1.5);
 }
 
-/* Én skinne midt i hver gang mellem møbelrækkerne, plus langs væggene.
-   Er der åbent gulv mellem to rækker, fyldes det med flere rækker, så der
-   ikke opstår et mørkt felt. */
+/* Gangskinnerne for hele salgsarealet: ét felt pr. inventarretning, hver
+   med sine egne skinner på langs af netop de møbler, der står der. */
 function skinnerIGange(zone, cc) {
+  const felter = retningsFelter(zone);
+  if (felter) {
+    let linjer = [];
+    for (const f of felter) linjer = linjer.concat(gangskinnerIFelt(f.pts, f.vinkel, cc, zone));
+    if (linjer.length) return linjer;
+  }
+  // én retning i hele butikken
   const v = gangretning(zone, Geom.longestEdgeAngle(zone.pts));
-  const c = Math.cos(v), sn = Math.sin(v);
-  const baand = moebelBaand(zone, v);
-  if (!baand.length) return null;
-
-  // zonens udstrækning på tværs
-  let zLav = Infinity, zHøj = -Infinity;
-  for (const p of zone.pts) {
-    const t = -p[0] * sn + p[1] * c;
-    if (t < zLav) zLav = t;
-    if (t > zHøj) zHøj = t;
-  }
-  const margen = mToPx(state.indst.margin || 1);
-  // takten sættes af butikken selv, ikke af et tal i feltet - men brugerens
-  // c/c vinder, hvis det er strammere end møblernes egen rytme
-  const takt = Math.min(moebelTakt(baand, cc), cc);
-  const akser = [];
-  const læg = (a, b) => {
-    const bredde = pxToM(b - a);
-    if (bredde < SKINNE.mindsteGang) return;
-    // én skinne i gangen; er mellemrummet bredere end butikkens takt,
-    // er det åbent gulv og skal have flere rækker i samme rytme
-    const antal = Math.max(1, Math.round(bredde / takt));
-    if (antal === 1) { akser.push((a + b) / 2); return; }
-    for (let k = 0; k < antal; k++) akser.push(a + ((b - a) * (k + 0.5)) / antal);
-  };
-
-  læg(zLav + margen, baand[0].lav);                       // langs væggen i den ene side
-  for (let k = 0; k < baand.length - 1; k++) læg(baand[k].høj, baand[k + 1].lav);
-  læg(baand[baand.length - 1].høj, zHøj - margen);        // og i den anden
-
-  /* Aksen skæres mod zonen, så skinnen følger butikkens form.
-     Linjen skal lægges ud fra zonens egen midte - en tegning kan ligge
-     tusind meter fra nulpunktet, og så rammer en linje gennem origo intet. */
-  const linjer = [];
-  const midte = zoneMidte(zone);
-  const uMidt = midte[0] * c + midte[1] * sn;
-  const langt = zoneDiameter(zone);
-  for (const t of akser) {
-    const midt = [c * uMidt - sn * t, sn * uMidt + c * t];
-    const a = [midt[0] - c * langt, midt[1] - sn * langt];
-    const b = [midt[0] + c * langt, midt[1] + sn * langt];
-    for (const stk of klipModPolygon(a, b, zone.pts)) {
-      if (pxToM(Geom.dist(stk[0], stk[1])) >= 2) linjer.push(trækInd(stk, margen));
-    }
-  }
+  const linjer = gangskinnerIFelt(zone.pts, v, cc, zone);
   return linjer.length ? linjer : null;
 }
 
@@ -3366,6 +3652,8 @@ function endeSkinner(zone) {
   }
   const margen = mToPx(state.indst.margin || 1);
   if (høj - lav < margen * 4) return [];
+  const inv = inventarIZone(zone).filter(i => i.laengde >= 0.5);
+  const spær = spaerrendeMoebler();
   const midte = zoneMidte(zone);
   const tMidt = -midte[0] * sn + midte[1] * c;
   const langt = zoneDiameter(zone);
@@ -3375,7 +3663,10 @@ function endeSkinner(zone) {
     const a = [midt[0] + sn * langt, midt[1] - c * langt];
     const b = [midt[0] - sn * langt, midt[1] + c * langt];
     for (const stk of klipModPolygon(a, b, zone.pts)) {
-      if (pxToM(Geom.dist(stk[0], stk[1])) >= 2.5) ud.push(trækInd(stk, margen));
+      if (pxToM(Geom.dist(stk[0], stk[1])) < 2.5) continue;
+      // også endeskinnen skal ligge frit og i gangafstand, ikke klods op ad en vægreol
+      const m = state.pxPerMeter || 100;
+      for (const del of skinneStykkeFaerdigt(trækInd(stk, margen), inv, spær, mToPx(1.2), m)) ud.push(del);
     }
   }
   return ud;
@@ -3447,13 +3738,31 @@ function genererSkinner(zone) {
     for (let runde = 0; runde < 7; runde++) {
       antalPrimær = sæt(afstand);
       målt = Tre.zoneSnit(state, zone.pts, 0.7, 'grund').snit;
-      if (målt >= krav * 0.99 && målt <= krav * 1.08) break;
+      if (målt >= krav && målt <= krav * 1.08) break;
       const ny = afstand * Math.sqrt(Math.max(0.35, Math.min(2.8, målt / Math.max(1, krav))));
-      const klemt = Math.max(SKINNE.minArmatur, Math.min(SKINNE.maksArmatur, ny));
-      if (Math.abs(klemt - afstand) < 0.05) break;
+      let klemt = Math.max(SKINNE.minArmatur, Math.min(SKINNE.maksArmatur, ny));
+      if (Math.abs(klemt - afstand) < 0.05) {
+        /* Skridtet er for lille at flytte noget med. Ligger vi over kravet, er
+           vi færdige - men ligger vi under, må der ikke gives op, blot fordi
+           det beregnede skridt er mindre end tolerancen: så rykkes der ét
+           mindste skridt tættere, indtil minimum er nået. */
+        if (målt >= krav) break;
+        klemt = Math.max(SKINNE.minArmatur, afstand - 0.05);
+        if (klemt > afstand - 0.001) break;
+      }
       afstand = klemt;
     }
-    if (målt >= krav * 0.99) break;
+    /* Kravet er ikke nok i sig selv: rammes det kun ved at klemme armaturerne
+       tættere end de 2,4-3,6 m planerne holder sig indenfor, er der for få
+       skinnerækker - og så er det rækkerne, der skal flere af, ikke
+       armaturerne der skal tættere. */
+    /* Målet er den faktisk opnåede tæthed, ikke den afstand der blev sigtet
+       efter: armaturerne fordeles i hele stykker pr. skinne, så resultatet
+       bliver tættere end afstanden. */
+    const mSkinne = længder.reduce((a, l) => a + l, 0);
+    const mPrArmatur = antalPrimær > 0 ? mSkinne / antalPrimær : 0;
+    const iBånd = mPrArmatur >= SKINNE.taethedsMaal;
+    if (målt >= krav && iBånd) break;
   }
   // efter en mislykket sidste runde kan armaturerne være ryddet
   if (!state.armaturer.some(a => a.auto && a.zoneId === zone.id)) antalPrimær = sæt(afstand);
@@ -3462,6 +3771,15 @@ function genererSkinner(zone) {
     toast(`${zoneNavn(zone)}: ${fmt(krav)} lux kan ikke nås med ${kortNavn(i.primaer)} – der beregnes ${fmt(målt, 0)} lux. Vælg et kraftigere armatur.`, 'fejl');
   } else if (afstand > SKINNE.maksArmatur - 0.05) {
     toast(`${zoneNavn(zone)}: armaturerne sidder ${fmt(afstand, 1)} m fra hinanden – planerne ligger på 3,0–3,5 m. Butikken har flere gange, end lyskravet kræver.`);
+  } else {
+    /* Der kunne ikke lægges mere skinne i gangene, så kravet er nået ved at
+       sætte armaturerne tættere end nogen af planerne gør. Det skal siges
+       højt - ellers ser planen rigtig ud, men afviger fra referencen. */
+    const mSkinneI = længder.reduce((a, l) => a + l, 0);
+    const mPr = antalPrimær > 0 ? mSkinneI / antalPrimær : 0;
+    if (mPr > 0 && mPr < SKINNE.taethedsMaal) {
+      toast(`${zoneNavn(zone)}: ${fmt(mPr, 2)} m skinne pr. armatur – planerne ligger på 2,56–3,39 m. Butikkens gange kan ikke bære mere skinne, så armaturerne sidder tættere end i referenceplanerne.`);
+    }
   }
 
   // skinner uden armaturer tjener ikke noget formål
@@ -3516,7 +3834,7 @@ function efterjuster(zone) {
   let ændring = 0;
   for (let runde = 0; runde < 3; runde++) {
     const målt = Tre.zoneSnit(state, zone.pts, 0.7, 'grund').snit;
-    if (målt >= krav * 0.99 && målt <= krav * 1.08) break;
+    if (målt >= krav && målt <= krav * 1.08) break;
     const nyt = Math.max(1, Math.min(maks, Math.round(antal * (krav / Math.max(1, målt)))));
     if (nyt === antal) break;
     ændring += nyt - antal;
@@ -3602,7 +3920,7 @@ function genererPaneler(zone) {
     n = læggUdNet(zone, cc, cc);
     if (!n) break;
     målt = Tre.zoneSnit(state, zone.pts, 0.7, 'grund').snit;
-    if (målt >= krav * 0.99 || cc <= 0.6001) break;
+    if (målt >= krav || cc <= 0.6001) break;
     cc = Math.max(0.6, cc * Math.sqrt(Math.max(0.4, målt / krav)));
   }
   if (n && målt < krav * 0.98) {

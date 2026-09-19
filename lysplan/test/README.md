@@ -39,7 +39,45 @@ og 10,3 m²/Bricks, fordi den var kalibreret på den ene butik. Den ville
 have afvist tre af de fem skinnebutikker ovenfor. Nu kontrolleres kun hele
 det observerede spænd, og tallene står ellers som oplysning.
 
-## Sådan køres den## Sådan køres den
+## Skinnen midt i gangen
+
+Planerne fra SJOC lægger aldrig en skinne oven på en reol eller en køler, og
+aldrig op ad den ene side af gangen. Bilag 1 i byggeprogrammet har gange på
+1,77–2,46 m med skinnen 35–63 % inde i gangen – altså omkring midten.
+
+Testen måler det direkte: ni punkter langs hver skinne, og til hver side
+afstanden på tværs til nærmeste møbelkant. `skaev = |v-h|/(v+h)`, hvor 0 er
+præcis midt imellem.
+
+Hvad der tæller som en *gang* er afgørende for målingen. Står den nærmeste
+reol 5 m væk, er det ikke gangens anden side, men næste række på den anden
+side af et åbent gulv – og så er der ingen midte at centrere imod. Derfor
+tæller kun møbler inden for 3 m med. En tidligere udgave målte til 6 m og
+gav 0,4 i skævhed på skinner, der lå helt korrekt: den straffede dem for
+ikke at være centreret mod noget, der ikke var en gang.
+
+Står der kun én række ud for skinnen – vægkøl, en endegavl, et åbent
+kampagneareal – holdes gangafstanden på 1,1 m til rækkens forkant i stedet.
+
+Kan et stykke skinne ikke skubbes helt fri af en møbelrække, fordi rækken
+ligger skævt for gangen, klippes stykket, og kun de frie stumper på mindst
+2,5 m beholdes. Stumperne centreres bagefter hver for sig: klippes der
+først efter centreringen, arver de en midte, der blev målt på hele det
+oprindelige stykke.
+
+## Prøvetegningen `butik.dxf`
+
+40,0 × 20,0 m med ydervæggen som lukket polylinje på laget `VAEGGE`, seks
+gondolrækker i to blokke med tværgang imellem, vægkøl til højre, to
+frostøer og tre kasselinjer.
+
+Gondolfeltet dækkede oprindeligt kun x 3–14 m af en 40 m bred butik, så tre
+fjerdedele af de 800 m² var tom hal. Tæthedskontrollen dividerede med hele
+arealet og faldt derfor til 0,23 m skinne pr. m², langt under planernes
+0,33–0,545 – ikke fordi værktøjet lagde for lidt skinne, men fordi
+prøvetegningen ikke lignede en butik. Feltet er nu ført ud til x 33 m.
+
+## Sådan køres den
 
 Testen kører mod en lokal server, fordi browseren ellers ikke må læse
 modulerne fra disk:
