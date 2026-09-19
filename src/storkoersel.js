@@ -22,7 +22,7 @@
  */
 
 import { klassificerMaalepunkt } from './anlaeg.js';
-import { energistroem, udtraekKoder } from './kobling.js';
+import { energistroem, udtraekKoder, koblButik } from './kobling.js';
 import { signaturFraMaaling } from './maaling.js';
 import { fordelOpgaver, normButik } from './korrelation.js';
 import { varselFraSignatur, PRISER } from './agent.js';
@@ -237,6 +237,46 @@ export function koblingFraTabeller(anlaegRows, meterRows) {
     par += traef.length;
   }
   return { anlaegPrMaaler: ud, par, maalere: Object.keys(ud).length };
+}
+
+/**
+ * Den fulde kobling pr. butik — anlægskode, dernæst anlægsklasse mod tag.
+ *
+ * Den kodebaserede kobling alene gav 2 af 20 målere i Vordingborg et anlæg,
+ * og så kunne 339 af 351 opgaver ikke kobles: elevatorer, alarmer,
+ * køleposition 76B. Elevatorerne skal ikke kobles. Men "Pos. 76B — høj temp"
+ * er en køleordre, og den hører til konsumkøl-måleren som gruppe — det er
+ * netop det, koblButik's trin 2–3 gør, og de kræver hele anlægslisten pr.
+ * butik. Kun de energirelevante anlæg gives med; døre og hylder holdes ude.
+ */
+export function koblingPrButik(anlaegRows, meterRows) {
+  const prButik = new Map();
+  for (const a of anlaegRows || []) {
+    const b = normButik(a.butiksnummer);
+    if (!prButik.has(b)) prButik.set(b, { anlaeg: [], maalere: [] });
+    prButik.get(b).anlaeg.push({ asset_id: tekst(a.dalux_asset_id), name: tekst(a.navn), classification_name: tekst(a.klassifikation_navn), description: tekst(a.placering) });
+  }
+  for (const m of meterRows || []) {
+    const b = normButik(m.butiksnummer);
+    if (!prButik.has(b)) prButik.set(b, { anlaeg: [], maalere: [] });
+    const tags = Array.isArray(m.tags) ? m.tags : tekst(m.tags).split('|').map((t) => t.trim()).filter(Boolean);
+    prButik.get(b).maalere.push({ id: tekst(m.enity_meter_id), name: tekst(m.navn ?? m.maaler_navn), tags, energyType: tekst(m.energitype) });
+  }
+  const ud = {};
+  const regnskab = { butikker: 0, enheder: 0, medAnlaeg: 0, delt: 0 };
+  for (const [, { anlaeg, maalere }] of prButik) {
+    if (!anlaeg.length || !maalere.length) continue;
+    const r = koblButik(anlaeg, maalere);
+    regnskab.butikker++;
+    for (const e of r.enheder) {
+      regnskab.enheder++;
+      if (!e.anlaeg?.length) continue;
+      regnskab.medAnlaeg++;
+      if (e.slags === 'gruppe') regnskab.delt++;
+      ud[e.meterId] = e.anlaeg.map((a) => ({ id: tekst(a.id), navn: a.navn }));
+    }
+  }
+  return { anlaegPrMaaler: ud, regnskab };
 }
 
 /* ---- Enheden: måleren som analyseenhed ------------------------------------ */

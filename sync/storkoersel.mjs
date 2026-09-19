@@ -18,7 +18,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
-  storkoersel, rapportTekst, signaturFraDb, opgaveFraDb, butiksnummerFraBygning, koblingFraTabeller,
+  storkoersel, rapportTekst, signaturFraDb, opgaveFraDb, butiksnummerFraBygning, koblingFraTabeller, koblingPrButik,
 } from '../src/storkoersel.js';
 
 const argv = process.argv.slice(2);
@@ -101,13 +101,15 @@ const { opgaver, koblet, udenButik } = butiksnummerFraBygning(opgaverRaa, kilde.
 log(`signaturer ${signaturer.length} · opgaver ${opgaver.length} (bygning→butik: ${koblet}, uden butik: ${udenButik}) · kvarter ${kilde.kvarter.length}`);
 
 /* Koblingen: den, filen bærer, ellers regnet af anlæg og målere. */
-let anlaegPrMaaler = kilde.anlaegPrMaaler || {};
-if (!Object.keys(anlaegPrMaaler).length && kilde.anlaeg?.length && kilde.meters?.length) {
+/* Koblingen: fuld kobling pr. butik, når anlæg og målere er med; ellers den
+ * kodebaserede fra filen. Den fulde vinder, hvor den findes. */
+let anlaegPrMaaler = { ...(kilde.anlaegPrMaaler || {}) };
+if (kilde.anlaeg?.length && kilde.meters?.length) {
   const bn = new Map((kilde.locations || []).map((l) => [l.id, l.butiksnummer]));
   const medButik = (r) => ({ ...r, butiksnummer: r.butiksnummer ?? bn.get(r.location_id) ?? null });
-  const k = koblingFraTabeller(kilde.anlaeg.map(medButik), kilde.meters.map(medButik));
-  anlaegPrMaaler = k.anlaegPrMaaler;
-  log(`kobling regnet: ${k.par} par på ${k.maalere} målere`);
+  const k = koblingPrButik(kilde.anlaeg.map(medButik), kilde.meters.map(medButik));
+  Object.assign(anlaegPrMaaler, k.anlaegPrMaaler);
+  log(`kobling pr. butik: ${JSON.stringify(k.regnskab)}`);
 } else if (Object.keys(anlaegPrMaaler).length) {
   log(`kobling læst: ${Object.keys(anlaegPrMaaler).length} målere`);
 }
