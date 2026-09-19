@@ -78,7 +78,16 @@ export function opgaveFraDb(r) {
  * begge: anlægs-id'et, når det findes, og ellers teksten. Status er et tal
  * og skal slås op i statuslisten; det samme med firmaet.
  */
-export function opgaveFraDalux(wo, { statusNavne = {}, anlaegNavne = {}, firmaNavne = {}, butiksnummer = null } = {}) {
+/* Dalux' statuskoder, slået op 2026-09-19. De to afvisningsstatusser er
+ * forskellige sager: 5 er afvist af os, 6 af leverandøren. */
+export const DALUX_STATUS = {
+  1: 'New', 2: 'Started', 4: 'Completed', 5: 'Rejected', 6: 'RejectedByExternal', 7: 'WaitingForApproval',
+  8: 'StartedExternal', 9: 'Unknown', 10: 'NewAwaitingOrder', 11: 'OrderedAwaitingExternal',
+  12: 'OrderedApprovedByExternal', 13: 'ExternalCompletionRejected', 14: 'EmployeeCompletedAwaitingDispatcher',
+  15: 'EmployeeCompletionRejected', 16: 'ApprovedAwaitingCustomer',
+};
+
+export function opgaveFraDalux(wo, { statusNavne = DALUX_STATUS, anlaegNavne = {}, firmaNavne = {}, butiksnummer = null } = {}) {
   const w = wo?.data || wo || {};
   const pl = w.placement || {};
   const assetId = (pl.assetRefs || [])[0]?.assetId ?? null;
