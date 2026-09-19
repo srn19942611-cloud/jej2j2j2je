@@ -174,6 +174,21 @@ export function koblButik(anlaegsliste, maalere) {
       koblinger.push(kobling(traef[0], m, 1, 0.95, false,
         `Anlægskoden "${[...m.koder][0]}" står i både anlægsnavnet "${traef[0].navn}" og målernavnet "${m.navn}".`));
       brugteMaalere.add(m.id);
+    } else if (traef.length > 1) {
+      /* Flere anlæg med samme kode: VE05.1 og VE05.2 er to underenheder af
+       * ét anlæg, og måleren "VE.05 Kiosk køkken" dækker dem begge. Første
+       * udgave krævede præcis ét træf og afviste — og så faldt måleren ned i
+       * trin 2, hvor den heller ikke fandt noget, og endte uden anlæg. Det
+       * var netop den måler, opgaven fra 2019 pegede på.
+       *
+       * Det rigtige svar er en gruppe: koblingen er sikker (koden står
+       * begge steder), men afvigelsen kan kun gøres op for de to sammen. */
+      for (const a of traef) {
+        koblinger.push(kobling(a, m, 1, 0.9, true,
+          `Anlægskoden "${[...m.koder][0]}" står i målernavnet "${m.navn}" og i ${traef.length} anlæg `
+          + `(${traef.map((x) => x.navn).join(', ')}). Måleren dækker dem alle; forbruget gøres op for gruppen.`));
+      }
+      brugteMaalere.add(m.id);
     }
   }
 
