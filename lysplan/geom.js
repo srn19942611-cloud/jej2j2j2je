@@ -110,5 +110,14 @@ const Geom = {
   snapOrtho(a, b) {
     const dx = b[0] - a[0], dy = b[1] - a[1];
     return Math.abs(dx) > Math.abs(dy) ? [b[0], a[1]] : [a[0], b[1]];
+  },
+
+  /* Skærer de to stykker hinanden? To skinner, der krydser, hænger sammen -
+     også selv om ingen af enderne rører den anden. */
+  segmentsCross(a0, a1, b0, b1) {
+    const kryds = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+    const d1 = kryds(b0, b1, a0), d2 = kryds(b0, b1, a1);
+    const d3 = kryds(a0, a1, b0), d4 = kryds(a0, a1, b1);
+    return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
   }
 };

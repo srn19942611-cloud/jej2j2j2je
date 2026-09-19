@@ -3244,6 +3244,11 @@ const SKINNE = {
   taethedsMaal: 2.56,
   mindsteGang: 1.1,        // smallere end det er ikke en gang, men en spalte
   mindsteStykke: 2.5,      // en stump kortere end det bærer ikke et armatur fornuftigt
+  // to rækker tættere på hinanden end det er ikke to rækker, men en dobbeltstreg.
+  // Bilag 1 har rækkerne på 2,73-3,07 m, og den smalleste gang er 1,77 m.
+  mindsteRaekke: 1.8,
+  mindsteFirkant: 2.0,     // kortere firkant er ikke værd at lukke
+  maksFirkant: 4.5,        // længere spring er ikke samme firkant
   ccFald: [2.0, 4.0]       // møbelafstanden holdes inden for det, planerne viser
 };
 
@@ -3256,7 +3261,8 @@ const SKINNE = {
    maksRelevant med, når skinnen skal ligge midt i gangen. */
 const GANG = {
   maksRelevant: 3.0,       // længere væk definerer ikke gangen
-  ensidetMaal: 1.1         // én række alene: hold denne afstand til dens forkant
+  ensidetMaal: 1.1,        // én række alene: hold denne afstand til dens forkant
+  luftTilGavl: 0.9         // tværskinnen passerer gondolgavlene i tværgangen
 };
 
 const zoneMidte = zone => {
@@ -3537,6 +3543,165 @@ function skinneStykkeFaerdigt(stk, inv, spær, maksFlyt, m) {
   return ud;
 }
 
+/* Afstanden mellem to skinner, der ligger ved siden af hinanden.
+
+   Kun nogenlunde parallelle stykker, der står ud for hinanden, er to rækker.
+   To stykker i forlængelse af hinanden er én række med et hul i, og to stykker
+   på tværs af hinanden er en firkant - ingen af delene er for tæt på. */
+function parallelAfstand(a, b) {
+  const v1 = Math.atan2(a[1][1] - a[0][1], a[1][0] - a[0][0]);
+  const v2 = Math.atan2(b[1][1] - b[0][1], b[1][0] - b[0][0]);
+  let dv = Math.abs(((v1 - v2) % Math.PI + Math.PI) % Math.PI);
+  if (dv > Math.PI / 2) dv = Math.PI - dv;
+  if (dv > 0.25) return Infinity;                       // ca. 14 grader
+  const c = Math.cos(v1), sn = Math.sin(v1);
+  const u = p => p[0] * c + p[1] * sn;
+  const t = p => -p[0] * sn + p[1] * c;
+  const a0 = Math.min(u(a[0]), u(a[1])), a1 = Math.max(u(a[0]), u(a[1]));
+  const b0 = Math.min(u(b[0]), u(b[1])), b1 = Math.max(u(b[0]), u(b[1]));
+  if (Math.min(a1, b1) - Math.max(a0, b0) <= 0) return Infinity;
+  return Math.abs((t(a[0]) + t(a[1])) / 2 - (t(b[0]) + t(b[1])) / 2);
+}
+
+/* Afstanden fra et punkt til nærmeste møbelkant, uanset retning.
+
+   tvaersTilMoebler måler kun til møbler, punktet står ud for på langs, og er
+   derfor blind for en gondolgavl, man passerer på tværs. En tværskinne skal
+   netop holde afstand til gavlene, så den måler her i stedet. */
+function afstandTilMoebler(p, møbler, m) {
+  let bedst = Infinity;
+  for (const i of møbler) {
+    const c = Math.cos(i.vinkel), sn = Math.sin(i.vinkel);
+    const dx = p[0] - i.centrum[0], dy = p[1] - i.centrum[1];
+    const u = Math.abs(dx * c + dy * sn) - i.laengde * m / 2;
+    const w = Math.abs(-dx * sn + dy * c) - i.dybde * m / 2;
+    const d = (u <= 0 && w <= 0) ? 0 : Math.hypot(Math.max(0, u), Math.max(0, w));
+    if (d < bedst) bedst = d;
+  }
+  return bedst / m;
+}
+
+/* Holder hele stykket mindst `luft` meter fra inventaret? */
+function heltFrit(p0, p1, spær, m, luft) {
+  const trin = Math.max(6, Math.ceil(Geom.dist(p0, p1) / mToPx(0.25)));
+  for (let k = 0; k <= trin; k++) {
+    const p = [p0[0] + (p1[0] - p0[0]) * k / trin, p0[1] + (p1[1] - p0[1]) * k / trin];
+    if (afstandTilMoebler(p, spær, m) < (luft || 0)) return false;
+  }
+  return true;
+}
+
+/* Skinnerne bindes sammen til firkanter.
+
+   Sådan ligger de på SJOC's planer: gangskinnerne står ikke frit hver for sig,
+   men er samlet i ender, så de danner lukkede firkanter. Det giver strømvej
+   hele vejen rundt og en ordentlig ophængning.
+
+   Nabo-skinner samles i løb, så længe de står ud for hinanden. Hvert løb får
+   én lige tværskinne i hver ende, på tværs af hele løbet - ikke ét stykke pr.
+   naborpar, for så ville enderne springe i takt med skinnernes længder. */
+function lukFirkanter(linjer, zone) {
+  const spær = spaerrendeMoebler();
+  const m = state.pxPerMeter || 100;
+  const grupper = [];
+  for (const l of linjer) {
+    const v = ((Math.atan2(l[1][1] - l[0][1], l[1][0] - l[0][0]) % Math.PI) + Math.PI) % Math.PI;
+    let g = grupper.find(g2 => {
+      let d = Math.abs(g2.v - v);
+      if (d > Math.PI / 2) d = Math.PI - d;
+      return d < 0.25;
+    });
+    if (!g) { g = { v, rk: [] }; grupper.push(g); }
+    const c = Math.cos(g.v), sn = Math.sin(g.v);
+    const u0 = l[0][0] * c + l[0][1] * sn, u1 = l[1][0] * c + l[1][1] * sn;
+    g.rk.push({ lav: Math.min(u0, u1), høj: Math.max(u0, u1),
+                t: (-l[0][0] * sn + l[0][1] * c - l[1][0] * sn + l[1][1] * c) / 2 });
+  }
+
+  const ud = [];
+  for (const g of grupper) {
+    if (g.rk.length < 2) continue;
+    const c = Math.cos(g.v), sn = Math.sin(g.v);
+    const punkt = (u, t) => [c * u - sn * t, sn * u + c * t];
+    g.rk.sort((a, b) => a.t - b.t);
+
+    /* Hver nabo-par lukkes for sig. En tidligere udgave samlede naboerne i
+       løb med ét fælles spænd i begge ender; men spændet er skæringen af dem
+       alle, så én kort skinne lukkede hele løbet ned. Nu bliver hvert par sin
+       egen firkant, og de støder op til hinanden på de fælles gangskinner. */
+    const inde = (p0, p1) => {
+      for (let k = 0; k <= 8; k++) {
+        const q = [p0[0] + (p1[0] - p0[0]) * k / 8, p0[1] + (p1[1] - p0[1]) * k / 8];
+        if (!Geom.pointInPolygon(q, zone.pts)) return false;
+      }
+      return true;
+    };
+    for (let k = 0; k < g.rk.length - 1; k++) {
+      const a = g.rk[k], b = g.rk[k + 1];
+      if (Math.abs(b.t - a.t) > mToPx(SKINNE.maksFirkant)) continue;
+      const lav = Math.max(a.lav, b.lav), høj = Math.min(a.høj, b.høj);
+      if (høj - lav < mToPx(SKINNE.mindsteFirkant)) continue;   // står ikke ud for hinanden
+      for (const [u, ind] of [[lav, 1], [høj, -1]]) {
+        /* Enden af en gang er netop hvor gondolgavlene står. Rammer tværskinnen
+           en gavl, rykkes den indad i gangen i stedet - så samles skinnerne i
+           et T lidt inde på rækken, som planerne også gør det. Kan den ikke
+           komme fri inden for spændet, står firkanten åben i den ende. */
+        for (let skridt = 0; skridt <= 12; skridt++) {
+          const u2 = u + ind * skridt * mToPx(0.1);
+          if (Math.abs(u2 - u) > høj - lav) break;
+          const p0 = punkt(u2, a.t), p1 = punkt(u2, b.t);
+          if (!heltFrit(p0, p1, spær, m, GANG.luftTilGavl) || !inde(p0, p1)) continue;
+          ud.push([p0, p1]);
+          break;
+        }
+      }
+    }
+  }
+  return ud;
+}
+
+/* En skinne, der ikke rører nogen af de andre, hægtes på nettet.
+
+   Det sker for skinnen langs en kølevæg: gangskinnerne må stoppe et par meter
+   før væggen for at komme fri af kølemøblerne, og så står vægskinnen alene.
+   Der søges efter det korteste stykke, der kan nå fra den til en anden skinne
+   uden at gå hen over inventar - typisk gennem mellemrummet mellem to møbler. */
+function forbindLoese(linjer, zone) {
+  const spær = spaerrendeMoebler();
+  const m = state.pxPerMeter || 100;
+  const tol = mToPx(0.35);
+  // to skinner hænger sammen, hvis en ende rører den anden - eller hvis de krydser
+  const rører = (a, b) => Geom.segmentsCross(a[0], a[1], b[0], b[1])
+    || [a[0], a[1]].some(p => {
+      const pr = Geom.projectOnPolyline(p, b);
+      return pr && pr.afstand <= tol;
+    })
+    || [b[0], b[1]].some(p => {
+      const pr = Geom.projectOnPolyline(p, a);
+      return pr && pr.afstand <= tol;
+    });
+  const ud = [];
+  const alle = linjer.slice();
+  for (const l of linjer) {
+    if (alle.some(o => o !== l && rører(l, o))) continue;
+    let bedst = null;
+    for (let k = 0; k <= 20; k++) {
+      const p = [l[0][0] + (l[1][0] - l[0][0]) * k / 20, l[0][1] + (l[1][1] - l[0][1]) * k / 20];
+      for (const o of alle) {
+        if (o === l) continue;
+        const pr = Geom.projectOnPolyline(p, o);
+        if (!pr || pxToM(pr.afstand) > 4 || pr.afstand < mToPx(0.3)) continue;
+        if (bedst && pr.afstand >= bedst.afstand) continue;
+        if (!heltFrit(p, pr.punkt, spær, m, GANG.luftTilGavl)) continue;
+        if (!Geom.pointInPolygon([(p[0] + pr.punkt[0]) / 2, (p[1] + pr.punkt[1]) / 2], zone.pts)) continue;
+        bedst = { afstand: pr.afstand, stk: [p, pr.punkt] };
+      }
+    }
+    if (bedst) { ud.push(bedst.stk); alle.push(bedst.stk); }
+  }
+  return ud;
+}
+
 /* Gangskinner i ét felt, i feltets egen retning. */
 function gangskinnerIFelt(pts, v, cc, zone) {
   const c = Math.cos(v), sn = Math.sin(v);
@@ -3694,10 +3859,25 @@ function genererSkinner(zone) {
     const gange = i.følgInventar ? skinnerIGange(zone, cc) : null;
     let linjer = gange ? gange.concat(endeSkinner(zone))
       : rækkerIAreal(zone.pts, cc, i.margin, i.retning || 'auto');
-    linjer = fjernDubletter(linjer, mToPx(0.8));
+    // først renses rækkerne, så to ikke ligger side om side ...
+    linjer = fjernDubletter(linjer, mToPx(SKINNE.mindsteRaekke));
     if (!linjer.length) return false;
-    nye = linjer.map(pts => {
-      const sk = { id: nyId(), pts, montage: i.wireMontage, auto: true, zoneId: zone.id, iGang: !!gange };
+    // ... og så bindes det, der er tilbage, sammen til firkanter. En
+    // tværskinne, der falder oven i en række, vi allerede har, springes over
+    const lukning = lukFirkanter(linjer, zone)
+      .filter(t => !linjer.some(l => parallelAfstand(t, l) < mToPx(SKINNE.mindsteRaekke)));
+    linjer = linjer.concat(lukning);
+    // og til sidst hægtes de skinner på, der stadig står alene
+    const løse = forbindLoese(linjer.concat(), zone);
+    /* Tværskinnerne holdes adskilt fra gangskinnerne. De to slags gør ikke det
+       samme: gangskinnen lyser gangen og skal ligge midt i den, tværskinnen
+       binder firkanten sammen og krydser gangene på tværs. Skal planen
+       kontrolleres, er det kun gangskinnerne, der har en midte at ligge i. */
+    const antalGang = linjer.length - lukning.length;
+    linjer = linjer.concat(løse);
+    nye = linjer.map((pts, k) => {
+      const sk = { id: nyId(), pts, montage: i.wireMontage, auto: true, zoneId: zone.id,
+                   iGang: !!gange, tvaers: k >= antalGang };
       state.skinner.push(sk);
       return sk;
     });
@@ -3722,11 +3902,13 @@ function genererSkinner(zone) {
     return state.armaturer.filter(a => a.auto && a.zoneId === zone.id).length;
   };
 
-  let afstand = SKINNE.ccArmatur, antalPrimær = 0, målt = 0;
+  let afstand = SKINNE.ccArmatur, antalPrimær = 0, målt = 0, bedst = null;
   for (let ydre = 0; ydre < 3; ydre++) {
     if (ydre > 0) {
-      // båndet for armaturafstanden er brugt op - så skal der flere rækker til
-      const tættere = Math.max(1.4, cc * 0.8);
+      /* Båndet for armaturafstanden er brugt op - så skal der flere rækker til.
+         Tættere end mindsteRaekke nytter ikke: de rækker bliver alligevel
+         renset væk igen som to rækker side om side. */
+      const tættere = Math.max(SKINNE.mindsteRaekke, cc * 0.8);
       if (Math.abs(tættere - cc) < 0.05 || !i.følgInventar) break;
       const forrige = cc;
       cc = tættere;
@@ -3762,13 +3944,35 @@ function genererSkinner(zone) {
     const mSkinne = længder.reduce((a, l) => a + l, 0);
     const mPrArmatur = antalPrimær > 0 ? mSkinne / antalPrimær : 0;
     const iBånd = mPrArmatur >= SKINNE.taethedsMaal;
+    /* Runden gemmes, hvis den er bedre end den bedste hidtil. At ramme kravet
+       tæller først; derefter tæller den, der kommer nærmest planernes tæthed.
+       Uden det her blev den sidste runde brugt, også når en tidligere var
+       bedre - og en tættere c/c er ikke altid en forbedring. */
+    const karakter = (m2, mPr) => (m2 >= krav ? 1000 : m2 / krav) + Math.min(mPr, SKINNE.taethedsMaal);
+    if (!bedst || karakter(målt, mPrArmatur) > karakter(bedst.målt, bedst.mPrArmatur)) {
+      bedst = { cc, afstand, målt, mPrArmatur };
+    }
     if (målt >= krav && iBånd) break;
+  }
+  // den bedste runde lægges igen, hvis den sidste ikke var den bedste
+  if (bedst && (bedst.cc !== cc || bedst.afstand !== afstand)) {
+    cc = bedst.cc;
+    if (læg()) {
+      afstand = bedst.afstand;
+      antalPrimær = sæt(afstand);
+      målt = Tre.zoneSnit(state, zone.pts, 0.7, 'grund').snit;
+    }
   }
   // efter en mislykket sidste runde kan armaturerne være ryddet
   if (!state.armaturer.some(a => a.auto && a.zoneId === zone.id)) antalPrimær = sæt(afstand);
 
   if (målt < krav * 0.98) {
     toast(`${zoneNavn(zone)}: ${fmt(krav)} lux kan ikke nås med ${kortNavn(i.primaer)} – der beregnes ${fmt(målt, 0)} lux. Vælg et kraftigere armatur.`, 'fejl');
+  } else if (målt < krav) {
+    /* Tæt på, men ikke i mål. Armaturerne kan ikke sidde tættere end 2,4 m, og
+       rækkerne ikke tættere end 1,8 m, uden at planen holder op med at ligne
+       referencerne - så det er armaturvalget, der skal laves om. */
+    toast(`${zoneNavn(zone)}: ${fmt(målt, 0)} lux mod krav ${fmt(krav)} – ${fmt(krav - målt, 0)} lux fra. Butikken kan ikke bære flere skinnerækker uden at få to rækker side om side, og armaturerne sidder allerede med ${fmt(afstand, 1)} m. Vælg et kraftigere armatur.`, 'fejl');
   } else if (afstand > SKINNE.maksArmatur - 0.05) {
     toast(`${zoneNavn(zone)}: armaturerne sidder ${fmt(afstand, 1)} m fra hinanden – planerne ligger på 3,0–3,5 m. Butikken har flere gange, end lyskravet kræver.`);
   } else {
@@ -3802,20 +4006,16 @@ function genererSkinner(zone) {
   return antalPrimær + antalAccent;
 }
 
-/* To skinner oven i hinanden giver dobbelt lys og dobbelt pris. */
-function fjernDubletter(linjer, tol) {
+/* To rækker ved siden af hinanden giver dobbelt lys og dobbelt pris.
+
+   Den længste række vinder. En tidligere udgave målte kun fra den ene skinnes
+   midtpunkt til den anden og slap derfor to rækker igennem, der lå forskudt
+   for hinanden - de rørte ikke hinanden på midten, men lå side om side hele
+   vejen. Nu måles afstanden der, hvor de faktisk står ud for hinanden. */
+function fjernDubletter(linjer, mindste) {
   const ud = [];
-  for (const l of linjer) {
-    const midt = [(l[0][0] + l[1][0]) / 2, (l[0][1] + l[1][1]) / 2];
-    const dublet = ud.some(u => {
-      const pr = Geom.projectOnPolyline(midt, u);
-      if (!pr || pr.afstand > tol) return false;
-      const v1 = Math.atan2(l[1][1] - l[0][1], l[1][0] - l[0][0]);
-      const v2 = Math.atan2(u[1][1] - u[0][1], u[1][0] - u[0][0]);
-      const d = Math.abs(((v1 - v2) % Math.PI + Math.PI) % Math.PI);
-      return d < 0.12 || d > Math.PI - 0.12;
-    });
-    if (!dublet) ud.push(l);
+  for (const l of linjer.slice().sort((x, y) => Geom.dist(y[0], y[1]) - Geom.dist(x[0], x[1]))) {
+    if (!ud.some(u => parallelAfstand(l, u) < mindste)) ud.push(l);
   }
   return ud;
 }

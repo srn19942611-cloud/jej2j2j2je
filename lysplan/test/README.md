@@ -65,6 +65,43 @@ ligger skævt for gangen, klippes stykket, og kun de frie stumper på mindst
 først efter centreringen, arver de en midte, der blev målt på hele det
 oprindelige stykke.
 
+## Firkanter og rækkeafstand
+
+Skinnerne skal som udgangspunkt hænge sammen i firkanter, og to rækker må
+ikke stå side om side.
+
+**Firkanterne** måles som grafteori: skinnerne er knuder, og to skinner har
+en kant imellem sig, når enden af den ene rører den anden, eller de to
+krydser hinanden. Antallet af uafhængige lukkede sløjfer er da `E − V + C`.
+En stige af n gangskinner med en tværskinne i hver ende giver n−1 firkanter.
+Testen kræver mindst én firkant, at ingen skinne hænger frit for sig selv,
+og at det hele hænger sammen i højst to net.
+
+Firkanterne laves parvis mellem naboskinner. En tidligere udgave samlede
+naboerne i løb med ét fælles spænd i begge ender; men spændet er skæringen
+af dem alle, så én kort skinne lukkede hele løbet ned – 9 skinner gav 1
+firkant i stedet for 7.
+
+Tværskinnen skal kunne passere gondolgavlene med 0,9 m. Kan den ikke det,
+rykkes den indad i gangen, så skinnerne samles i et T lidt inde på rækken.
+Gavlafstanden kan `tvaersTilMoebler` ikke måle – den ser kun møbler, punktet
+står ud for på langs – så der bruges en almindelig punkt-til-rektangel
+afstand i stedet.
+
+**Rækkeafstanden** måles kun, hvor to nogenlunde parallelle skinner faktisk
+står ud for hinanden. To stykker i forlængelse af hinanden er én række med
+et hul i, og to på tværs er en firkant. Mindst 1,8 m – under den smalleste
+gang i Bilag 1 på 1,77 m.
+
+Det har en pris: en butik kan nu ikke pakkes med rækker helt tæt for at nå
+lux-kravet. Rammer beregningen under kravet, når rækkerne ikke kan stå
+tættere og armaturerne allerede sidder på 2,4 m, siger værktøjet det med en
+fejl i stedet for at pakke planen.
+
+Centrering og gangafstand måles kun på gangskinnerne. En tværskinne krydser
+gangene og har ingen gangmidte at ligge i; blandes de to slags, ser et
+korrekt layout skævt ud.
+
 ## Prøvetegningen `butik.dxf`
 
 40,0 × 20,0 m med ydervæggen som lukket polylinje på laget `VAEGGE`, seks
