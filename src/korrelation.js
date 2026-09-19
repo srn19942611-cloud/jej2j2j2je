@@ -298,6 +298,47 @@ export function erBlandet(e) {
   return /teknik.?tavle|tavle uden|blandet|alt i butikken|el total|hovedmåler|forsynings/i.test(e.meterNavn || '');
 }
 
+/* ---- Målernavnet i opgaveteksten ------------------------------------------
+ *
+ * Energispareforslagene fra 2019–2025 — 955 opgaver i 389 butikker — peger
+ * ikke på et Dalux-anlæg. De peger på MÅLEREN, i anførselstegn i teksten:
+ * Måler "VE, 05 Kiosk kokken", Måler "(2-T06-03) TeknikTavle (Butik Vent)",
+ * "Ventilation Butik". Skrevet løst — kommaer, manglende ø, sammenskrevne
+ * ord — så det skal matches tolerant: alt andet end bogstaver og tal fjernes,
+ * æøå bliver til ae/oe/aa, og så sammenlignes.
+ *
+ * Det er den sikreste kobling af alle, når den findes: den, der skrev
+ * forslaget, sad med Enity-måleren foran sig. */
+/* æøå bliver til ét bogstav, ikke to. "køkken" skrives "kokken" i opgaven,
+ * og med ø→oe ville de to aldrig mødes. Første udgave gjorde netop det og
+ * fandt nul af tre. */
+const glat = (s) => String(s || '').toLowerCase()
+  .replace(/æ/g, 'a').replace(/ø/g, 'o').replace(/å/g, 'a')
+  .replace(/[^a-z0-9]/g, '');
+
+export function citeredeNavne(tekst) {
+  const ud = [];
+  for (const m of String(tekst || '').matchAll(/["“„«]([^"”«»\n]{3,80})["”»]/g)) {
+    const n = m[1].trim();
+    /* En afkortet titel ender i "…" eller "..." midt i citatet. Så er det
+     * ikke et navn, og et forsøg på at matche det rammer det forkerte. */
+    if (/\.\.\.|…/.test(n)) continue;
+    ud.push(n);
+  }
+  return ud;
+}
+
+function matchCiteretNavn(kandidater, opgave) {
+  /* Titel og tekst hver for sig — et citat må ikke spænde over sammenføjningen. */
+  const navne = [...citeredeNavne(opgave.titel), ...citeredeNavne(opgave.tekst)].map(glat).filter((x) => x.length >= 4);
+  if (!navne.length) return [];
+  return kandidater.filter((e) => {
+    const g = glat(e.meterNavn);
+    if (g.length < 4) return false;
+    return navne.some((n) => n === g || (n.length >= 8 && (g.includes(n) || n.includes(g))));
+  });
+}
+
 /** Ord, der findes i næsten alle målernavne og derfor ikke kan skille noget ad. */
 const GENERISKE_ORD = new Set([
   'ventilation', 'vent', 'anlæg', 'anlaeg', 'tavle', 'butik', 'lys', 'el', 'måler', 'maaler',
@@ -341,13 +382,21 @@ export function fordelOpgaver(enheder, opgaver, { kunSammeButik = true } = {}) {
      * ville ellers optage enhver ventilationsopgave i butikken. */
     const kandidater = mulige.filter((e) => !erBlandet(e));
 
-    /* 1 · Anlægs-id. Det eneste, der er sikkert. */
-    let traf = kandidater.filter((e) => (e.anlaeg || []).some((a) => o.anlaegId && String(a.id) === String(o.anlaegId)));
-    let hvordan = 'anlægs-id';
+    /* 0 · Målernavnet citeret i opgaven. Sikrest, når det findes. */
+    let traf = matchCiteretNavn(kandidater, o);
+    let hvordan = 'målernavn i teksten';
 
-    /* 2 · Anlægskoden. "VE.02 Slagter" og "VE02.1" er den samme kode. */
-    if (!traf.length && o.anlaeg) {
-      const koder = udtraekKoder(o.anlaeg);
+    /* 1 · Anlægs-id. */
+    if (!traf.length) {
+      traf = kandidater.filter((e) => (e.anlaeg || []).some((a) => o.anlaegId && String(a.id) === String(o.anlaegId)));
+      hvordan = 'anlægs-id';
+    }
+
+    /* 2 · Anlægskoden. "VE.02 Slagter" og "VE02.1" er den samme kode. Koden
+     * kan stå i anlægsfeltet — eller i titlen, når anlægsfeltet er tomt, og
+     * det er det i fire ud af fem opgaver. */
+    if (!traf.length && (o.anlaeg || o.titel)) {
+      const koder = udtraekKoder(`${o.anlaeg || ''} ${o.titel || ''}`);
       if (koder.size) {
         traf = kandidater.filter((e) => (e.anlaeg || []).some((a) => [...udtraekKoder(a.navn)].some((k) => koder.has(k)))
           || [...udtraekKoder(e.meterNavn || '')].some((k) => koder.has(k)));

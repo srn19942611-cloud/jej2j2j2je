@@ -63,7 +63,7 @@ export function opgaveFraDb(r) {
     dato: r.oprettet ? tekst(r.oprettet).slice(0, 10) : null,
     lukket: r.lukket ? tekst(r.lukket).slice(0, 10) : null,
     fagomraade: tekst(r.fagomraade) || null,
-    tekst: [tekst(r.titel), tekst(r.tekst)].filter(Boolean).join(' — '),
+    tekst: tekst(r.tekst) || tekst(r.titel),
     titel: tekst(r.titel), status: tekst(r.status) || null,
     udfoerende: tekst(r.udfoerende) || null,
     afvistAf: tekst(r.afvist_af) || null, afvistBegrundelse: tekst(r.afvist_begrundelse) || null,
