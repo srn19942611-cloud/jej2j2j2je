@@ -141,9 +141,24 @@ export function signaturFraMaaling(m) {
     vejrrespons = r < 0.25 ? 'brudt' : r > 1.6 ? 'forstærket' : 'uændret';
   }
 
+  /* Sigten (flaade.pVaerdi) skal bruge en robust z og antal døgn. Uden dem
+   * er p = 1, og så afviser FDR hver eneste række — tavst. Det VAR tilfældet:
+   * signaturer målt udefra havde ingen z, og porteføljekørslen ville have
+   * sendt nul sager videre uden at sige hvorfor.
+   *
+   * Bruddets styrke fra signifikanstesten ER en robust z: |median(efter) −
+   * median(før)| / MAD(før). Mangler den, kan en direkte aflæsning (måleren
+   * står på nul, eller på tre gange normalen) stadig bære sig selv. Alt andet
+   * uden spredning får ingen z — og falder så ærligt i sigten, i stedet for at
+   * slippe igennem på et tal, vi ikke har. */
+  const direkte = Number.isFinite(m.restniveau) && (m.restniveau <= 0.05 || m.restniveau >= 3);
+  const z = Number.isFinite(m.brudStyrke) ? m.brudStyrke : direkte ? 6 : null;
+
   return {
     brugbar: true,
     form,
+    z,
+    brudStyrke: m.brudStyrke ?? null,
     retning: afvig > 0 ? 'op' : afvig < 0 ? 'ned' : 'flad',
     afvigKwhPrDoegn: Math.round(afvig),
     afvigPct: Math.round(pct * 10) / 10,
@@ -292,21 +307,30 @@ export function talAf(s) {
  * tabel med en ekstra kolonne eller en anden rækkefølge stadig kan læses.
  */
 export const KOLONNER = {
-  butik: ['butik', 'store'],
-  maalerId: ['måler-id', 'maaler-id', 'meterid', 'måler id', 'id'],
-  navn: ['navn', 'name'],
+  butik: ['butik', 'store', 'butiksnummer'],
+  maalerId: ['måler-id', 'maaler-id', 'meterid', 'måler id', 'enity_meter_id', 'meter_id', 'id'],
+  navn: ['navn', 'name', 'maaler_navn'],
   tags: ['tags', 'tag'],
   a: ['a'],
   b: ['b'],
-  brudDato: ['brud-dato', 'bruddato', 'brud', 'dato'],
-  overgangsdoegn: ['b (døgn)', 'overgang', 'bredde', 'b_doegn'],
-  medianResidual: ['median residual', 'residual'],
-  afvigPct: ['afvig %', 'afvig%', 'afvigelse %', 'afvigelse'],
+  brudDato: ['brud-dato', 'bruddato', 'brud_dato', 'brud', 'dato'],
+  overgangsdoegn: ['b (døgn)', 'overgang_doegn', 'overgang', 'bredde', 'b_doegn', 'ovg'],
+  medianResidual: ['median residual', 'median_residual', 'residual'],
+  afvigPct: ['afvig %', 'afvig%', 'afvig_pct', 'afvigelse %', 'afvigelse'],
   restniveau: ['restniveau'],
   vejrforhold: ['vejrhældning/|b|', 'vejrhældning/|b', 'vejrhaeldning', 'vejrforhold', 'vejrhældning', 'vejr'],
   koefFoer: ['koef før', 'koef foer', 'koeffør'],
   koefEfter: ['koef efter'],
-  medianForudsagt: ['median forudsagt', 'forudsagt'],
+  medianForudsagt: ['median forudsagt', 'forudsagt', 'median_forudsagt'],
+  /* Kolonnerne, som porteføljekørslen skriver i databasen. Samme læser, så
+   * en tabel klippet ud af en chat og en tabel hentet fra databasen går den
+   * samme vej. */
+  segmentdoegn: ['segmentdoegn', 'segment_doegn', 'seg', 'segment'],
+  referencedoegn: ['referencedoegn', 'reference_doegn', 'ref'],
+  brudStyrke: ['brud_styrke', 'brudstyrke', 'styrke'],
+  status: ['status'],
+  energitype: ['energitype', 'energytype'],
+  butiksnavn: ['butiksnavn'],
 };
 
 export function laesMaaletabel(tekst) {

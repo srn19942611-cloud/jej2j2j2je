@@ -21,7 +21,7 @@
  */
 
 import { maalSignatur, diagnosticer, AARSAG, AARSAGER } from './aarsag.js';
-import { samtidighed, FG_FAGOMRAADER, varslingsstatistik } from './korrelation.js';
+import { samtidighed, tilbagefald, FG_FAGOMRAADER, varslingsstatistik } from './korrelation.js';
 import { ejerMedRolle, ejerAfFaggruppe, PERSON, VISITATOR } from './personer.js';
 import { fgNavn } from './taxonomy.js';
 
@@ -153,7 +153,26 @@ export function byggVarsel(enhed, raekker, {
   opgaver = [], priser = PRISER, referenceSlut, gentagneOpgaver = 0, laering = null, nu = new Date(),
 } = {}) {
   const signatur = maalSignatur(raekker, { faggruppe: enhed.faggruppe, referenceSlut });
-  if (!signatur.brugbar) return null;
+  return varselFraSignatur(enhed, signatur, { opgaver, historik: opgaver, priser, gentagneOpgaver, laering, nu });
+}
+
+/**
+ * Anden halvdel af kæden: fra en signatur — uanset hvor den er målt — til et
+ * varsel med ejer, beløb og prioritet.
+ *
+ * Skilt ud, fordi porteføljekørslen ikke måler signaturen selv. Den kommer fra
+ * Enitys endpoint som en tabelrække, og herfra skal vejen være den samme, som
+ * når hubben selv har regnet på døgnserien. To veje til samme diagnose ville
+ * være to steder at have en fejl.
+ *
+ * `historik` er hele opgavehistorikken på enheden, bevidst også de gamle. Det
+ * er dem, tilbagefaldstesten lever af — og den manglede i agentens egen vej,
+ * så en rettelse fra 2019 aldrig kunne ses derfra.
+ */
+export function varselFraSignatur(enhed, signatur, {
+  opgaver = [], historik = null, priser = PRISER, gentagneOpgaver = 0, laering = null, nu = new Date(),
+} = {}) {
+  if (!signatur || !signatur.brugbar) return null;
   if (signatur.form === 'ingen') return null;
 
   const relevante = FG_FAGOMRAADER[enhed.faggruppe];
@@ -162,8 +181,10 @@ export function byggVarsel(enhed, raekker, {
     ? samtidighed(haendelse, opgaver, { faggruppe: enhed.faggruppe, relevante })
     : null;
 
+  const hist = tilbagefald(historik || opgaver, { foer: haendelse.dato, nu });
+
   const diagnose = diagnosticer(signatur, {
-    faggruppe: enhed.faggruppe, maalerrolle: enhed.maalerrolle, kobling, gentagneOpgaver,
+    faggruppe: enhed.faggruppe, maalerrolle: enhed.maalerrolle, kobling, historik: hist, gentagneOpgaver,
     // Det, lukkede opgaver har lært os om netop denne faggruppe.
     priors: laering ? justeredePriors(laering, enhed.faggruppe) : null,
   });
@@ -205,7 +226,7 @@ export function byggVarsel(enhed, raekker, {
     id: `VAR-${String(++seq).padStart(4, '0')}`,
     oprettet: nu.toISOString(),
     status: 'ny',
-    enhed, signatur, kobling, diagnose,
+    enhed, signatur, kobling, historik: hist, diagnose,
     aarsagId: aarsag.id,
     overskrift: overskrift(enhed, signatur, aarsag),
     aarsagNavn: aarsag.navn,
