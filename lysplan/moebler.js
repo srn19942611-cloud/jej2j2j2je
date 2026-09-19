@@ -36,6 +36,18 @@ const MØBLER = {
     hyldedybde: 0.62, bunddybde: 0.7, laager: true, laagebredde: 0.625,
     kappe: 0.25, skiltehoejde: 0.12
   },
+  koelGondol: {
+    navn: 'Kølegondol med glaslåger, dobbeltsidet', type: 'koel', dobbelt: true,
+    hoejde: 2.0, dybde: 1.9, modul: 1.25, hylder: 5, sokkel: 0.15,
+    hyldedybde: 0.6, bunddybde: 0.7, laager: true, laagebredde: 0.625,
+    kappe: 0.25, skiltehoejde: 0.12
+  },
+  frostGondol: {
+    navn: 'Frostgondol med glaslåger, dobbeltsidet', type: 'frost', dobbelt: true,
+    hoejde: 2.0, dybde: 1.9, modul: 0.75, hylder: 5, sokkel: 0.15,
+    hyldedybde: 0.55, bunddybde: 0.62, laager: true, laagebredde: 0.75,
+    kappe: 0.22, skiltehoejde: 0.12
+  },
   koelAaben: {
     navn: 'Åben kølereol (multideck) 2000', type: 'koel', dobbelt: false,
     hoejde: 2.0, dybde: 0.9, modul: 1.25, hylder: 4, sokkel: 0.15,
@@ -117,10 +129,78 @@ const Moebler = (() => {
     return MØBLER[item.model] || MØBLER[STANDARDMODEL[item.type]] || MØBLER.gondol1800;
   }
 
+  /* Materialerne følger kæden, når der er valgt en. */
+  function materialer(valg) {
+    const k = valg && valg.kaede && typeof KAEDER !== 'undefined' ? KAEDER[valg.kaede] : null;
+    if (!k) return MATERIALER;
+    return { ...MATERIALER, stel: k.stel, sokkel: k.sokkel, hylde: k.hylde, bagvaeg: k.bagvaeg, kold: k.kold, skilt: k.accent, skiltTekst: k.skiltTekst };
+  }
+
+  /* Hvordan varerne i en varegruppe ser ud. */
+  function vareUdseende(kategori, type) {
+    const navn = (kategori || '') + ' ' + (type || '');
+    if (typeof VARER !== 'undefined') for (const [m, v] of VARER) if (m.test(navn)) return v;
+    if (/koel/.test(type)) return { form: 'pakke', farver: ['#FFFFFF', '#F1E8C8', '#D94E4E', '#4E7FD9'], hoejde: [0.12, 0.24], bredde: 0.1 };
+    if (/frost/.test(type)) return { form: 'pakke', farver: ['#EAF3F7', '#BFD9E6', '#E8E0F0', '#FFFFFF'], hoejde: [0.12, 0.2], bredde: 0.16 };
+    return typeof VARE_STANDARD !== 'undefined' ? VARE_STANDARD : { form: 'pakke', farver: ['#D8CFC0', '#B8C4CC'], hoejde: [0.14, 0.24], bredde: 0.14 };
+  }
+
+  /* Deterministisk "tilfældighed", så samme hylde ser ens ud hver gang. */
+  function frø(...dele) {
+    let h = 2166136261;
+    const t = dele.join(':');
+    for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return () => { h = Math.imul(h ^ (h >>> 15), 2246822519); h = Math.imul(h ^ (h >>> 13), 3266489917); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+  }
+
+  /* Varerne på én hylde i ét fag: en række facings som kasser, flasker
+     eller dåser med lidt variation i højde - det er sådan en fyldt hylde ser
+     ud. Som "detalje", så 3D-kigget kan nøjes med en samlet vareflade langt
+     væk og bruge de enkelte varer tæt på. */
+  function byggVarer(quad, P, a, b, frontV, retning, z, dybde, udseende, nr, farveFald) {
+    const r = frø(nr, a.toFixed(2), z.toFixed(2));
+    const bredde = udseende.bredde;
+    const antal = Math.max(1, Math.floor((b - a) / (bredde + 0.015)));
+    const brugt = antal * bredde + (antal - 1) * 0.015;
+    let u = a + ((b - a) - brugt) / 2;
+    const dyb = Math.min(dybde * 0.9, 0.5);
+    const rækker = udseende.form === 'flaske' || udseende.form === 'daase' ? 3 : 2;
+    for (let k = 0; k < antal; k++) {
+      const farve = udseende.farver[Math.floor(r() * udseende.farver.length)];
+      const h = udseende.hoejde[0] + r() * (udseende.hoejde[1] - udseende.hoejde[0]);
+      const top = z + 0.04 + h;
+      const u0 = u, u1 = u + bredde;
+      const v0 = frontV + retning * 0.03;
+      if (udseende.form === 'loes') {
+        // løs frugt og grønt: en bunke, ikke facings
+        quad([P(u0, v0, z + 0.04), P(u1, v0, z + 0.04), P(u1, v0, top), P(u0, v0, top)], farve, 'vare', false, true);
+        quad([P(u0, v0, top), P(u1, v0, top), P(u1, frontV + retning * dyb, top), P(u0, frontV + retning * dyb, top)], farve, 'vare', false, true);
+      } else {
+        // forside
+        quad([P(u0, v0, z + 0.04), P(u1, v0, z + 0.04), P(u1, v0, top), P(u0, v0, top)], farve, 'vare', false, true);
+        // flasker og dåser har en hals/lågkant i mørkere tone; kasser en top
+        const topFarve = udseende.form === 'pakke' ? farve : farveFald(farve, 0.7);
+        const v1 = frontV + retning * Math.min(dyb, rækker * (bredde + 0.01));
+        quad([P(u0, v0, top), P(u1, v0, top), P(u1, v1, top), P(u0, v1, top)], topFarve, 'vare', false, true);
+        // en lille side, så rækken får dybde set skråt fra
+        quad([P(u1, v0, z + 0.04), P(u1, v1, z + 0.04), P(u1, v1, top), P(u1, v0, top)], farveFald(farve, 0.82), 'vare', false, true);
+      }
+      u += bredde + 0.015;
+    }
+  }
+
   /* Bygger møblet som flader i verdenskoordinater (meter).
      u løber langs møblet, v på tværs, z opad. */
+  function farveFald(hex, f) {
+    const n = parseInt(String(hex).replace('#', ''), 16);
+    if (isNaN(n)) return hex;
+    const r = Math.round(((n >> 16) & 255) * f), g = Math.round(((n >> 8) & 255) * f), b = Math.round((n & 255) * f);
+    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+
   function byg(item, valg) {
     const m = model(item);
+    const MAT = materialer(valg);
     const c = Math.cos(item.vinkel), s = Math.sin(item.vinkel);
     const cx = item.centrum[0], cy = item.centrum[1];
     const L = item.laengde;
@@ -131,7 +211,7 @@ const Moebler = (() => {
     // enkeltsidede møbler vendes, så fronten peger ind mod butikken
     const vend = item.vendt === -1 ? -1 : 1;
     const P = (u, v, z) => [cx + u * c - (v * vend) * s, cy + u * s + (v * vend) * c, z];
-    const quad = (punkter, farve, slags, glas) => flader.push({ punkter, farve, slags, glas: !!glas });
+    const quad = (punkter, farve, slags, glas, detalje, tekst) => flader.push({ punkter, farve, slags, glas: !!glas, detalje: !!detalje, tekst: tekst || null });
     // lodret flade langs møblet (front eller bagside)
     const langsFlade = (u0, u1, v, z0, z1, farve, slags, glas) =>
       quad([P(u0, v, z0), P(u1, v, z0), P(u1, v, z1), P(u0, v, z1)], farve, slags, glas);
@@ -149,25 +229,25 @@ const Moebler = (() => {
 
     // sokkel hele vejen rundt
     if (m.sokkel) {
-      langsFlade(u0, u1, v0, 0, m.sokkel, MATERIALER.sokkel, 'sokkel');
-      langsFlade(u0, u1, v1, 0, m.sokkel, MATERIALER.sokkel, 'sokkel');
-      gavl(u0, v0, v1, 0, m.sokkel, MATERIALER.sokkel, 'sokkel');
-      gavl(u1, v0, v1, 0, m.sokkel, MATERIALER.sokkel, 'sokkel');
+      langsFlade(u0, u1, v0, 0, m.sokkel, MAT.sokkel, 'sokkel');
+      langsFlade(u0, u1, v1, 0, m.sokkel, MAT.sokkel, 'sokkel');
+      gavl(u0, v0, v1, 0, m.sokkel, MAT.sokkel, 'sokkel');
+      gavl(u1, v0, v1, 0, m.sokkel, MAT.sokkel, 'sokkel');
     }
 
-    if (m.hylder) byggReol(m, item, { L, D, H, u0, u1, v0, v1, moduler, modulBredde }, { langsFlade, vandret, gavl, quad, P }, valg);
-    else if (m.laag) byggFrostoe(m, item, { L, D, H, u0, u1, v0, v1, moduler, modulBredde }, { langsFlade, vandret, gavl, quad, P });
-    else if (m.skraaglas) byggDisk(m, item, { L, D, H, u0, u1, v0, v1 }, { langsFlade, vandret, gavl, quad, P });
+    if (m.hylder) byggReol(m, item, { L, D, H, u0, u1, v0, v1, moduler, modulBredde, MAT }, { langsFlade, vandret, gavl, quad, P }, valg);
+    else if (m.laag) byggFrostoe(m, item, { L, D, H, u0, u1, v0, v1, moduler, modulBredde, MAT }, { langsFlade, vandret, gavl, quad, P });
+    else if (m.skraaglas) byggDisk(m, item, { L, D, H, u0, u1, v0, v1, MAT }, { langsFlade, vandret, gavl, quad, P });
     else if (m.baand) byggKassebaand(m, item, { L, D, H, u0, u1, v0, v1 }, { langsFlade, vandret, gavl, quad, P });
     else if (m.skaerm) byggSelvkasse(m, item, { L, D, H, u0, u1, v0, v1 }, { langsFlade, vandret, gavl, quad, P });
     else if (m.skraakasser) byggPodie(m, item, { L, D, H, u0, u1, v0, v1, moduler, modulBredde }, { langsFlade, vandret, gavl, quad, P });
     else {
       // enkel kasse som sidste udvej
-      langsFlade(u0, u1, v0, 0, H, MATERIALER.stel, 'krop');
-      langsFlade(u0, u1, v1, 0, H, MATERIALER.stel, 'krop');
-      gavl(u0, v0, v1, 0, H, MATERIALER.stel, 'krop');
-      gavl(u1, v0, v1, 0, H, MATERIALER.stel, 'krop');
-      vandret(u0, u1, v0, v1, H, MATERIALER.stel, 'top');
+      langsFlade(u0, u1, v0, 0, H, MAT.stel, 'krop');
+      langsFlade(u0, u1, v1, 0, H, MAT.stel, 'krop');
+      gavl(u0, v0, v1, 0, H, MAT.stel, 'krop');
+      gavl(u1, v0, v1, 0, H, MAT.stel, 'krop');
+      vandret(u0, u1, v0, v1, H, MAT.stel, 'top');
     }
     return flader;
   }
@@ -176,15 +256,19 @@ const Moebler = (() => {
      varer, skiltefrise og eventuelle glaslåger. */
   function byggReol(m, item, g, t, valg) {
     const { L, D, H, u0, u1, v0, v1, moduler, modulBredde } = g;
+    const MAT = g.MAT || MATERIALER;
     const { langsFlade, vandret, gavl, quad, P } = t;
     const kold = m.type === 'koel' || m.type === 'frost';
-    const stel = kold ? MATERIALER.kold : MATERIALER.stel;
+    const stel = kold ? MAT.kold : MAT.stel;
     const sider = m.dobbelt ? [1, -1] : [1];
     const bagvægV = m.dobbelt ? 0 : v0 + 0.02;
+    const udseende = vareUdseende(item.kategori, item.type);
+    // kølemøblets indre er lyst og køligt - det er der, lyset sidder
+    const bagFarve = kold ? '#E9EEF2' : MAT.bagvaeg;
 
     // bagvæg (midt i en dobbeltsidet gondol, bagerst i en enkeltsidet)
-    langsFlade(u0, u1, bagvægV, m.sokkel || 0, H, kold ? '#46515C' : MATERIALER.bagvaeg, 'bagvaeg');
-    if (!m.dobbelt) langsFlade(u0, u1, bagvægV + 0.01, m.sokkel || 0, H, kold ? '#46515C' : MATERIALER.bagvaeg, 'bagvaeg');
+    langsFlade(u0, u1, bagvægV, m.sokkel || 0, H, bagFarve, 'bagvaeg');
+    if (!m.dobbelt) langsFlade(u0, u1, bagvægV + 0.01, m.sokkel || 0, H, bagFarve, 'bagvaeg');
 
     // gavle
     gavl(u0, v0, v1, m.sokkel || 0, H, stel, 'gavl');
@@ -204,25 +288,31 @@ const Moebler = (() => {
         const dybde = h === 0 ? (m.bunddybde || 0.55) : (m.hyldedybde || 0.45);
         const hyldeV0 = frontV;
         const hyldeV1 = frontV + retning * Math.min(dybde, D / (m.dobbelt ? 2 : 1));
-        // hyldeplan og forkant
-        vandret(u0, u1, hyldeV0, hyldeV1, z, MATERIALER.hylde, 'hylde');
-        langsFlade(u0, u1, frontV, z, z + 0.035, stel, 'forkant');
-        // varer pr. fag
+        // hyldeplan og forkant med prisskinne
+        vandret(u0, u1, hyldeV0, hyldeV1, z, kold ? '#DDE3E8' : MAT.hylde, 'hylde');
+        langsFlade(u0, u1, frontV, z, z + 0.035, kold ? '#F4F6F8' : stel, 'forkant');
+        // i et kølemøbel sidder der en lysliste under hver hylde
+        if (kold && h > 0) langsFlade(u0, u1, frontV + retning * 0.02, z - 0.012, z, '#FFFFFF', 'lys');
+        // varer pr. fag: langt væk én samlet flade, tæt på de enkelte varer
         for (let k = 0; k < moduler; k++) {
           const a = u0 + k * modulBredde + 0.03;
           const b = a + modulBredde - 0.06;
-          const farve = vareFarve(item.kategori || item.type, h * 7 + k + (side > 0 ? 0 : 3));
-          const top = z + 0.04 + varehøjde;
+          const grov = udseende.farver[(h * 7 + k) % udseende.farver.length];
+          const top = z + 0.04 + Math.min(varehøjde, udseende.hoejde[1]);
           const varV = frontV + retning * Math.min(dybde * 0.9, 0.5);
-          // forside og top af varerækken
           quad([P(a, frontV + retning * 0.03, z + 0.04), P(b, frontV + retning * 0.03, z + 0.04),
-                P(b, frontV + retning * 0.03, top), P(a, frontV + retning * 0.03, top)], farve, 'vare');
+                P(b, frontV + retning * 0.03, top), P(a, frontV + retning * 0.03, top)], grov, 'vare-grov');
           quad([P(a, frontV + retning * 0.03, top), P(b, frontV + retning * 0.03, top),
-                P(b, varV, top), P(a, varV, top)], farve, 'vare');
+                P(b, varV, top), P(a, varV, top)], grov, 'vare-grov');
+          byggVarer(quad, P, a, b, frontV, retning, z, Math.min(dybde, (nyttehøjde / antal) * 1.2), udseende, h * 7 + k + (side > 0 ? 0 : 3), farveFald);
         }
       }
-      // skiltefrise øverst
-      if (frise) langsFlade(u0, u1, frontV, H - frise, H, MATERIALER.skilt, 'skilt');
+      // skiltefrise øverst i kædens farve, med varegruppen skrevet på
+      if (frise) {
+        const tekst = item.kategori && !/^\d+$/.test(item.kategori) ? item.kategori : null;
+        quad([P(u0, frontV, H - frise), P(u1, frontV, H - frise), P(u1, frontV, H), P(u0, frontV, H)],
+          MAT.skilt, 'skilt', false, false, tekst ? { tekst, farve: MAT.skiltTekst || '#FFFFFF' } : null);
+      }
 
       // glaslåger foran kølemøbler
       if (m.laager) {
@@ -232,7 +322,10 @@ const Moebler = (() => {
           const a = u0 + (L / antalLåger) * k;
           const b = a + L / antalLåger;
           langsFlade(a + 0.015, b - 0.015, frontV + retning * -0.02, bund, H - frise, MATERIALER.glas, 'glas', true);
+          // lågens ramme: en lodret sprosse pr. låge og et håndtag
           gavl(a + 0.015, frontV, frontV + retning * -0.02, bund, H - frise, stel, 'karm');
+          langsFlade(a + 0.02, a + 0.05, frontV + retning * -0.03, bund, H - frise, farveFald(stel, 0.75), 'karm');
+          langsFlade(b - 0.09, b - 0.06, frontV + retning * -0.04, bund + 0.5, bund + 1.1, '#9AA0A6', 'karm');
         }
       }
       // kappe over åbne kølemøbler
@@ -247,15 +340,16 @@ const Moebler = (() => {
   function byggFrostoe(m, item, g, t) {
     const { L, D, H, u0, u1, v0, v1, moduler, modulBredde } = g;
     const { langsFlade, vandret, gavl, quad, P } = t;
-    const krop = MATERIALER.kold;
+    const krop = (g.MAT || MATERIALER).kold;
     langsFlade(u0, u1, v0, m.sokkel, H, krop, 'krop');
     langsFlade(u0, u1, v1, m.sokkel, H, krop, 'krop');
     gavl(u0, v0, v1, m.sokkel, H, krop, 'krop');
     gavl(u1, v0, v1, m.sokkel, H, krop, 'krop');
-    // kurve med varer nede i øen
+    // kurve med varer nede i øen - hvide og lyseblå pakker
+    const ud = vareUdseende(item.kategori, 'frost');
     for (let k = 0; k < moduler; k++) {
       const a = u0 + k * modulBredde + 0.04, b = a + modulBredde - 0.08;
-      vandret(a, b, v0 + 0.08, v1 - 0.08, H - 0.28, vareFarve(item.kategori || 'frost', k), 'vare');
+      vandret(a, b, v0 + 0.08, v1 - 0.08, H - 0.28, ud.farver[k % ud.farver.length], 'vare');
       gavl(b, v0 + 0.08, v1 - 0.08, H - 0.28, H - 0.04, krop, 'kurv');
     }
     // glaslåg
@@ -265,13 +359,13 @@ const Moebler = (() => {
   function byggDisk(m, item, g, t) {
     const { L, D, H, u0, u1, v0, v1 } = g;
     const { langsFlade, vandret, gavl, quad, P } = t;
-    const krop = MATERIALER.kold;
+    const krop = (g.MAT || MATERIALER).kold;
     langsFlade(u0, u1, v0, m.sokkel, H * 0.72, krop, 'krop');
     langsFlade(u0, u1, v1, m.sokkel, H * 0.72, krop, 'krop');
     gavl(u0, v0, v1, m.sokkel, H, krop, 'krop');
     gavl(u1, v0, v1, m.sokkel, H, krop, 'krop');
-    // varer i disken
-    vandret(u0 + 0.05, u1 - 0.05, v0 + 0.1, v1 - 0.25, H * 0.72, vareFarve(item.kategori || 'disk', 1), 'vare');
+    // varer i disken: kød og pålæg i røde og lyse toner
+    vandret(u0 + 0.05, u1 - 0.05, v0 + 0.1, v1 - 0.25, H * 0.72, vareUdseende(item.kategori || 'kød', 'betjening').farver[0], 'vare');
     // skråt glas fra forkant op mod bagkant
     quad([P(u0, v1, H * 0.72), P(u1, v1, H * 0.72), P(u1, v0 + 0.2, H), P(u0, v0 + 0.2, H)], MATERIALER.glas, 'glas', true);
     if (m.kappe) langsFlade(u0, u1, v0, H, H + m.kappe, krop, 'kappe');
@@ -316,10 +410,11 @@ const Moebler = (() => {
     langsFlade(u0, u1, v1, m.sokkel, H * 0.65, MATERIALER.trae, 'krop');
     gavl(u0, v0, v1, m.sokkel, H * 0.65, MATERIALER.trae, 'krop');
     gavl(u1, v0, v1, m.sokkel, H * 0.65, MATERIALER.trae, 'krop');
-    // skrå kasser med frugt og grønt
+    // skrå kasser med frugt og grønt i deres egne farver
+    const ud = vareUdseende('frugt ' + (item.kategori || ''), 'bord');
     for (let k = 0; k < moduler; k++) {
       const a = u0 + k * modulBredde + 0.03, b = a + modulBredde - 0.06;
-      const farve = vareFarve('frugt' + (item.kategori || ''), k);
+      const farve = ud.farver[k % ud.farver.length];
       quad([P(a, v0 + 0.05, H * 0.65), P(b, v0 + 0.05, H * 0.65), P(b, v1 - 0.05, H), P(a, v1 - 0.05, H)], farve, 'vare');
     }
   }
@@ -342,5 +437,5 @@ const Moebler = (() => {
     };
   }
 
-  return { MØBLER, STANDARDMODEL, MATERIALER, byg, opgør, model, vareFarve };
+  return { MØBLER, STANDARDMODEL, MATERIALER, byg, opgør, model, vareFarve, vareUdseende, materialer };
 })();

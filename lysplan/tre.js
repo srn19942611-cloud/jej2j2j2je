@@ -261,14 +261,17 @@ const Tre = (() => {
         centrum: [i.centrum[0] / m, i.centrum[1] / m],
         laengde: i.laengde, dybde: i.dybde, hoejde: i.hoejde
       };
-      const flader = Moebler.byg(iMeter).map(f => {
+      const flader = Moebler.byg(iMeter, { kaede: state.indst.kaede }).map(f => {
         const normal = fladeNormal(f.punkter);
         const midt = midtpunkt(f.punkter);
         // Fladens forside kendes ikke af tegnerækkefølgen, så lyset regnes fra
         // begge sider, og den lyse side vises. Oven i det direkte lys lægges
         // det, gulvet foran fladen kaster tilbage - ellers står gavle helt sorte.
-        const e = Math.max(fladeLys(midt, normal), fladeLys(midt, [-normal[0], -normal[1], -normal[2]]));
-        return { punkter: f.punkter, farve: f.farve, glas: f.glas, slags: f.slags, lux: e };
+        let e = Math.max(fladeLys(midt, normal), fladeLys(midt, [-normal[0], -normal[1], -normal[2]]));
+        // varer i et kølemøbel står i møblets eget lys, og lyslisten lyser selv
+        if (f.slags === 'lys') e = Math.max(e, 1800);
+        else if ((i.type === 'koel' || i.type === 'frost') && /vare|bagvaeg|hylde/.test(f.slags)) e *= 1.6;
+        return { punkter: f.punkter, farve: f.farve, glas: f.glas, slags: f.slags, detalje: f.detalje, tekst: f.tekst, lux: e, centrum: midt };
       });
       return {
         id: i.id, type: i.type, navn: i.kategori || t.navn, sider: flader,
@@ -300,7 +303,17 @@ const Tre = (() => {
       }
     });
 
-    return { ramme, gulv, kasser, vægge, lys, celle, vedligehold, omgivende, loft };
+    /* Loftet, skinnerne og vægbåndet er det, der gør rummet til en butik og
+       ikke en model: et lyst eller mørkt loft med skinnerne hængende under,
+       og kædens farvebånd på væggen som vægnavigation. */
+    const kaede = (typeof KAEDER !== 'undefined' && KAEDER[state.indst.kaede]) || null;
+    const lofter = zonePolys.map(poly => ({ punkter: poly.map(p => [p[0], p[1], loft]) }));
+    const skinner = (state.skinner || []).map(sk => {
+      const pts = sk.pts.map(p => [p[0] / m, p[1] / m]);
+      const h = (state.indst.monteringshoejde || 2.8) + 0.04;
+      return { pts, h };
+    });
+    return { ramme, gulv, kasser, vægge, lys, celle, vedligehold, omgivende, loft, lofter, skinner, kaede };
   }
 
   /* Hurtig gennemsnitsberegning for én zone - bruges når planen dimensioneres. */
@@ -501,8 +514,9 @@ const Tre = (() => {
     ctx.fillRect(0, 0, bredde, højde);
 
     const rig = tilstand !== 'falsk';
+    const kaede = scene.kaede || null;
     const flader = [];
-    const tilføj = (punkter, farve, slags, ekstra) => {
+    const tilføj = (punkter, farve, slags, ekstra, tekst) => {
       const syn = punkter.map(tilSyn);
       if (!syn.some(q => q[2] > naer)) return;
       const klippet = klipModNaerplan(syn, naer);
@@ -510,31 +524,85 @@ const Tre = (() => {
       const skærm = klippet.map(tilSkærm);
       const dybde = klippet.reduce((a, q) => a + q[2], 0) / klippet.length;
       let c = tilRgb(farve);
-      if (rig && slags !== 'lampe' && punkter.length >= 3) {
+      if (rig && slags !== 'lampe' && slags !== 'lys' && punkter.length >= 3) {
         const n = fladeNormal(punkter);
         const midt = punkter.reduce((a, q) => [a[0] + q[0], a[1] + q[1], a[2] + q[2]], [0, 0, 0])
           .map(v => v / punkter.length);
         const modØje = enhed([øje[0] - midt[0], øje[1] - midt[1], øje[2] - midt[2]]);
         const sk = rigSkygge(n, modØje);
-        const glans = 255 * sk.spejl;
+        const glans = 255 * sk.spejl * (slags === 'vare' ? 0.5 : 1);
         c = [spænd(c[0] * sk.diffus + glans), spænd(c[1] * sk.diffus + glans), spænd(c[2] * sk.diffus + glans)];
       }
-      flader.push({ skærm, farve: css(c), kant: css([c[0] * 0.68, c[1] * 0.68, c[2] * 0.68]), dybde, slags, ekstra });
+      flader.push({ skærm, farve: css(c), kant: css([c[0] * 0.68, c[1] * 0.68, c[2] * 0.68]), dybde, slags, ekstra, tekst });
     };
+    /* Loftet tegnes før alt andet: det ligger altid bag møblerne set fra
+       øjenhøjde, og som én stor flade ville dets middeldybde ellers sortere
+       det forkert. */
+    if (tilstand !== 'falsk') {
+      const loftFarve = kaede ? kaede.loft : '#ECEAE4';
+      for (const l of scene.lofter || []) {
+        const syn = l.punkter.map(tilSyn);
+        if (!syn.some(q => q[2] > naer)) continue;
+        const klippet = klipModNaerplan(syn, naer);
+        if (klippet.length < 3) continue;
+        const c = tilRgb(loftFarve).map(v => v * (0.55 + 0.45 * Math.min(1, scene.omgivende / 150)));
+        ctx.fillStyle = css(c.map(spænd));
+        ctx.beginPath();
+        klippet.map(tilSkærm).forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+        ctx.closePath(); ctx.fill();
+      }
+    }
 
+    const fliser = tilstand !== 'falsk' && kaede && kaede.fuge;
     for (const g of scene.gulv) {
+      const farve = luxFarve(g.lux, maks, tilstand);
+      const tone = kaede && tilstand !== 'falsk' ? tilRgb(kaede.gulv) : null;
+      // gulvets egen farve ganges med lyset - så et lyst og et mørkt gulv ser forskelligt ud
+      const f = tone ? [farve[0] * tone[0] / 232, farve[1] * tone[1] / 226, farve[2] * tone[2] / 212] : farve;
       tilføj([
         [g.x, g.y, 0], [g.x + g.celle, g.y, 0],
         [g.x + g.celle, g.y + g.celle, 0], [g.x, g.y + g.celle, 0]
-      ], luxFarve(g.lux, maks, tilstand), 'gulv', g);
+      ], f, fliser ? 'flise' : 'gulv', g);
     }
     for (const v of scene.vægge || []) {
-      tilføj(v.punkter, fladeFarve('#D8D4CA', v.lux, maks, tilstand), 'væg', v);
+      const vægFarve = kaede && tilstand !== 'falsk' ? kaede.vaeg : '#D8D4CA';
+      tilføj(v.punkter, fladeFarve(vægFarve, v.lux, maks, tilstand), 'væg', v);
+      // kædens farvebånd som vægnavigation, lidt foran væggen
+      if (kaede && tilstand !== 'falsk') {
+        const [a, b] = v.punkter;
+        const n = fladeNormal(v.punkter);
+        const ind = 0.02;
+        const p = (q, z) => [q[0] + n[0] * ind, q[1] + n[1] * ind, z];
+        for (const side of [1, -1]) {
+          tilføj([p(a, 2.15), p(b, 2.15), p(b, 2.45), p(a, 2.45)].map(q => [q[0] * 1, q[1], q[2]]), fladeFarve(kaede.baand, v.lux, maks, tilstand), 'kasse', v);
+          break;
+        }
+      }
     }
+    /* Detaljegrænse: de enkelte varer tegnes kun tæt på; længere væk er én
+       samlet vareflade nok, og billedet bliver hurtigere at dreje. */
+    const DETALJE = 14;
     for (const k of scene.kasser) {
+      const dk = Math.hypot(k.centrum[0] - øje[0], k.centrum[1] - øje[1]);
+      const nær = dk < DETALJE;
       for (const side of k.sider) {
+        if (side.detalje && !nær) continue;
+        if (side.slags === 'vare-grov' && nær) continue;
         tilføj(side.punkter, fladeFarve(side.farve, side.lux, maks, tilstand),
-          side.glas ? 'glas' : 'kasse', { kasse: k, side });
+          side.glas ? 'glas' : side.slags === 'lys' ? 'lys' : side.slags === 'vare' || side.slags === 'vare-grov' ? 'vare' : 'kasse', { kasse: k, side }, side.tekst);
+      }
+    }
+    // skinnerne under loftet, i kædens armaturfarve
+    for (const sk of scene.skinner || []) {
+      const farve = kaede ? kaede.skinne : '#F0EEE8';
+      for (let i = 0; i + 1 < sk.pts.length; i++) {
+        const a = sk.pts[i], b = sk.pts[i + 1];
+        const dx = b[0] - a[0], dy = b[1] - a[1];
+        const L = Math.hypot(dx, dy) || 1;
+        const nx = -dy / L * 0.03, ny = dx / L * 0.03;
+        tilføj([[a[0] + nx, a[1] + ny, sk.h], [b[0] + nx, b[1] + ny, sk.h], [b[0] - nx, b[1] - ny, sk.h], [a[0] - nx, a[1] - ny, sk.h]], farve, 'kasse', sk);
+        tilføj([[a[0] + nx, a[1] + ny, sk.h], [b[0] + nx, b[1] + ny, sk.h], [b[0] + nx, b[1] + ny, sk.h + 0.05], [a[0] + nx, a[1] + ny, sk.h + 0.05]], farve, 'kasse', sk);
+        tilføj([[a[0] - nx, a[1] - ny, sk.h], [b[0] - nx, b[1] - ny, sk.h], [b[0] - nx, b[1] - ny, sk.h + 0.05], [a[0] - nx, a[1] - ny, sk.h + 0.05]], farve, 'kasse', sk);
       }
     }
     const h = scene.lys.length ? scene.lys[0].z : 3;
@@ -543,6 +611,18 @@ const Tre = (() => {
       const halv = Math.max(0.12, (fx.laengde || 0.3) / 2);
       const c = Math.cos(l.vinkel), s = Math.sin(l.vinkel);
       const b = 0.09;
+      const kropFarve = kaede ? kaede.armatur : '#F4F2EC';
+      // armaturets krop (sider) i kædens farve, lysfladen nedad
+      if (tilstand !== 'falsk') {
+        const hjørner = [
+          [l.x - c * halv - s * b, l.y - s * halv + c * b], [l.x + c * halv - s * b, l.y + s * halv + c * b],
+          [l.x + c * halv + s * b, l.y + s * halv - c * b], [l.x - c * halv + s * b, l.y - s * halv - c * b]
+        ];
+        for (let i = 0; i < 4; i++) {
+          const p = hjørner[i], q = hjørner[(i + 1) % 4];
+          tilføj([[p[0], p[1], l.z], [q[0], q[1], l.z], [q[0], q[1], l.z + 0.08], [p[0], p[1], l.z + 0.08]], kropFarve, 'kasse', l);
+        }
+      }
       tilføj([
         [l.x - c * halv - s * b, l.y - s * halv + c * b, l.z],
         [l.x + c * halv - s * b, l.y + s * halv + c * b, l.z],
@@ -575,14 +655,52 @@ const Tre = (() => {
         ctx.strokeStyle = fl.kant;
         ctx.lineWidth = 0.6;
         ctx.stroke();
+      } else if (fl.slags === 'flise') {
+        // fugerne mellem klinkerne
+        ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      } else if (fl.slags === 'lys') {
+        ctx.shadowColor = 'rgba(235,245,255,0.8)';
+        ctx.shadowBlur = 6;
+        ctx.fill();
+        ctx.shadowBlur = 0;
       } else if (fl.slags === 'lampe') {
         ctx.shadowColor = 'rgba(255,240,200,0.9)';
         ctx.shadowBlur = 14;
         ctx.fill();
         ctx.shadowBlur = 0;
       }
+      if (fl.tekst) skiltTekst(ctx, fl);
     }
     return flader.length;
+  }
+
+  /* Varegruppen skrevet på skiltefrisen. Teksten lægges langs skiltets
+     overkant i perspektiv - stor nok til at læses, ellers udelades den. */
+  function skiltTekst(ctx, fl) {
+    const p = fl.skærm;
+    if (p.length < 4) return;
+    // skiltets to nederste hjørner er de første to punkter (P(u0,H-frise), P(u1,H-frise))
+    const a = p[0], b = p[1], c = p[2];
+    const bredde = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const højde = Math.hypot(c[0] - b[0], c[1] - b[1]);
+    if (bredde < 36 || højde < 5) return;
+    const vinkel = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const str = Math.min(højde * 0.7, bredde / Math.max(4, fl.tekst.tekst.length) * 1.7);
+    if (str < 5) return;
+    ctx.save();
+    ctx.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+    ctx.rotate(vinkel);
+    ctx.font = `600 ${str.toFixed(1)}px "IBM Plex Sans", system-ui, sans-serif`;
+    ctx.fillStyle = fl.tekst.farve || '#FFFFFF';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    // op fra underkanten: teksten står midt i frisen
+    const ret = Math.abs(vinkel) > Math.PI / 2 ? -1 : 1;
+    ctx.scale(ret, 1);
+    ctx.fillText(fl.tekst.tekst, 0, -højde * 0.32);
+    ctx.restore();
   }
 
   /* Lux-tal til indbliksfeltet: gennemsnit, mindste og største på gulvet. */

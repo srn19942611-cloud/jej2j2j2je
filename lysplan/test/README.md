@@ -277,3 +277,48 @@ rummene. Og lukningen prøves fra 0,9 m op til 3,0 m: den mindste, der
 giver et rum uden lager-, kontor-, gang- eller personaletekst i, vinder.
 Resultatet: 896 m² mod 856 m² fra den gamle metode – uden den ubenyttede
 hal på 259 m², uden apoteket, uden lageret og uden gangen.
+
+## 3D-kigget: en rigtig butik, ikke en model
+
+Det, kunden ser, når hun går gennem butikken, bygges af det, tegningen
+siger, og af kædens udtryk.
+
+**Møblerne.** Hvert møbel bygges af flader: sokkel, gavle, bagplade, hylder
+med prisskinne, skiltefrise og glaslåger. Varerne på hylderne er ikke
+rigtige produkter, men rigtige *former og farver* pr. varegruppe, som
+tegningen selv navngiver dem: vin er mørke flasker, konserves blanke dåser,
+slik broget, frost hvidt bag glas, frugt og grønt en bunke i grønt og rødt.
+Tæt på tegnes de enkelte varer; længere end 14 m væk én samlet vareflade,
+så billedet kan drejes. Varegruppen står på skiltefrisen i kædens farve.
+Kølemøbler har lyst indre, lysliste under hver hylde, glaslåger med sprosse
+og håndtag; en køler på 1,5 m i dybden er en gondol med låger til begge
+sider.
+
+**Hvilken vej vender møblet?** Det afgør, om kunden ser varer eller en
+bagplade. Et modul med et modul ryg mod ryg bag sig er enkeltsidet og
+vender væk fra makkeren - to sådanne er en gondol. Et modul på 0,9 m og
+derover uden makker er selv en gondol. Ellers vender det mod den side,
+hvor der er mest frit gulv *inde i salgsarealet* - bag en vægreol er der
+ingen møbler, men heller ingen kunder.
+
+Et næsten kvadratisk modul (0,98 × 0,90 m) har ingen tydelig langside, så
+"langs" og "på tværs" blev et tilfælde af, hvordan blokken var tegnet.
+Rækken går den vej, naboerne af samme blok ligger; ellers smeltede rækken
+aldrig sammen, og hvert modul vendte på tværs af gangen med bagpladen mod
+kunden. Da rækkerne så smeltede sammen, faldt 0-graders-området på
+Fakta-tegningen i tre stykker, og `retningsFelter` tog kun det største -
+400 m² af butikken mistede sine skinner (356 lux). Den tager nu alle
+stykker. Prøvebutikken fangede det ikke; kundetegningen gjorde.
+
+**Kæden.** Loft, gulv, reolstel, armaturfarve og skiltefarve følger den
+kæde, tegningen nævner (eller den, der vælges i 3D-panelet). Det, der står
+i planerne, er brugt som det er: 365discount Kalundborg bestiller skinner
+og Bricks i hvid, Kvickly Hvidovre endegavlsmoduler i sort, og
+byggeprogrammet siger, at armaturer farvetilpasses loftet, hvid eller sort.
+Resten - gulvtype, den præcise røde - er et udtryk, ikke et facit, og kan
+rettes i `KAEDER` i catalog.js.
+
+**Rummet.** Loftet tegnes i kædens farve, skinnerne hænger under det i
+armaturfarven med armaturerne som lysende kroppe, gulvet har fuger, hvor
+kæden har klinker, og væggen bærer kædens farvebånd i 2,15-2,45 m som
+vægnavigation.

@@ -144,6 +144,74 @@ const PRESETS = {
 };
 
 
+/* Butikkens udtryk i 3D-kigget - det, kunden ser, når hun går gennem
+   butikken. Loft, gulv, reolstel, armaturfarve og skiltefarve pr. kæde.
+
+   Det, der står i planerne, er brugt som det er: 365discount Kalundborg
+   bestiller skinner og Bricks i HVID; Kvickly Hvidovre bestiller endegavls-
+   moduler (EGM 800x1200) i SORT; byggeprogrammet siger, at armaturer
+   farvetilpasses loftet, hvid eller sort. Resten - gulvtype, den præcise
+   røde - er et udtryk, der kan rettes i 3D-panelet, ikke et facit. */
+const KAEDER = {
+  superbrugsen: {
+    navn: 'SuperBrugsen', accent: '#C8102E', skiltTekst: '#FFFFFF',
+    loft: '#F1EFEA', armatur: '#F7F6F2', skinne: '#EDEBE6',
+    stel: '#E8E6E0', sokkel: '#2C2F34', hylde: '#EDEBE6', bagvaeg: '#DDDAD2',
+    kold: '#F0F0EE', gulv: '#D8D4CB', fuge: '#C4C0B7', flise: 0.6,
+    vaeg: '#F5F3EF', baand: '#C8102E'
+  },
+  kvickly: {
+    navn: 'Kvickly', accent: '#C8102E', skiltTekst: '#FFFFFF',
+    loft: '#1F2226', armatur: '#141517', skinne: '#1A1B1E',
+    stel: '#2E3136', sokkel: '#1A1C1F', hylde: '#3A3D42', bagvaeg: '#2A2D31',
+    kold: '#2B2E33', gulv: '#CFCBC2', fuge: '#BDB9B0', flise: 0.6,
+    vaeg: '#EFEDE8', baand: '#C8102E'
+  },
+  discount: {
+    navn: '365discount', accent: '#E1251B', skiltTekst: '#FFFFFF',
+    loft: '#F4F3EF', armatur: '#FFFFFF', skinne: '#F2F1ED',
+    stel: '#D9D9D6', sokkel: '#3A3D42', hylde: '#E3E3E0', bagvaeg: '#CFCFCB',
+    kold: '#E4E6E8', gulv: '#C9C7C1', fuge: null, flise: 0,
+    vaeg: '#F2F1ED', baand: '#E1251B'
+  },
+  dagli: {
+    navn: "Dagli'Brugsen", accent: '#C8102E', skiltTekst: '#FFFFFF',
+    loft: '#F1EFEA', armatur: '#F7F6F2', skinne: '#EDEBE6',
+    stel: '#E8E6E0', sokkel: '#2C2F34', hylde: '#EDEBE6', bagvaeg: '#DDDAD2',
+    kold: '#F0F0EE', gulv: '#D6D2C8', fuge: '#C2BEB5', flise: 0.6,
+    vaeg: '#F5F3EF', baand: '#C8102E'
+  }
+};
+
+/* Varerne på hylderne, pr. varegruppe som tegningen selv navngiver dem.
+   Det er ikke rigtige produkter, men rigtige FORMER og FARVER: vin er
+   mørke flasker, konserves er blanke dåser, slik er broget, frost er hvidt
+   bag glas. Det er dét, der gør en reol til en reol og ikke en klods. */
+const VARER = [
+  [/vin\b|vine|rødvin|hvidvin|spiritus/i, { form: 'flaske', farver: ['#2E4A2B', '#3B2A2C', '#4A3B25', '#233B1F', '#5A2A2A'], hoejde: [0.28, 0.32], bredde: 0.08 }],
+  [/øl\b|oel\b|pils|specialøl/i, { form: 'flaske', farver: ['#3C6B3A', '#7A4A20', '#C9302C', '#2E5C8A'], hoejde: [0.22, 0.28], bredde: 0.07 }],
+  [/vand\b|saft|juice|sodavand|kondi|cola|energi|monster|booster|redbull/i, { form: 'flaske', farver: ['#2A6F97', '#C9302C', '#E0B000', '#3E8E41', '#8C8C8C', '#1F1F1F'], hoejde: [0.24, 0.33], bredde: 0.09 }],
+  [/konserves|kons\b|fiskekon|dåse/i, { form: 'daase', farver: ['#B9BCC0', '#C94C4C', '#4B7F52', '#E3B23C', '#8E8E8E'], hoejde: [0.09, 0.12], bredde: 0.08 }],
+  [/kaffe|the\b|te\b/i, { form: 'pakke', farver: ['#5C3A21', '#8B1E1E', '#2E2E2E', '#C9A227', '#6E4B2E'], hoejde: [0.16, 0.2], bredde: 0.11 }],
+  [/morgenmad|cornflakes|müsli|musli|havregryn/i, { form: 'pakke', farver: ['#F2C14E', '#D6452C', '#3E6DB5', '#8FBF4F', '#F08A24'], hoejde: [0.26, 0.32], bredde: 0.18 }],
+  [/baby|ble\b|bleer/i, { form: 'pakke', farver: ['#F7C9D6', '#BFE0F2', '#FFF1B5', '#D9F0D0', '#FFFFFF'], hoejde: [0.2, 0.3], bredde: 0.22 }],
+  [/rengøring|rengoering|vask\b|opvask|skyllemiddel/i, { form: 'flaske', farver: ['#FFFFFF', '#2D7DD2', '#7BC950', '#F4A300', '#E84A5F'], hoejde: [0.24, 0.3], bredde: 0.1 }],
+  [/pleje|shampoo|tandpasta|deo|sæbe|saebe/i, { form: 'flaske', farver: ['#FFFFFF', '#F2A3C0', '#8FD3E8', '#C8B8E8', '#2E2E2E'], hoejde: [0.16, 0.22], bredde: 0.07 }],
+  [/slik|konfekture|chips|snacks|kiks|kager|chokolade/i, { form: 'pakke', farver: ['#E63946', '#F4D35E', '#3A86FF', '#8338EC', '#FF8C42', '#2A9D8F'], hoejde: [0.14, 0.24], bredde: 0.14 }],
+  [/brød|broed|bake|bager|kage/i, { form: 'pakke', farver: ['#B5722D', '#D9A066', '#8C5A2B', '#E8C89A'], hoejde: [0.1, 0.16], bredde: 0.2 }],
+  [/frugt|grønt|groent|f&g|grønt front/i, { form: 'loes', farver: ['#5DA130', '#E5352B', '#F5A623', '#8E44AD', '#F7DC6F', '#2E7D32'], hoejde: [0.1, 0.16], bredde: 0.3 }],
+  [/frost|is\b/i, { form: 'pakke', farver: ['#EAF3F7', '#BFD9E6', '#E8E0F0', '#FFFFFF', '#CFE8F3'], hoejde: [0.12, 0.2], bredde: 0.16 }],
+  [/mejeri|mælk|maelk|ost|pålæg|paalaeg|yoghurt|smør|smoer/i, { form: 'pakke', farver: ['#FFFFFF', '#F1E8C8', '#D94E4E', '#4E7FD9', '#EEE'], hoejde: [0.12, 0.24], bredde: 0.1 }],
+  [/kød|koed|fersk|slagter|kylling|fisk/i, { form: 'pakke', farver: ['#E8A0A0', '#D45D5D', '#F2D6C4', '#FFFFFF'], hoejde: [0.06, 0.1], bredde: 0.2 }],
+  [/dyremad|dyr\b|kat\b|hund/i, { form: 'pakke', farver: ['#7A4B2A', '#3E7CB1', '#F0C36B', '#5B8C5A'], hoejde: [0.2, 0.34], bredde: 0.2 }],
+  [/pasta|ris\b|mel\b|bagning|sukker|gryn/i, { form: 'pakke', farver: ['#E8D8A8', '#3E6DB5', '#B22222', '#F5EBD0', '#2E8B57'], hoejde: [0.16, 0.26], bredde: 0.12 }],
+  [/verdensmad|krydderi|olie|eddike|sauce|marmelade|smagsstof|udl\.|halvkons/i, { form: 'flaske', farver: ['#8B1E1E', '#C9A227', '#2E8B57', '#7A4A20', '#E07A2F'], hoejde: [0.14, 0.24], bredde: 0.07 }],
+  [/tekstil|nonfood|non-food|bazar|sæson|saeson|bolig|køkken|koekken/i, { form: 'pakke', farver: ['#8A8A8A', '#C0392B', '#2E86AB', '#F1C40F', '#FFFFFF', '#5B5B5B'], hoejde: [0.14, 0.3], bredde: 0.2 }],
+  [/blade|aviser|tobak/i, { form: 'pakke', farver: ['#FFFFFF', '#2E2E2E', '#C0392B', '#2980B9'], hoejde: [0.24, 0.3], bredde: 0.21 }],
+  [/papir|toilet|køkkenrulle|husholdning|poser/i, { form: 'pakke', farver: ['#FFFFFF', '#3E6DB5', '#8FBF4F', '#F4F4F4'], hoejde: [0.24, 0.34], bredde: 0.26 }]
+];
+const VARE_STANDARD = { form: 'pakke', farver: ['#D8CFC0', '#B8C4CC', '#C9B8A8', '#A8B8A8', '#E0D8C8'], hoejde: [0.14, 0.24], bredde: 0.14 };
+
 /* Krav fra Coops byggeprogram, EL - Belysningsanlæg (rev. 1.3).
    Tallene bruges til kontrollen i fanen "Krav" og til udskriften. */
 /* Forudsætninger som SJOC's egne DIALux-rapporter regner med

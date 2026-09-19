@@ -306,6 +306,33 @@ const Inventar = (() => {
       .map(i => ({ hjørner: i.hjørner, centrum: i.centrum, laengde: i.laengde, dybde: i.dybde,
                    vinkel: i.vinkel, lag: i.lag, navn: i.navn, blokTekst: (i.tekster || []).join(' '), kilde: 'blok' }));
 
+    /* Et næsten kvadratisk modul (0,98 x 0,90 m) har ingen tydelig langside,
+       og så bliver "langs" og "på tværs" et tilfælde af, hvordan blokken
+       blev tegnet. Rækken går den vej, naboerne af samme blok ligger: står
+       de i forlængelse af modulets normal, drejes modulet 90 grader. Uden
+       det smelter rækken aldrig sammen, og hvert modul vender på tværs af
+       gangen med bagpladen mod kunden. */
+    for (const i of blokMøbler) {
+      if (!i.navn || i.laengde / i.dybde > 1.3) continue;
+      const c = Math.cos(i.vinkel), sn = Math.sin(i.vinkel);
+      let langs = 0, tvaers = 0;
+      for (const o of blokMøbler) {
+        if (o === i || o.navn !== i.navn) continue;
+        const dx = o.centrum[0] - i.centrum[0], dy = o.centrum[1] - i.centrum[1];
+        const u = Math.abs(dx * c + dy * sn), v = Math.abs(-dx * sn + dy * c);
+        if (u >= i.laengde * 0.8 && u <= i.laengde * 1.3 && v < i.dybde * 0.3) langs++;
+        if (v >= i.dybde * 0.8 && v <= i.dybde * 1.3 && u < i.laengde * 0.3) tvaers++;
+      }
+      if (tvaers > langs) {
+        i.vinkel += Math.PI / 2;
+        [i.laengde, i.dybde] = [i.dybde, i.laengde];
+        const c2 = Math.cos(i.vinkel), s2 = Math.sin(i.vinkel);
+        const hl = i.laengde / 2, hd = i.dybde / 2;
+        const h = (u, v) => [i.centrum[0] + u * c2 - v * s2, i.centrum[1] + u * s2 + v * c2];
+        i.hjørner = [h(-hl, -hd), h(hl, -hd), h(hl, hd), h(-hl, hd)];
+      }
+    }
+
     /* 2. Rektangler i geometrien - for tegninger uden blokke, og for det der
           er tegnet løst. Et rektangel, der ligger inde i en møbelblok, er
           blokkens egen streg og tælles ikke igen. */
@@ -603,12 +630,14 @@ const Inventar = (() => {
         return dybde > 1.15 ? 'gondol2100' : 'gondol1800';
       case 'vaegreol': return 'vaegreol2200';
       case 'koel': {
+        // en køler på 1,5 m og derover i dybden er en gondol med front til begge sider
+        if (dybde >= 1.5) return 'koelGondol';
         // "LISBONA LF 95 3750 G" - G står for glaslåger, N for åbent møbel
         const m = /(lisbona|santiago)[^\d]*(?:lf\s*\d+\s*)?\d{4}\s*([gn])/i.exec(t);
         if (m) return m[2].toLowerCase() === 'g' ? 'koelLaage' : 'koelAaben';
         return /åben|aaben|multideck|frugt|grønt|gront/.test(t) ? 'koelAaben' : 'koelLaage';
       }
-      case 'frost': return dybde > 1.2 ? 'frostOe' : 'frostSkab';
+      case 'frost': return dybde >= 1.5 ? (laengde > dybde * 1.6 ? 'frostGondol' : 'frostOe') : (dybde > 1.2 ? 'frostOe' : 'frostSkab');
       case 'frostoe': return 'frostOe';
       case 'betjening': return 'disk';
       case 'kasse': return laengde < 1.4 ? 'selvkasse' : 'kassebaand';

@@ -35,6 +35,7 @@ const state = {
     beregningshoejde: 0.0, metrik: 'vandret',
     inventarType: 'reol', fagbredde: 1.0, visInventar: true, følgInventar: true,
     monteringshoejde: 2.8, fov: 72, farvetilstand: 'realistisk', maksLux: 1200, visVarme: false,
+    kaede: '',           // butikkens udtryk i 3D: superbrugsen | kvickly | discount | dagli
     skinneSpring: 2.5,
     primaer: 'bricks', accent: 'sirius', accentRatio: 0.35,
     minAfstand: 1.2, wireCC: 1.4, startPrRaekke: 1, wireMontage: 'wire',
@@ -185,6 +186,11 @@ async function importerCad(navn, db) {
   };
   byggCadGrupper(lag);
   state.lag.push(lag);
+  // kæden læses af tegningen, hvis den nævner den - så ser 3D-kigget rigtigt ud fra start
+  if (!state.indst.kaede) {
+    const k = kaedeFraTegning(lag);
+    if (k) { state.indst.kaede = k; visIndstillinger(); }
+  }
   if (nyMaalestok) {
     state.pxPerMeter = pxPerM;
     toast(flad.gættetEnhed
@@ -200,6 +206,17 @@ async function importerCad(navn, db) {
     if (!state.zoner.length) findZonerITegning(true);
   }, 0);
   return lag;
+}
+
+/* Hvilken kæde er det? Tegningshovedet siger det som regel: "fakta a/s",
+   "Kvickly Hvidovre", "SuperBrugsen Støvring", "365discount Kalundborg". */
+function kaedeFraTegning(lag) {
+  const alt = (lag.tegning.tekster || []).map(t => t.t || '').join(' ');
+  if (/365\s*discount|\bfakta\b/i.test(alt)) return 'discount';
+  if (/kvickly/i.test(alt)) return 'kvickly';
+  if (/superbrugsen|super\s*brugsen/i.test(alt)) return 'superbrugsen';
+  if (/dagli|lokalbrugsen|brugsen\b/i.test(alt)) return 'dagli';
+  return null;
 }
 
 /* Forklaring når en tegning kommer ind uden noget at vise. */
@@ -1493,20 +1510,12 @@ function findInventar(stille) {
         laengde: f.laengde * lag.skala,
         dybde: f.dybde * lag.skala
       };
-      // en reol midt på gulvet er dobbeltsidet; en langs væggen er enkeltsidet
-      if (post.type === 'reol' || post.type === 'vaegreol') {
-        const b = Geom.bbox(post.hjørner);
-        const tilVæg = pxToM(Math.min(b.x0 - r.x0, r.x1 - b.x1, b.y0 - r.y0, r.y1 - b.y1));
-        const midtIButikken = tilVæg > 1.2;
-        post.type = midtIButikken ? 'reol' : 'vaegreol';
-        post.model = midtIButikken ? (post.dybde > 1.15 ? 'gondol2100' : 'gondol1800') : 'vaegreol2200';
-        post.hoejde = Moebler.MØBLER[post.model].hoejde;
-      }
       post.vendt = vendModButikken(post, r);
       state.inventar.push(post);
       fundet++;
     }
   }
+  orienterInventar();
   opdater();
   if (!stille || fundet) {
     const st = Inventar.stykliste(state.inventar, state.indst.fagbredde);
@@ -1518,6 +1527,77 @@ function findInventar(stille) {
 }
 
 /* Enkeltsidede møbler skal vende fronten ind mod butikken, ikke mod væggen. */
+/* Hvilken vej vender møblet, og har det én eller to fronter?
+
+   Det afgør, om kunden i 3D ser varer eller en bagplade. Reglen er den, en
+   indretter bruger:
+   - står der et modul ryg mod ryg bag det, er det enkeltsidet og vender
+     væk fra makkeren - to sådanne er tilsammen en gondol
+   - er det 0,9 m dybt eller mere uden makker, er det selv en gondol med
+     front til begge sider
+   - ellers er det enkeltsidet og vender mod den side, hvor der er mest
+     frit gulv - dér går kunden
+   En køler på 1,5 m i dybden er en kølegondol med låger til begge sider. */
+function orienterInventar() {
+  const m = state.pxPerMeter || 100;
+  const alle = state.inventar.filter(i => i.laengde >= 0.4);
+  const salg = state.zoner.filter(z => z.type === 'salg').sort((a, b) => Geom.polygonArea(b.pts) - Geom.polygonArea(a.pts))[0] || null;
+  const normal = i => [-Math.sin(i.vinkel), Math.cos(i.vinkel)];
+  const makker = (i) => {
+    const n = normal(i), c = Math.cos(i.vinkel), sn = Math.sin(i.vinkel);
+    let bedst = null;
+    for (const o of alle) {
+      if (o === i || Math.abs(Math.cos(o.vinkel - i.vinkel)) < 0.9) continue;
+      const dx = o.centrum[0] - i.centrum[0], dy = o.centrum[1] - i.centrum[1];
+      const langs = Math.abs(dx * c + dy * sn) / m, tvaers = (dx * n[0] + dy * n[1]) / m;
+      if (langs > (i.laengde + o.laengde) / 2) continue;                  // står ikke ud for hinanden
+      const ryg = (i.dybde + o.dybde) / 2;
+      if (Math.abs(tvaers) < ryg - 0.15 || Math.abs(tvaers) > ryg + 0.35) continue;
+      if (!bedst || Math.abs(tvaers) < Math.abs(bedst.tvaers)) bedst = { o, tvaers };
+    }
+    return bedst;
+  };
+  const andre = i => alle.filter(o => o !== i);
+  for (const i of state.inventar) {
+    if (i.kilde === 'manuel' && i.vendtManuelt) continue;
+    const mdl = Moebler.model(i);
+    const reolagtig = i.type === 'reol' || i.type === 'vaegreol' || i.type === 'endegavl' || i.type === 'broed';
+    if (reolagtig) {
+      const mk = makker(i);
+      // brød og endegavle beholder deres type - det er kun reol/vægreol, der skifter
+      const særlig = i.type === 'broed' || i.type === 'endegavl';
+      if (mk) {
+        if (!særlig) i.type = 'vaegreol';
+        i.model = i.type === 'broed' ? 'broedreol' : 'vaegreol2200';
+        i.vendt = mk.tvaers > 0 ? -1 : 1;                                   // væk fra makkeren
+      } else if (i.dybde >= 0.9) {
+        if (!særlig) i.type = 'reol';
+        i.model = i.type === 'broed' ? 'broedreol' : (i.dybde > 1.15 ? 'gondol2100' : 'gondol1800');
+      } else {
+        i.model = i.type === 'broed' ? 'broedreol' : 'vaegreol2200';
+        if (i.type === 'reol') i.type = 'vaegreol';
+      }
+      i.hoejde = Moebler.MØBLER[i.model].hoejde;
+    }
+    if (i.type === 'koel' || i.type === 'frost') {
+      i.model = Inventar.vælgModel(i.type, i.dybde, i.laengde, i.tekst || '');
+      i.hoejde = (Moebler.MØBLER[i.model] || Inventar.INVENTAR_TYPER[i.type]).hoejde;
+    }
+    /* Enkeltsidede møbler uden makker vender mod det frie gulv. "Frit" er
+       gulv inde i salgsarealet: bag en vægreol er der ingen møbler, men
+       heller ingen kunder - der er væggen. */
+    const mdl2 = Moebler.model(i);
+    if (!mdl2.dobbelt && !(reolagtig && makker(i))) {
+      const n = normal(i), d = (i.dybde / 2 + 0.9) * m;
+      const plus = [i.centrum[0] + n[0] * d, i.centrum[1] + n[1] * d];
+      const minus = [i.centrum[0] - n[0] * d, i.centrum[1] - n[1] * d];
+      const fri = p => (salg && !Geom.pointInPolygon(p, salg.pts)) ? -1 : Math.min(6, afstandTilMoebler(p, andre(i), m));
+      const fp = fri(plus), fm = fri(minus);
+      if (Math.abs(fp - fm) > 0.15) i.vendt = fp > fm ? 1 : -1;
+    }
+  }
+}
+
 function vendModButikken(post, ramme) {
   const midte = [(ramme.x0 + ramme.x1) / 2, (ramme.y0 + ramme.y1) / 2];
   const v = [-Math.sin(post.vinkel), Math.cos(post.vinkel)];
@@ -1574,6 +1654,7 @@ function findZonerITegning(stille) {
       else if (fraInventar) afvigelser.push('salgsarealet er lagt om møblerne, fordi tegningen ikke har et rum med navn');
     }
   }
+  if (fundet && state.inventar.length) orienterInventar();
   opdater();
   if (!stille || fundet) {
     toast(fundet
@@ -3718,19 +3799,39 @@ function retningsFelter(zone) {
     }
   }
 
-  // felterne trækkes ud som sammenhængende områder pr. retning
+  /* Felterne trækkes ud som sammenhængende områder pr. retning - ALLE
+     områder, ikke kun det største. En tidligere udgave tog det største
+     omrids pr. retning, og da 0-graders-området på Fakta-tegningen faldt i
+     tre stykker, forsvandt 400 m² af butikken uden en eneste skinne. */
   const felter = [];
-  for (let k = 0; k < retninger.length; k++) {
+  const mærke = new Int32Array(nx * ny).fill(-1);
+  const stak = [];
+  for (let start = 0; start < valg.length; start++) {
+    const k = valg[start];
+    if (k < 0 || mærke[start] >= 0) continue;
+    const celler = [];
+    mærke[start] = start; stak.push(start);
+    while (stak.length) {
+      const j = stak.pop(); celler.push(j);
+      const jx = j % nx, jy = (j - jx) / nx;
+      const nab = [];
+      if (jx > 0) nab.push(j - 1);
+      if (jx < nx - 1) nab.push(j + 1);
+      if (jy > 0) nab.push(j - nx);
+      if (jy < ny - 1) nab.push(j + nx);
+      for (const n of nab) if (valg[n] === k && mærke[n] < 0) { mærke[n] = start; stak.push(n); }
+    }
+    if (celler.length * (celle / state.pxPerMeter) ** 2 < 25) continue;   // for lille til et felt
     const med = new Uint8Array(nx * ny);
-    let antal = 0;
-    for (let i = 0; i < med.length; i++) if (valg[i] === k) { med[i] = 1; antal++; }
-    if (antal * (celle / state.pxPerMeter) ** 2 < 25) continue;   // for lille til et felt
+    for (const j of celler) med[j] = 1;
     const kant = kantOmNet(med, nx, ny, r.x0, r.y0, celle);
     if (kant && kant.length >= 4 && Geom.polygonArea(kant) / (state.pxPerMeter ** 2) >= 25) {
       felter.push({ pts: kant, vinkel: retninger[k] });
     }
   }
-  return felter.length >= 2 ? felter : null;
+  // kun én retning i alt - så er felterne overflødige, og hele zonen lægges som før
+  const retningerBrugt = new Set(felter.map(f => f.vinkel));
+  return retningerBrugt.size >= 2 ? felter : null;
 }
 
 /* ---- skinnen midt imellem møblerne ----
