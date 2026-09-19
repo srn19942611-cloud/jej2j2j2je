@@ -183,6 +183,9 @@ function vaerdi(v) {
 export function systematiskeFejl(varsler, { minButikker = 4, minAndel = 0.25, vinduedage = 45 } = {}) {
   const grupper = new Map();
   for (const v of varsler) {
+    /* "Kan ikke afgøres" er ikke en årsag, og otte butikker, hvor vi ikke
+     * ved hvad der er galt, er ikke ét fælles fund — det er otte huller. */
+    if (v.aarsagId === 'ukendt') continue;
     const n = `${v.faggruppe}|${v.aarsagId}`;
     if (!grupper.has(n)) grupper.set(n, []);
     grupper.get(n).push(v);
