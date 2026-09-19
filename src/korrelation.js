@@ -300,9 +300,18 @@ export function fordelOpgaver(enheder, opgaver, { kunSammeButik = true } = {}) {
   const ufordelt = [];
   const begrundelser = [];
 
+  /* Enhederne slås op pr. butik én gang. Uden det blev hver opgave holdt op
+   * mod hver enhed — og på hele porteføljen er det 340.000 opgaver gange
+   * 12.000 målere. Det er ikke langsomt, det er umuligt. */
+  const prButik = new Map();
+  for (const e of enheder || []) {
+    const k = String(e.butiksnummer);
+    if (!prButik.has(k)) prButik.set(k, []);
+    prButik.get(k).push(e);
+  }
+
   for (const o of opgaver || []) {
-    const mulige = (enheder || []).filter((e) =>
-      !kunSammeButik || String(e.butiksnummer) === String(o.butiksnummer));
+    const mulige = kunSammeButik ? (prButik.get(String(o.butiksnummer)) || []) : (enheder || []);
 
     /* En blandet tavle eller en samlemåler kan aldrig bære en opgave. Den
      * dækker både butik og produktion, så et navnesammenfald er netop dét —

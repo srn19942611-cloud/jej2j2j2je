@@ -71,6 +71,27 @@ export function opgaveFraDb(r) {
 }
 
 /**
+ * Opgaver, der kun kender Dalux-bygningen, får butiksnummeret fra locations.
+ * Kan bygningen ikke slås op, bliver opgaven stående uden — og falder så som
+ * ufordelt i fordelOpgaver med den grund. Den bliver ikke gættet på plads.
+ */
+export function butiksnummerFraBygning(opgaver, locations) {
+  const prBygning = new Map();
+  for (const l of locations || []) {
+    if (l.dalux_building_id && l.butiksnummer) prBygning.set(String(l.dalux_building_id), String(l.butiksnummer));
+  }
+  let koblet = 0;
+  const ud = (opgaver || []).map((o) => {
+    if (o.butiksnummer || !o.daluxBuildingId) return o;
+    const bn = prBygning.get(String(o.daluxBuildingId));
+    if (!bn) return o;
+    koblet++;
+    return { ...o, butiksnummer: bn };
+  });
+  return { opgaver: ud, koblet, udenButik: ud.filter((o) => !o.butiksnummer).length };
+}
+
+/**
  * Kvartersdetektorernes rækker → én bekræftelse pr. måler.
  *
  * Kun flag tæller, og kun de detektorer, aarsag.js kender som bekræftelse.
