@@ -9,6 +9,10 @@ const state = {
   kalibrering: null,  // {a, b, meter}
   zoner: [],          // {id, type, navn, pts, maalLux} - salgsareal, betjent område osv.
   inventar: [],       // {id, type, kategori, laengde, dybde, hoejde, vinkel, centrum, hjørner, fag}
+  /* Det, brugeren har bekræftet om tegnerens blokke og lag: {blok: {navn: type},
+     lag: {navn: type}}. Gemmes med projektet og læses først ved genkendelsen,
+     så den anden tegning fra samme tegnestue kommer rigtigt ind fra start. */
+  ordbog: { blok: {}, lag: {} },
   skinner: [],        // {id, pts:[[x,y]...], montage:'wire'|'loft'}
   armaturer: [],      // {id, type, x, y, vinkel, skinneId}
   manuelt: {},        // manuelle tillæg til styklisten, pr. katalognøgle
@@ -159,6 +163,14 @@ async function importerCad(navn, db) {
     t.h = t.h * k;
     t.v = -t.v;
   }
+  // blokreferencerne følger med over i samme koordinater som stregerne
+  for (const b of flad.indsatser || []) {
+    const om = q => [(q[0] - r.x0) * k, (r.y1 - q[1]) * k];
+    b.centrum = om(b.centrum);
+    b.hjørner = b.hjørner.map(om);
+    b.laengde *= k; b.dybde *= k;
+    b.vinkel = -b.vinkel;
+  }
   const kerne = flad.kerne ? {
     x0: (flad.kerne.x0 - r.x0) * k, x1: (flad.kerne.x1 - r.x0) * k,
     y0: (r.y1 - flad.kerne.y1) * k, y1: (r.y1 - flad.kerne.y0) * k
@@ -167,7 +179,7 @@ async function importerCad(navn, db) {
     id: nyId(), navn, slags: 'cad', synlig: true, opacitet: 1, x: 0, y: 0, skala: 1,
     diagnose: flad.diagnose, kerne,
     bredde: (r.x1 - r.x0) * k, højde: (r.y1 - r.y0) * k,
-    tegning: { streger: flad.streger, tekster: flad.tekster, lagInfo: flad.lagInfo, meterPerEnhed: flad.meterPerEnhed },
+    tegning: { streger: flad.streger, tekster: flad.tekster, indsatser: flad.indsatser || [], lagInfo: flad.lagInfo, meterPerEnhed: flad.meterPerEnhed },
     egneFarver: false,
     cadLag: Object.fromEntries(Object.values(flad.lagInfo).map(l => [l.navn, l.synlig !== false]))
   };
@@ -1451,7 +1463,8 @@ function findInventar(stille) {
     const liste = Inventar.find(lag, {
       pxPerMeter: state.pxPerMeter / (lag.skala || 1),
       lagFilter: lag.cadLag,
-      graenser: { fagbredde: state.indst.fagbredde }
+      graenser: { fagbredde: state.indst.fagbredde },
+      ordbog: state.ordbog
     });
     const r = lagRamme(lag);
     // Tegningshoved, adresselinjer og signaturfelter ligger langt uden for
@@ -1544,18 +1557,21 @@ function findZonerITegning(stille) {
       }
     }
   }
-  if (!fundet) {
-    // Ingen rumnavne. Så lægges salgsarealet der hvor møblerne står, og er der
-    // heller ikke inventar, tages det største lukkede omrids.
-    const fraInventar = salgsarealFraInventar();
-    const største = fraInventar || størsteOmrids(cadLag);
+  if (!state.zoner.some(z => z.type === 'salg')) {
+    /* Intet rum hedder salgsareal. Så tages rummet, væggene danner om
+       møblerne; kan det ikke lukkes, lægges arealet om møblerne; og er der
+       heller ikke inventar, tages det største lukkede omrids. */
+    const fraVægge = salgsarealFraVaegge();
+    const fraInventar = fraVægge ? null : salgsarealFraInventar();
+    const største = fraVægge || fraInventar || størsteOmrids(cadLag);
     if (største) {
       state.zoner.push({
         id: nyId(), type: 'salg', navn: ZONETYPER.salg.navn, maalLux: ZONETYPER.salg.lux,
-        pts: største, fraTegning: true, fraInventar: !!fraInventar
+        pts: største, fraTegning: true, fraInventar: !!fraInventar, fraVaegge: !!fraVægge
       });
-      fundet = 1;
-      if (fraInventar) afvigelser.push('salgsarealet er lagt om møblerne, fordi tegningen ikke har et rum med navn');
+      fundet++;
+      if (fraVægge) afvigelser.push('salgsarealet er det rum, væggene danner om inventaret');
+      else if (fraInventar) afvigelser.push('salgsarealet er lagt om møblerne, fordi tegningen ikke har et rum med navn');
     }
   }
   opdater();
@@ -1913,6 +1929,246 @@ function ikkeSalgsOmraader(cadLag) {
   }
   return ude;
 }
+
+/* Salgsarealet som det rum, væggene danner.
+
+   Arkitekten tegnede rummene: væggene på A20/A21 (eller "Vægge"), dørene
+   på A22. Det rum, salgsinventaret står i, ER salgsarealet - med væggens
+   indvendige side som kant. Det er en anden og bedre metode end at gro et
+   net ud fra møblerne (salgsarealFraInventar), som giver en klat, der skal
+   snappes til væggene bagefter.
+
+   Fremgangsmåde: væglinjerne rasteres på et fint net (15 cm), dørhuller
+   lukkes ved at fortykke og tynde muren igen (morfologisk lukning, så huller
+   under ca. 1,2 m forsvinder), og der flodfyldes fra møblerne. Det
+   sammenhængende felt, som flest rækkedannende møbler står i, er rummet.
+
+   Findes der ingen væglag, giver metoden null, og den gamle tager over. */
+/* Døre, porte, vinduer og glasfacader lukker rummet, selv om de ikke er
+   vægge. Uden dem løber rummet ud gennem indgangens skydedøre. */
+const LUKKELAG = /d[øo]r|door|port\b|rulleport|vindue|window|glas|facade|^a22/i;
+function lukkeLinjer(cadLag) {
+  const linjer = [];
+  for (const lag of cadLag) {
+    for (const st of lag.tegning.streger) {
+      if (!LUKKELAG.test(st.lag) || (lag.cadLag && lag.cadLag[st.lag] === false)) continue;
+      for (let k = 0; k + 3 < st.p.length; k += 2) {
+        linjer.push([
+          [lag.x + st.p[k] * lag.skala, lag.y + st.p[k + 1] * lag.skala],
+          [lag.x + st.p[k + 2] * lag.skala, lag.y + st.p[k + 3] * lag.skala]
+        ]);
+      }
+    }
+  }
+  return linjer;
+}
+
+function salgsarealFraVaegge() {
+  /* Lukningen prøves fra lille til stor. Med en lille lukning kan rummet
+     løbe ud i lageret gennem en åbning uden dør; med en stor kan det blive
+     skåret over ved en bred passage. Den mindste lukning, der giver et rum
+     uden lager-, kontor- eller personaletekst i, vinder. */
+  let sidste = null;
+  for (const lukning of VAEG.lukninger) {
+    const r = rumFraVaegge(lukning);
+    if (!r) continue;
+    sidste = r;
+    if (!r.fremmedeRum.length) return r.pts;
+  }
+  return sidste ? sidste.pts : null;
+}
+
+function rumFraVaegge(lukning) {
+  const cadLag = state.lag.filter(l => l.slags === 'cad' && l.synlig);
+  const inv = state.inventar.filter(i => i.laengde > 0.4);
+  if (!cadLag.length || inv.length < 4) return null;
+  const vægge = vaegLinjer(cadLag).concat(lukkeLinjer(cadLag));
+  const harVæglag = cadLag.some(lag => Object.keys(lag.cadLag || {})
+    .some(n => lag.cadLag[n] !== false && VAEGLAG.test(n) && !IKKE_VAEGLAG.test(n)));
+  const dbg = state.diagnose = state.diagnose || {};
+  dbg.salgsarealVaegge = { harVæglag, vægge: vægge.length };
+  if (!harVæglag || vægge.length < 8) return null;
+
+  /* Nettet lægges om møblerne, ikke om væggene: en situationsplan eller en
+     facadetegning på samme ark kan ligge 100 m væk, og den hører ikke med. */
+  const celle = mToPx(0.15);
+  const b = Geom.bbox(inv.flatMap(i => i.hjørner));
+  const luft = mToPx(8);
+  const x0 = b.x0 - luft, y0 = b.y0 - luft;
+  const nx = Math.ceil((b.x1 + luft - x0) / celle), ny = Math.ceil((b.y1 + luft - y0) / celle);
+  dbg.salgsarealVaegge.net = [nx, ny];
+  if (nx < 4 || ny < 4 || nx * ny > 2500000) return null;
+
+  const mure = spaerFelter(vægge, nx, ny, x0, y0, celle);
+  // lukning: fortyk r felter, tynd r felter igen - huller op til 2r lukkes
+  const r = Math.max(1, Math.round(mToPx(lukning) / celle));
+  const fortyk = (kilde, gange) => {
+    let a = kilde;
+    for (let g = 0; g < gange; g++) {
+      const ud = new Uint8Array(a);
+      for (let gy = 0; gy < ny; gy++) {
+        for (let gx = 0; gx < nx; gx++) {
+          const i = gy * nx + gx;
+          if (!a[i]) continue;
+          if (gx > 0) ud[i - 1] = 1;
+          if (gx < nx - 1) ud[i + 1] = 1;
+          if (gy > 0) ud[i - nx] = 1;
+          if (gy < ny - 1) ud[i + nx] = 1;
+        }
+      }
+      a = ud;
+    }
+    return a;
+  };
+  const tynd = (kilde, gange) => {
+    let a = kilde;
+    for (let g = 0; g < gange; g++) {
+      const ud = new Uint8Array(a);
+      for (let gy = 0; gy < ny; gy++) {
+        for (let gx = 0; gx < nx; gx++) {
+          const i = gy * nx + gx;
+          if (!a[i]) continue;
+          const kant = gx === 0 || gy === 0 || gx === nx - 1 || gy === ny - 1
+            || !a[i - 1] || !a[i + 1] || !a[i - nx] || !a[i + nx];
+          if (kant) ud[i] = 0;
+        }
+      }
+      a = ud;
+    }
+    return a;
+  };
+  const lukket = tynd(fortyk(mure, r), r);
+
+  /* Ydervæggen er ikke altid på et væglag hele vejen rundt - på Fakta-
+     tegningen mangler den i flere meter, hvor facaden ligger på andre lag.
+     Men ude og inde kan afgøres af ALT, der er tegnet: der flodfyldes fra
+     nettets kant over alle streger, fortykket så huller lukkes, og det man
+     når, er udenfor. Møbelkanter inde i butikken gør ingen skade her, for
+     flodfyldningen kommer aldrig ind til dem. */
+  const alt = spaerFelter(alleStreger(cadLag), nx, ny, x0, y0, celle);
+  const altTyk = fortyk(alt, r);
+  const ude = new Uint8Array(nx * ny);
+  {
+    const stak = [];
+    for (let gx = 0; gx < nx; gx++) for (const gy of [0, ny - 1]) { const i = gy * nx + gx; if (!altTyk[i] && !ude[i]) { ude[i] = 1; stak.push(i); } }
+    for (let gy = 0; gy < ny; gy++) for (const gx of [0, nx - 1]) { const i = gy * nx + gx; if (!altTyk[i] && !ude[i]) { ude[i] = 1; stak.push(i); } }
+    while (stak.length) {
+      const j = stak.pop();
+      const jx = j % nx, jy = (j - jx) / nx;
+      if (jx > 0 && !altTyk[j - 1] && !ude[j - 1]) { ude[j - 1] = 1; stak.push(j - 1); }
+      if (jx < nx - 1 && !altTyk[j + 1] && !ude[j + 1]) { ude[j + 1] = 1; stak.push(j + 1); }
+      if (jy > 0 && !altTyk[j - nx] && !ude[j - nx]) { ude[j - nx] = 1; stak.push(j - nx); }
+      if (jy < ny - 1 && !altTyk[j + nx] && !ude[j + nx]) { ude[j + nx] = 1; stak.push(j + nx); }
+    }
+  }
+  // fortykkelsen holdt "ude" r felter fra muren; det vokses tilbage til murlinjen
+  const udeVed = fortyk(ude, r);
+  for (let i = 0; i < udeVed.length; i++) if (alt[i]) udeVed[i] = 0;
+
+  // den oprindelige mur lægges oven i, så en tynd væg ikke forsvinder i tyndingen
+  const spær = new Uint8Array(nx * ny);
+  for (let i = 0; i < spær.length; i++) spær[i] = (lukket[i] || mure[i] || udeVed[i] || (ude[i] && !alt[i])) ? 1 : 0;
+
+  // flodfyld fra hvert møbel; det felt med flest møbler er rummet
+  const mærke = new Int32Array(nx * ny).fill(-1);
+  const antalI = [];
+  const cellAf = p => {
+    const gx = Math.floor((p[0] - x0) / celle), gy = Math.floor((p[1] - y0) / celle);
+    return (gx >= 0 && gy >= 0 && gx < nx && gy < ny) ? gy * nx + gx : -1;
+  };
+  const rækkeTyper = { reol: 1, vaegreol: 1, koel: 1, frost: 1, frostoe: 1, kasse: 1, betjening: 1, bord: 1 };
+  const stak = [];
+  for (const i of inv) {
+    if (!rækkeTyper[i.type]) continue;
+    let start = cellAf(i.centrum);
+    // et møbel, der står oven i en (fortykket) mur, starter fra nærmeste frie felt
+    if (start < 0) continue;
+    if (spær[start]) {
+      let fundet = -1;
+      for (let d = 1; d <= 6 && fundet < 0; d++) {
+        for (let dy = -d; dy <= d && fundet < 0; dy++) {
+          for (let dx = -d; dx <= d; dx++) {
+            const gx = start % nx + dx, gy = Math.floor(start / nx) + dy;
+            if (gx < 0 || gy < 0 || gx >= nx || gy >= ny) continue;
+            const j = gy * nx + gx;
+            if (!spær[j]) { fundet = j; break; }
+          }
+        }
+      }
+      if (fundet < 0) continue;
+      start = fundet;
+    }
+    if (mærke[start] >= 0) { antalI[mærke[start]]++; continue; }
+    const nr = antalI.length;
+    antalI.push(1);
+    mærke[start] = nr; stak.push(start);
+    while (stak.length) {
+      const j = stak.pop();
+      const jx = j % nx, jy = (j - jx) / nx;
+      const nab = [];
+      if (jx > 0) nab.push(j - 1);
+      if (jx < nx - 1) nab.push(j + 1);
+      if (jy > 0) nab.push(j - nx);
+      if (jy < ny - 1) nab.push(j + nx);
+      for (const n of nab) if (!spær[n] && mærke[n] < 0) { mærke[n] = nr; stak.push(n); }
+    }
+  }
+  if (!antalI.length) return null;
+  let bedst = 0;
+  antalI.forEach((n, k) => { if (n > antalI[bedst]) bedst = k; });
+  // rummet skal være lukket: rører det nettets kant, er væggene ikke tætte
+  let rørerKant = false, felter = 0;
+  for (let i = 0; i < mærke.length && !rørerKant; i++) {
+    if (mærke[i] !== bedst) continue;
+    felter++;
+    const ix = i % nx, iy = (i - ix) / nx;
+    if (ix === 0 || iy === 0 || ix === nx - 1 || iy === ny - 1) rørerKant = true;
+  }
+  const areal = felter * (celle / state.pxPerMeter) ** 2;
+  /* Rumnavne, der ikke er butik, må ikke stå inde i rummet. Gør de det, er
+     der en åbning uden dør ind til lageret, og lukningen var for lille. */
+  Object.assign(dbg.salgsarealVaegge, { lukning, rum: antalI.length, moeblerIBedst: antalI[bedst], moebler: inv.length, rørerKant, areal: Math.round(areal) });
+  if (window.VAEGDBG) window.VAEGDBG({ spær, mure, mærke, bedst, nx, ny, x0, y0, celle });
+  if (rørerKant) return null;
+  if (areal < MINDSTE_SALGSAREAL || antalI[bedst] < inv.length * 0.5) return null;
+
+  const med = new Uint8Array(nx * ny);
+  for (let i = 0; i < med.length; i++) med[i] = mærke[i] === bedst ? 1 : 0;
+  /* Ud til den rigtige murkant: fortykkelsen trak rummet r felter ind fra
+     muren. Rummet vokses r felter ud igen, men aldrig ind i muren, ud af
+     bygningen eller ind i et af de andre rum. */
+  const fyldt = fortyk(med, r);
+  const færdig = new Uint8Array(nx * ny);
+  for (let i = 0; i < fyldt.length; i++) {
+    const andetRum = mærke[i] >= 0 && mærke[i] !== bedst;
+    // kun det bånd, fortykkelsen åd, gives tilbage - ikke frit gulv i en åbning
+    const baand = med[i] || lukket[i];
+    færdig[i] = (fyldt[i] && baand && !mure[i] && !udeVed[i] && !ude[i] && !andetRum) ? 1 : 0;
+  }
+  const omrids = kantOmNet(færdig, nx, ny, x0, y0, celle);
+  if (!omrids || omrids.length < 4) return null;
+  const pts = snapTilVaegge(omrids, vægge, mToPx(0.5));
+  /* Rumnavne, der ikke er butik, må ikke stå inde i rummet. Gør de det, er
+     der en åbning uden dør ind til lageret, og lukningen var for lille. Der
+     prøves mod den færdige polygon - rasteret kan have teksten liggende i
+     det fortykkede murbånd, hvor den ikke ses. */
+  const fremmedeRum = [];
+  for (const lag of cadLag) {
+    for (const t of (lag.tegning.tekster || [])) {
+      if (!t.t || t.t.split(/\s+/).length > 3) continue;
+      let type = null;
+      for (const [mønster, ty] of Inventar.RUMNAVNE) if (mønster.test(t.t.trim())) { type = ty; break; }
+      const fremmed = type ? (type !== 'salg' && type !== 'betjent') : IKKE_BUTIK.test(t.t);
+      if (fremmed && Geom.pointInPolygon([lag.x + t.x * lag.skala, lag.y + t.y * lag.skala], pts)) fremmedeRum.push(t.t.trim());
+    }
+  }
+  dbg.salgsarealVaegge.fremmedeRum = fremmedeRum;
+  return { pts, fremmedeRum, areal };
+}
+const MINDSTE_SALGSAREAL = 40;
+/* Huller i muren op til det dobbelte af lukning lukkes: en dør er 0,9-1,2 m,
+   en dobbeltdør 1,8 m, en skydedør i indgangen op til 2,5 m. */
+const VAEG = { lukninger: [0.9, 1.3, 2.0, 3.0] };
 
 /* Salgsarealet der hvor møblerne står.
    Mange tegninger har ikke salgslokalet som ét lukket omrids - butikken er
@@ -2543,15 +2799,86 @@ function visZoner(b) {
   }
 }
 
+/* Tegningens egen stykliste, hvis den står i tegningshovedet. */
+function tegningensFacit() {
+  for (const lag of state.lag) {
+    if (lag.slags !== 'cad' || !lag.synlig) continue;
+    const f = Inventar.tegningensOpgoerelse(lag);
+    if (f) return f;
+  }
+  return null;
+}
+
+/* Optællingen holdt op mod tegningens egen. Afviger de, er det enten
+   genkendelsen, der mangler noget, eller tegneren, der talte anderledes -
+   begge dele skal man vide, før man stoler på tallet. */
+function visTegningensOpgoerelse(facit, st) {
+  const boks = $('#tegningens-opgoerelse');
+  if (!boks) return;
+  if (!facit) { boks.hidden = true; return; }
+  const endegavle = state.inventar.filter(i => i.type === 'endegavl').length;
+  const borde = state.inventar.filter(i => i.type === 'bord').length;
+  const paller = state.inventar.filter(i => i.type === 'palle').length;
+  /* Fag i to bunker: dem motoren er sikker på, og dem der er gæt på formen.
+     Tegnerens tal holdes op mod de sikre - gættene er brugerens at afgøre. */
+  const sikre = Inventar.stykliste(state.inventar.filter(i => (i.sikkerhed == null || i.sikkerhed >= 0.7)), state.indst.fagbredde).fagIAlt;
+  const usikreFag = st.fagIAlt - sikre;
+  const rækker = [
+    ['Alm. fag' + (usikreFag ? ` (+ ${fmt(usikreFag)} usikre)` : ''), facit.fag, sikre],
+    ['Bake-off-fag', facit.bakeOffFag, state.inventar.filter(i => i.type === 'broed').reduce((a, i) => a + (i.fag || 0), 0)],
+    ['Endemoduler', facit.endemoduler, endegavle],
+    ['F&G-borde', facit.fgBorde, borde],
+    ['Akt-borde', facit.aktBorde, null],
+    ['1/4-pallepladser', facit.kvartpallePladser, paller],
+    ['Køl (m)', facit.meterKoel, st.meterKoel],
+    ['Frost (m)', facit.meterFrost, st.meterFrost]
+  ].filter(r => r[1] != null);
+  boks.hidden = false;
+  boks.innerHTML = '<h3>Tegningens egen opgørelse</h3><table><thead><tr><th></th><th>Tegningen</th><th>Fundet</th></tr></thead><tbody>' +
+    rækker.map(([navn, tal, fundet]) => {
+      const afv = fundet == null ? '' : (Math.abs(fundet - tal) <= Math.max(1, tal * 0.1) ? 'ok' : 'afviger');
+      return `<tr class="${afv}"><td>${navn}</td><td class="tal">${fmt(tal)}</td><td class="tal">${fundet == null ? '–' : fmt(fundet, Number.isInteger(fundet) ? 0 : 1)}</td></tr>`;
+    }).join('') + '</tbody></table>' +
+    '<p class="hjælp">Styklisten står i tegningshovedet. Rød betyder mere end 10 % fra.</p>';
+}
+
+/* Én rettelse lærer ordbogen resten. Retter man ét møbel af blokken
+   "Kvartpalle" til palle, får alle Kvartpalle-blokke i tegningen samme type
+   med det samme, og næste tegning fra samme tegnestue kommer rigtigt ind. */
+function laerAf(i) {
+  const o = state.ordbog || (state.ordbog = { blok: {}, lag: {} });
+  const navne = (i.blok || '').split(',').map(n => n.trim()).filter(n => n && !/^\*/.test(n));
+  let ramte = 0;
+  for (const navn of navne) {
+    o.blok[navn] = i.type;
+    for (const j of state.inventar) {
+      if (j === i || j.kilde !== 'cad' || j.bestemtAf === 'bekræftet') continue;
+      if ((j.blok || '').split(',').map(n => n.trim()).includes(navn)) {
+        j.type = i.type; j.bestemtAf = 'bekræftet'; j.sikkerhed = 1;
+        j.model = Inventar.vælgModel(j.type, j.dybde, j.laengde, j.tekst || '');
+        j.hoejde = (Moebler.MØBLER[j.model] || Inventar.INVENTAR_TYPER[j.type]).hoejde;
+        ramte++;
+      }
+    }
+  }
+  // uden bloknavn læres laget - men kun når laget ikke i forvejen siger noget andet
+  if (!navne.length && i.lag && !/^\(|^0$/.test(i.lag)) o.lag[i.lag] = i.type;
+  if (ramte) toast(`${ramte} andre møbler af samme blok sat til ${Inventar.INVENTAR_TYPER[i.type].navn}`);
+}
+
 /* Inventarfanen: opgørelse pr. type og en redigerbar liste over møblerne. */
 function visInventarPanel() {
   const st = Inventar.stykliste(state.inventar, state.indst.fagbredde);
+  const facit = tegningensFacit();
+  const usikre = state.inventar.filter(i => i.kilde === 'cad' && (i.sikkerhed || 0) < 0.7).length;
+  const mod = (fundet, tal) => tal == null ? '' : ` · tegningen siger ${fmt(tal)}`;
   $('#inventar-noegletal').innerHTML = [
-    { navn: 'Reol', vaerdi: fmt(st.meterReol, 1) + ' m', note: `${st.fagIAlt} fag i alt` },
-    { navn: 'Køl', vaerdi: fmt(st.meterKoel, 1) + ' m', note: 'løbende meter' },
-    { navn: 'Frost', vaerdi: fmt(st.meterFrost, 1) + ' m', note: 'løbende meter' },
-    { navn: 'Møbler', vaerdi: fmt(state.inventar.length), note: 'fundet i tegningen' }
+    { navn: 'Reol', vaerdi: fmt(st.meterReol, 1) + ' m', note: `${st.fagIAlt} fag i alt${mod(st.fagIAlt, facit && facit.fag)}` },
+    { navn: 'Køl', vaerdi: fmt(st.meterKoel, 1) + ' m', note: 'løbende meter' + mod(st.meterKoel, facit && facit.meterKoel) },
+    { navn: 'Frost', vaerdi: fmt(st.meterFrost, 1) + ' m', note: 'løbende meter' + mod(st.meterFrost, facit && facit.meterFrost) },
+    { navn: 'Møbler', vaerdi: fmt(state.inventar.length), note: usikre ? `${usikre} usikre – tjek de gule` : 'fundet i tegningen' }
   ].map(k => `<div class="kort"><span class="kort-navn">${k.navn}</span><strong>${k.vaerdi}</strong><span class="kort-note">${k.note}</span></div>`).join('');
+  visTegningensOpgoerelse(facit, st);
 
   const krop = $('#inventar-tabel tbody');
   if (!st.grupper.length) {
@@ -2579,11 +2906,17 @@ function visInventarPanel() {
   for (const i of state.inventar) {
     const t = Inventar.INVENTAR_TYPER[i.type] || Inventar.INVENTAR_TYPER.andet;
     const el = document.createElement('div');
-    el.className = 'inv' + (state.valgt && state.valgt.slags === 'inventar' && state.valgt.id === i.id ? ' valgt' : '');
+    const usikker = i.kilde === 'cad' && (i.sikkerhed || 0) < 0.7;
+    el.className = 'inv' + (state.valgt && state.valgt.slags === 'inventar' && state.valgt.id === i.id ? ' valgt' : '') + (usikker ? ' usikker' : '');
     el.style.borderLeftColor = t.farve;
     const op = Moebler.opgør(i);
+    /* Hvor kom typen fra? Det står på hvert møbel, så man kan se, om det er
+       tegnerens eget ord (blok), hans ordning (lag), en tekst - eller et gæt
+       på formen. Gæt vises som usikre og kan bekræftes med ét klik. */
+    const kildeTekst = { blok: 'fra bloknavn', lag: 'fra lagnavn', 'lag+tekst': 'fra lag og tekst', tekst: 'fra tekst', form: 'gæt på formen', bekræftet: 'bekræftet' }[i.bestemtAf] || '';
+    el.title = (i.blok ? `Blok: ${i.blok}\n` : '') + (i.lag ? `Lag: ${i.lag}\n` : '') + (kildeTekst ? `Type ${kildeTekst}` : '');
     el.innerHTML = `
-      <select data-h="type">${Object.entries(Inventar.INVENTAR_TYPER)
+      <select data-h="type" class="${usikker ? 'usikker' : ''}" title="${kildeTekst}">${Object.entries(Inventar.INVENTAR_TYPER)
         .map(([k, v]) => `<option value="${k}" ${k === i.type ? 'selected' : ''}>${v.navn}</option>`).join('')}</select>
       <input data-h="kategori" value="${(i.kategori || '').replace(/"/g, '&quot;')}" placeholder="varegruppe">
       <span class="meter" title="længde × dybde × højde">${fmt(i.laengde, 1)}×${fmt(i.dybde, 1)}×${fmt(i.hoejde, 1)}</span>
@@ -2604,6 +2937,8 @@ function visInventarPanel() {
       i.model = Inventar.vælgModel(i.type, i.dybde, i.laengde, i.tekst || '');
       i.hoejde = (Moebler.MØBLER[i.model] || ny).hoejde;
       i.fag = ny.maaler === 'fag' ? Math.max(1, Math.round(i.laengde / state.indst.fagbredde)) : null;
+      i.bestemtAf = 'bekræftet'; i.sikkerhed = 1;
+      laerAf(i);
       opdater();
     };
     el.querySelector('[data-h="kategori"]').onchange = e => { i.kategori = e.target.value; opdater(); };
@@ -4450,6 +4785,7 @@ function gemProjekt() {
     skinner: state.skinner,
     armaturer: state.armaturer,
     manuelt: state.manuelt,
+    ordbog: state.ordbog,
     lag: state.lag.map(l => (l.slags === 'cad'
       ? {
         navn: l.navn, slags: 'cad', synlig: l.synlig, opacitet: l.opacitet, x: l.x, y: l.y, skala: l.skala,
@@ -4477,6 +4813,7 @@ async function hentProjekt(fil) {
   state.skinner = d.skinner || [];
   state.armaturer = d.armaturer || [];
   state.manuelt = d.manuelt || {};
+  state.ordbog = Object.assign({ blok: {}, lag: {} }, d.ordbog || {});
   state.lag = [];
   for (const l of d.lag || []) {
     if (l.slags === 'cad') {

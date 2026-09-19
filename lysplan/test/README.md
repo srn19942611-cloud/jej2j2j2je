@@ -198,3 +198,82 @@ Den fangede to fejl, der ikke var til at se på en stor tegning: lagnavnet
 *æ*, og fallback-sporet sorterede bygningens eget omrids fra som "et møbel",
 fordi det er et lukket rektangel. Ydervæggen er også et lukket rektangel –
 den er bare 40 m lang.
+
+## `genkendelse-mod-tegningen.mjs`
+
+Genkendelsen holdt op mod en rigtig inventarplans egne tal. Prøvebutikken
+`butik.dxf` er syntetisk, og det er allerede gået galt to gange at stole på
+den. En rigtig plan bærer sit eget facit: styklisten i tegningshovedet
+("Alm. fag: 152 (inkl BO) Bake-Off-fag: 3 Endemoduler: 9 …") og
+møbelteksterne med længde ("SANTIAGO LF 95 7500 G", "250+ende - Frost").
+
+Tegningen er kundens og ligger ikke i repoet:
+
+```
+LYSPLAN_TEGNING=sti/til/plan.dwg node test/genkendelse-mod-tegningen.mjs
+```
+
+Uden den springes testen over, og det siges højt.
+
+Det, der måles, pr. type og kun inden for salgsarealet: fag mod
+styklistens fag (±10 %), endegavle (±2), bake-off-fag (±1), at alle møbler
+med et kølenavn i tekst eller blok er køl eller frost, at der er frost i
+salgsarealet, at salgsarealet er det rum væggene danner uden lager-,
+kontor- eller personaletekst i, og at højst 15 % af møblerne er gæt på
+formen.
+
+### Hvad motoren læser, i den rækkefølge den stoler på det
+
+1. **Bloknavnet.** Tegneren indsatte blokken `SANTIAGO LF 95 3750 G`, ikke
+   40 streger. Parseren gemte tidligere kun stregerne; nu gemmes hver
+   blokreference med navn, lag, retning og ramme målt langs blokkens egen
+   retning, og teksterne inde i blokken følger med. Sikkerhed 100 %.
+2. **Lagnavnet.** "Kølereoler", "Kølegondol Toronto - Malmö", "Inventar -
+   Frugt og Grønt" er tegnerens egen ordning. 90 %.
+3. **Teksten ved møblet.** "4,37 m Drikkevare køl", "6 Baby". 70 %. Teksten
+   præciserer blok og lag inden for samme familie: "250+ende - Frost" på en
+   Toronto/Malmö-gondol gør den til frost, "Bake-off" på laget Inventar gør
+   reolen til brød.
+4. **Formen.** Dybde over 1,6 m er en frostø, over 1,05 m en køler, ellers
+   en reol. 40 % – vises gult i listen, og kan bekræftes med ét klik.
+
+Det, brugeren bekræfter, gemmes i projektets ordbog (blok → type, lag →
+type) og læses først næste gang. Retter man ét Vej-selv-modul, følger alle
+Vej-selv-blokke i tegningen med, og næste tegning fra samme tegnestue
+kommer rigtigt ind.
+
+### Fejl, der blev fundet på Fakta-tegningen
+
+- Blokreferencerne blev målt i tegningens millimeter, mens stregerne var
+  regnet om til lærredet – hver blok var ti gange for stor. Den samme
+  omregning, stregerne får, lægges nu på blokkene.
+- Et endegavlsmodul på 1,2 × 0,6 m med to kvartpaller i sig blev regnet for
+  en samling og smidt væk; kvartpallerne blev til møbler. En samling er nu
+  stor (over 2,5 m eller 2 m²) – et lille modul med dele i er ét møbel.
+- "7 Vin" blev hæftet på et endestykke på ét modul, fordi det stod tættest,
+  og gav 7 fag på 0,98 m. Teksten hører nu til den række, der har plads til
+  tallet. Og i en række lagt af blokke er modulerne fagene: det er dem,
+  tegnerens egen stykliste tæller.
+- Kølereolen LISBONA og reolen "Reol 90-80 F&G" ved siden af blev til én
+  række på 60 dele. To forskellige blokke er to forskellige møbler.
+- Samme palle lå i tre lag af blokke, alle på samme størrelse, og blev talt
+  tre gange. Den yderste beholdes.
+- Respektafstande, kondensafløb, søjler (bips A321 – 0,84 m kvadrater) og
+  tegningsrammen blev til møbler. Lagene A29, A3x–A9x, Respektafstand,
+  Kondensafløb, Sanitet og Tegningshoved tæller ikke.
+
+### Salgsarealet som rum
+
+Den gamle metode groede et net ud fra møblerne og snappede klatten til
+væggene bagefter. Den nye tager rummet, væggene danner: væglinjerne (A20,
+A21, "Vægge") og dørene (A22, porte, glas) rasteres på 15 cm, huller lukkes
+morfologisk, og der flodfyldes fra møblerne. Det felt, flest møbler står i,
+er salgsarealet, med væggens indvendige side som kant.
+
+To ting skulle til, før det holdt på Fakta-tegningen. Ydervæggen ligger
+ikke på et væglag hele vejen rundt – i flere meter er facaden på andre lag
+– så ude og inde afgøres af *alt*, der er tegnet, mens kun væglagene deler
+rummene. Og lukningen prøves fra 0,9 m op til 3,0 m: den mindste, der
+giver et rum uden lager-, kontor-, gang- eller personaletekst i, vinder.
+Resultatet: 896 m² mod 856 m² fra den gamle metode – uden den ubenyttede
+hal på 259 m², uden apoteket, uden lageret og uden gangen.

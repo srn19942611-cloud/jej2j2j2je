@@ -381,7 +381,7 @@ const CAD = (() => {
     for (const l of (db.tables && db.tables.LAYER ? db.tables.LAYER.entries : [])) {
       lagInfo[l.name] = { navn: l.name, aci: l.colorIndex == null ? 7 : l.colorIndex, slukket: !!l.off || !!l.frozen, synlig: !(l.off || l.frozen) };
     }
-    const streger = [], tekster = [];
+    const streger = [], tekster = [], indsatser = [];
     const springOver = {};
     const blokke = db.blocks || {};
 
@@ -563,7 +563,16 @@ const CAD = (() => {
                 };
                 let lokal = gang(m, indsætM(punkt, e.xScale || 1, e.yScale || 1, e.rotation || 0));
                 lokal = gang(lokal, [1, 0, 0, 1, -(blok.basePoint ? blok.basePoint.x : 0), -(blok.basePoint ? blok.basePoint.y : 0)]);
-                gåEntiteter(blok.entities, lokal, dybde + 1, løsLag(e, arv));
+                const fra = streger.length, fraT = tekster.length;
+                const eget = løsLag(e, arv);
+                gåEntiteter(blok.entities, lokal, dybde + 1, eget);
+                /* Blokreferencen selv gemmes - ikke kun dens streger. Tegneren
+                   indsatte ikke 40 streger, han indsatte blokken SANTIAGO_LF95,
+                   og det navn er den mest pålidelige oplysning i hele filen.
+                   Rammen måles langs blokkens egen retning, så en drejet reol
+                   stadig bliver til et langt, smalt rektangel. */
+                const ind = blokIndsats(e.name, eget, lokal, streger, fra, tekster, fraT, dybde);
+                if (ind) indsatser.push(ind);
               }
             }
             break;
@@ -581,6 +590,36 @@ const CAD = (() => {
       }
     }
 
+    function blokIndsats(navn, eget, lokal, streger, fra, tekster, fraT, niveau) {
+      if (streger.length === fra) return null;
+      const rot = Math.atan2(lokal[1], lokal[0]);
+      const c = Math.cos(rot), sn = Math.sin(rot);
+      let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+      for (let k = fra; k < streger.length; k++) {
+        const q = streger[k].p;
+        for (let j = 0; j < q.length; j += 2) {
+          const u = q[j] * c + q[j + 1] * sn, v = -q[j] * sn + q[j + 1] * c;
+          if (u < u0) u0 = u; if (u > u1) u1 = u;
+          if (v < v0) v0 = v; if (v > v1) v1 = v;
+        }
+      }
+      if (!isFinite(u0)) return null;
+      const uM = (u0 + u1) / 2, vM = (v0 + v1) / 2;
+      const hjørne = (u, v) => [u * c - v * sn, u * sn + v * c];
+      // langsiden er møblets længde, uanset hvilken vej blokken blev tegnet
+      const bu = u1 - u0, bv = v1 - v0;
+      const langs = bu >= bv;
+      return {
+        navn, lag: eget.lag, aci: eget.aci, niveau,
+        centrum: hjørne(uM, vM),
+        laengde: langs ? bu : bv, dybde: langs ? bv : bu,
+        vinkel: langs ? rot : rot + Math.PI / 2,
+        hjørner: [hjørne(u0, v0), hjørne(u1, v0), hjørne(u1, v1), hjørne(u0, v1)],
+        streger: streger.length - fra,
+        tekster: tekster.slice(fraT).map(t => t.t).filter(Boolean)
+      };
+    }
+
     gåEntiteter(db.entities, enhedsM, 0, null);
 
     // omregning fra tegningens enhed til meter
@@ -592,7 +631,7 @@ const CAD = (() => {
       ramme.gættetEnhed = true;
     }
     return {
-      streger, tekster, lagInfo, ramme, kerne: kerneRamme(streger), meterPerEnhed,
+      streger, tekster, indsatser, lagInfo, ramme, kerne: kerneRamme(streger), meterPerEnhed,
       gættetEnhed: !!ramme.gættetEnhed, springOver,
       antalEntiteter: (db.entities || []).length,
       blokke: Object.keys(blokke).length
