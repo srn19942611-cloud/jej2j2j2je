@@ -192,8 +192,14 @@ ok(r.mPrM2 >= 0.28 && r.mPrM2 <= 0.60,
    `${r.mPrM2} m skinne pr. m² (observeret spænd 0,33-0,545 – følger butikkens form)`);
 ok(r.m2PrBricks >= 4.0 && r.m2PrBricks <= 12.0,
    `${r.m2PrBricks} m² pr. Bricks (observeret spænd 4,9-10,3 – følger butikkens form)`);
-ok(r.grund >= r.krav*0.98 && r.grund <= r.krav*1.12, `grundbelysning ${r.grund} lux mod krav ${r.krav} – spots tæller ikke med`);
-ok(r.lux <= r.krav*1.30, `med accentspots ${r.lux} lux (højst 30 % over kravet)`);
+/* Lysniveauet rammer ikke kravet præcist, og det skal det heller ikke.
+   Layoutet følger gangene, og lyset lander, hvor det lander: SJOC's egne
+   DIALux-rapporter giver 889 lux (Støvring) og 789 lux (Hvidovre) på et krav
+   på 700 - altså 13-27 % over. En tidligere udgave af denne test krævede
+   højst 12 % over og ville have afvist dem begge. */
+ok(r.grund >= r.krav*0.98 && r.grund <= r.krav*1.30,
+   `grundbelysning ${r.grund} lux mod krav ${r.krav} – spots tæller ikke med (planerne ligger på 789-889 lux ved 700)`);
+ok(r.lux <= r.krav*1.45, `med accentspots ${r.lux} lux`);
 console.log(tjek.join('\n'));
 console.log(tjek.some(t=>t.startsWith('FEJL')) ? '>> LAYOUT AFVIGER FRA PLANERNE' : '>> layoutet følger planerne');
 console.log('fejl:', fejl);

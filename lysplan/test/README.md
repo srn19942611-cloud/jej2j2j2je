@@ -65,6 +65,40 @@ ligger skævt for gangen, klippes stykket, og kun de frie stumper på mindst
 først efter centreringen, arver de en midte, der blev målt på hele det
 oprindelige stykke.
 
+## Hvad der er en møbelrække, og hvad en skinne må ligge over
+
+To ting kostede en hel række lys på prøvebutikken, og begge handlede om at
+behandle alt inventar ens.
+
+**En frostø er ikke en møbelrække.** Den er 3,5 m lang og 2 m dyb og står
+midt i gangen mellem to reolrækker. Fordi den er dyb, rører den begge
+rækker, og båndene smeltede sammen til ét – så hele gangen imellem dem
+forsvandt, og der kom ingen skinne. En gangvæg skal derfor være lang i
+forhold til de andre vægge i feltet: mindst 40 % af den længste. Det tal
+kalibrerer sig selv – i en lille butik, hvor den længste række er 4 m, er
+grænsen 1,6 m. Står der kun korte møbler i feltet, bruges de alligevel.
+
+**Højden afgør, ikke om der står noget.** En skinne 2,8 m oppe over en 2 m
+høj reol eller kølevæg lyser reoltoppen i stedet for gangen – den skal stå
+ved siden af. Over en frostø på 1,1 m, en kasselinje eller et podie lyser
+den præcis det, den skal, og sådan ligger de også på planerne. Kun inventar
+over 1,5 m spærrer derfor for en skinne. Før den skelnen blev skinnen i den
+genfundne gang klippet i to stumper af frostøen.
+
+Efter begge rettelser: 7 gangskinner på 2,80 / 5,50 / 8,10 / 10,70 / 13,30 /
+15,90 / 18,60 m – én pr. gang, jævnt fordelt, i fuld længde.
+
+## Lysniveauet rammer ikke kravet præcist
+
+Og det skal det heller ikke. Layoutet følger gangene, og lyset lander, hvor
+det lander. SJOC's egne DIALux-rapporter giver 889 lux (Støvring) og 789 lux
+(Hvidovre) på et krav om 700 – altså 13–27 % over.
+
+En tidligere udgave af denne test krævede højst 12 % over kravet og ville
+have afvist dem begge. Grænsen er nu 30 % på grundbelysningen, og værktøjet
+siger til, når en butik har flere gange, end lyskravet kræver, i stedet for
+at fjerne en række for at ramme et tal.
+
 ## Firkanter og rækkeafstand
 
 Skinnerne skal som udgangspunkt hænge sammen i firkanter, og to rækker må

@@ -3180,11 +3180,17 @@ function inventarIZone(zone) {
 /* Alt hvad en skinne ikke må ligge oven på.
 
    inventarIZone giver kun det rækkedannende inventar, for det er rækkerne, der
-   bestemmer gangretningen og midten. Men en skinne må heller ikke ligge hen
-   over en kasselinje, en ø eller en reol lige uden for zonekanten, så spærret
-   tælles på alt inventar med en krop. */
+   bestemmer gangretningen og midten. Spærret er bredere: også en reol lige
+   uden for zonekanten er i vejen.
+
+   Men det er højden, der afgør det, ikke om der står noget. En skinne 2,8 m
+   oppe over en 2 m høj reol eller kølevæg lyser reoltoppen i stedet for
+   gangen - den skal stå ved siden af. Over en frostø på 1,1 m, en kasselinje
+   eller et podie lyser den derimod præcis det, den skal, og sådan ligger de
+   også på planerne. Derfor spærrer kun det høje inventar. */
 function spaerrendeMoebler() {
-  return state.inventar.filter(i => i.laengde >= 0.4 && i.dybde >= 0.2);
+  return state.inventar.filter(i =>
+    i.laengde >= 0.4 && i.dybde >= 0.2 && (i.hoejde || 1.8) > SKINNE.spaerhoejde);
 }
 
 /* Klipper et linjestykke mod zonens kant, så skinner ikke løber udenfor. */
@@ -3242,6 +3248,8 @@ const SKINNE = {
   // er der for lidt skinne i butikken, og så skal der flere rækker til - ikke
   // armaturerne tættere sammen.
   taethedsMaal: 2.56,
+  // højere inventar end det skal skinnen stå ved siden af, ikke oven på
+  spaerhoejde: 1.5,
   mindsteGang: 1.1,        // smallere end det er ikke en gang, men en spalte
   mindsteStykke: 2.5,      // en stump kortere end det bærer ikke et armatur fornuftigt
   // to rækker tættere på hinanden end det er ikke to rækker, men en dobbeltstreg.
@@ -3751,10 +3759,20 @@ function gangskinnerIFelt(pts, v, cc, zone) {
   return linjer;
 }
 
-/* Møbelrækkerne inden for ét felt, set på tværs af feltets retning. */
+/* Møbelrækkerne inden for ét felt, set på tværs af feltets retning.
+
+   En frostø er ikke en møbelrække. Den er 3,5 m lang og 2 m dyb og står midt
+   i gangen mellem to reolrækker - men fordi den er dyb, rører den begge rækker
+   og smelter dem sammen til ét bånd, så hele gangen imellem dem forsvinder.
+   Det kostede en hel række lys på prøvebutikken.
+
+   En gangvæg skal derfor være lang i forhold til de andre vægge i feltet:
+   mindst 40 % af den længste. Det tal kalibrerer sig selv - i en lille butik,
+   hvor den længste række er 4 m, er grænsen 1,6 m. Øen bliver i stedet en
+   forhindring, som skinnen viger udenom lokalt (klipFriAfMoebler). */
 function moebelBaandIFelt(pts, v, zone) {
   const c = Math.cos(v), sn = Math.sin(v);
-  const baand = [];
+  const emner = [];
   for (const inv of inventarIZone(zone)) {
     if (inv.laengde < 0.8) continue;
     if (!Geom.pointInPolygon(inv.centrum, pts)) continue;
@@ -3766,18 +3784,27 @@ function moebelBaandIFelt(pts, v, zone) {
       if (t < lav) lav = t;
       if (t > høj) høj = t;
     }
-    baand.push({ lav, høj, vægt: inv.laengde });
+    emner.push({ lav, høj, vægt: inv.laengde });
   }
-  baand.sort((a, b) => a.lav - b.lav);
-  const samlet = [];
-  for (const b of baand) {
-    const sidste = samlet[samlet.length - 1];
-    if (sidste && b.lav <= sidste.høj + mToPx(0.25)) {
-      sidste.høj = Math.max(sidste.høj, b.høj);
-      sidste.vægt += b.vægt;
-    } else samlet.push({ ...b });
-  }
-  return samlet.filter(b => b.vægt >= 1.5);
+  if (!emner.length) return [];
+
+  const saml = liste => {
+    const sorteret = liste.slice().sort((a, b) => a.lav - b.lav);
+    const samlet = [];
+    for (const b of sorteret) {
+      const sidste = samlet[samlet.length - 1];
+      if (sidste && b.lav <= sidste.høj + mToPx(0.25)) {
+        sidste.høj = Math.max(sidste.høj, b.høj);
+        sidste.vægt += b.vægt;
+      } else samlet.push({ ...b });
+    }
+    return samlet.filter(b => b.vægt >= 1.5);
+  };
+
+  const længste = emner.reduce((a, b) => Math.max(a, b.vægt), 0);
+  const vægge = saml(emner.filter(b => b.vægt >= længste * 0.4));
+  // står der kun korte møbler i feltet, er de alt hvad vi har at gå efter
+  return vægge.length >= 2 ? vægge : saml(emner);
 }
 
 /* Gangskinnerne for hele salgsarealet: ét felt pr. inventarretning, hver
@@ -3973,8 +4000,11 @@ function genererSkinner(zone) {
        rækkerne ikke tættere end 1,8 m, uden at planen holder op med at ligne
        referencerne - så det er armaturvalget, der skal laves om. */
     toast(`${zoneNavn(zone)}: ${fmt(målt, 0)} lux mod krav ${fmt(krav)} – ${fmt(krav - målt, 0)} lux fra. Butikken kan ikke bære flere skinnerækker uden at få to rækker side om side, og armaturerne sidder allerede med ${fmt(afstand, 1)} m. Vælg et kraftigere armatur.`, 'fejl');
-  } else if (afstand > SKINNE.maksArmatur - 0.05) {
-    toast(`${zoneNavn(zone)}: armaturerne sidder ${fmt(afstand, 1)} m fra hinanden – planerne ligger på 3,0–3,5 m. Butikken har flere gange, end lyskravet kræver.`);
+  } else if (målt > krav * 1.15) {
+    /* Layoutet følger gangene, ikke lyskravet, så lyset kan lande over. Det
+       gør SJOC's egne planer også (789-889 lux på et krav om 700), men det
+       skal siges, så det er et valg og ikke en overraskelse. */
+    toast(`${zoneNavn(zone)}: ${fmt(målt, 0)} lux mod krav ${fmt(krav)} – ${Math.round((målt / krav - 1) * 100)} % over. Butikken har flere gange, end lyskravet kræver, og armaturerne sidder allerede med ${fmt(afstand, 1)} m. Planerne fra SJOC ligger typisk 13–27 % over.`);
   } else {
     /* Der kunne ikke lægges mere skinne i gangene, så kravet er nået ved at
        sætte armaturerne tættere end nogen af planerne gør. Det skal siges
