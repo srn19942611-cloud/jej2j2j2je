@@ -554,3 +554,74 @@ export function tilbagefald(opgaver, { foer, minAlderDage = 180, nu = new Date()
 
   return { tilbagefald: false, afvistTidligere: false, opgave: null, tekst: null };
 }
+
+/* ---- Er nogen allerede på den? --------------------------------------------
+ * Stefan, 20. september: «alt hvad der er håndteret, alt hvad der er styr på,
+ * alt hvad der kører, skal vi ikke vise som fejl igen.»
+ *
+ * Målerkoblingen ovenfor (fordelOpgaver) finder kun opgaver, der nævner
+ * måleren eller anlægget — 1.634 af 28.750. Det meste, en butik melder ind,
+ * nævner ingen af delene: «Kølmaskine levere ikke køl», «Service af chiller»,
+ * «Køleudskiftning». På porteføljekørslen havde 483 af 867 fund en åben
+ * opgave i samme butik og samme fag efter bruddet — og de fund er ikke nye
+ * fejl, de er den fejl, nogen allerede er på.
+ *
+ * Så spørgsmålet stilles på butiksniveau: samme butik, samme fag, oprettet
+ * efter bruddet (med tre døgns slæk, for butikken mærker symptomet før
+ * måleren). Det er groft, og det er meningen. Hellere holde et fund tilbage,
+ * fordi en tekniker allerede er bestilt til kølen i den butik, end sende
+ * nummer to afsted. Fundet forsvinder ikke — det står som «under behandling»
+ * og kommer igen, hvis opgaven lukkes og afvigelsen bliver stående. */
+export const FAGORD = {
+  koel_frys:   /køl|frys|kompressor|kølemøbel|kølerum|frostrum|kølemaskine|køleanlæg|kondensator/i,
+  koeleflader: /klima|køleflade|komfortkøl|chiller|aircon|\bac\b|køl.{0,14}vent|vent.{0,14}køl|varmepumpe/i,
+  ventilation: /vent|aggregat|udsugning|indblæs|emhætte|luftskifte/i,
+  lys_inde:    /\blys|belysning|armatur|lampe|\bled\b/i,
+  /* Udendørs kræver et udendørs-ord: «Lys i mælkefront mangler» er ikke p-pladsen. */
+  lys_ude:     /(\blys|belysning|armatur|lampe).{0,40}(udv|ude\b|udendørs|p-plads|parkering|skilt|pylon|facade)|(udv|udendørs|p-plads|parkering|skilt|pylon|facade).{0,40}(\blys|belysning|armatur|lampe)/i,
+  varme_el:    /varme|vvb|varmtvand|varmepumpe|radiator|kedel|elvarme/i,
+  varme_fjern: /varme|fjernvarme|veksler|radiator|kedel|vvb/i,
+  solceller:   /solcelle|inverter|\bpv\b/i,
+  cts:         /cts|styring|automatik|\bbms\b/i,
+};
+const FAGORD_NAVN = {
+  koel_frys: 'køl/frys', koeleflader: 'klima/køleflader', ventilation: 'ventilation', lys_inde: 'belysning',
+  lys_ude: 'udendørsbelysning', varme_el: 'varme', varme_fjern: 'fjernvarme', solceller: 'solceller', cts: 'CTS',
+};
+/* Afviste opgaver er ikke håndtering — de er det modsatte. Lukkede er. */
+const AFVIST_STATUS = /^(Rejected|RejectedByExternal)$/;
+const LUKKET_STATUS = /^(Completed|EmployeeCompletedAwaitingDispatcher|ApprovedAwaitingCustomer)$/;
+const kortTekst = (t, n = 70) => { const s = String(t || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+
+/**
+ * 'i_gang' — der er en åben opgave på faget i butikken efter bruddet.
+ * 'ordnet' — der er lukket en opgave på faget i butikken efter bruddet.
+ * 'ingen'  — ingen opgave på faget i butikken i vinduet.
+ *
+ * Uden bruddato bruges de sidste `vinduedage` dage.
+ */
+export function haandtering({ butiksnummer, faggruppe, brudDato = null }, butiksopgaver, { nu = new Date(), vinduedage = 60, slaekDage = 3 } = {}) {
+  const ord = FAGORD[faggruppe];
+  if (!ord || !butiksopgaver?.length) return { klasse: 'ingen', opgave: null, dage: null, fra: null };
+  const idag = nu.toISOString().slice(0, 10);
+  const fra = brudDato
+    ? new Date((dagTal(brudDato) - slaekDage) * DAG).toISOString().slice(0, 10)
+    : new Date(nu.getTime() - vinduedage * DAG).toISOString().slice(0, 10);
+  const kandidater = butiksopgaver
+    .filter((o) => o.dato && o.dato >= fra && o.dato <= idag)
+    .filter((o) => !AFVIST_STATUS.test(o.status || ''))
+    .filter((o) => ord.test(`${o.titel || ''} ${o.tekst || ''} ${o.anlaeg || ''}`));
+  if (!kandidater.length) return { klasse: 'ingen', opgave: null, dage: null, fra };
+
+  const aabne = kandidater.filter((o) => !o.lukket && !LUKKET_STATUS.test(o.status || ''));
+  const valgt = (aabne.length ? aabne : kandidater).sort((a, b) => b.dato.localeCompare(a.dato))[0];
+  const fag = FAGORD_NAVN[faggruppe] || faggruppe;
+  return {
+    klasse: aabne.length ? 'i_gang' : 'ordnet',
+    opgave: valgt, dage: dageMellem(valgt.dato, idag), fra, antal: kandidater.length, aabne: aabne.length,
+    tekst: aabne.length
+      ? `Der er allerede en åben opgave på ${fag} i butikken, oprettet ${valgt.dato}: "${kortTekst(valgt.titel || valgt.tekst)}".`
+      : `Der er lukket en opgave på ${fag} i butikken efter bruddet (${valgt.dato} → ${valgt.lukket || 'lukket'}): "${kortTekst(valgt.titel || valgt.tekst)}". `
+        + 'Står afvigelsen der stadig i dag, er det et tilbagefald — ellers er den ordnet.',
+  };
+}

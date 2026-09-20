@@ -24,7 +24,7 @@
 import { klassificerMaalepunkt } from './anlaeg.js';
 import { energistroem, udtraekKoder, koblButik } from './kobling.js';
 import { signaturFraMaaling } from './maaling.js';
-import { fordelOpgaver, normButik } from './korrelation.js';
+import { fordelOpgaver, normButik, haandtering } from './korrelation.js';
 import { varselFraSignatur, PRISER } from './agent.js';
 import { sigt, foersteKoersel, STANDARDBUDGET } from './flaade.js';
 import { fgNavn } from './taxonomy.js';
@@ -381,6 +381,16 @@ export function storkoersel({
   regnskab.opgaverFordelt = fordeling.begrundelser.length;
   regnskab.opgaverUfordelt = fordeling.ufordelt.length;
 
+  /* Alle opgaver pr. butik — også de 27.000, der ikke nævner en måler. Det
+   * er dem, «er nogen allerede på den?» skal stilles imod. */
+  const opgaverPrButik = new Map();
+  for (const o of opgaver) {
+    const b = normButik(o.butiksnummer);
+    if (!b) continue;
+    if (!opgaverPrButik.has(b)) opgaverPrButik.set(b, []);
+    opgaverPrButik.get(b).push(o);
+  }
+
   /* 3 · Kvartersbekræftelser — weekend kun i områder uden weekendaktivitet. */
   const enhedPrMaaler = new Map(enheder.map((x) => [x.enhed.meterId, x.enhed]));
   const bekraeftelser = bekraeftelserFraDb(kvarter, {
@@ -402,8 +412,15 @@ export function storkoersel({
     if (!v) { ingenAfvigelse.push(enhed); continue; }
     if (v.ikkeDiagnoserbar) { ikkeDiagnoserbare.push(v); continue; }
     if (bek) v.kvarter = bek;
+    v.haandtering = haandtering(
+      { butiksnummer: v.butiksnummer, faggruppe: v.faggruppe, brudDato: signatur.brud?.dato || null },
+      opgaverPrButik.get(normButik(v.butiksnummer)) || [], { nu },
+    );
+    if (v.haandtering.klasse !== 'ingen') v.forbehold = [...(v.forbehold || []), v.haandtering.tekst];
     varsler.push(v);
   }
+  regnskab.underBehandlingIalt = varsler.filter((v) => v.haandtering.klasse === 'i_gang').length;
+  regnskab.ordnetSidenBrudIalt = varsler.filter((v) => v.haandtering.klasse === 'ordnet').length;
   regnskab.afvistSignatur = afvistSignatur.length;
   regnskab.ingenAfvigelse = ingenAfvigelse.length;
   regnskab.ikkeDiagnoserbare = ikkeDiagnoserbare.length;
@@ -478,7 +495,10 @@ export function rapportTekst(r) {
   l.push(`    gengangere              ${k.gengangere}`);
   l.push(`    afvist af FDR           ${k.afvistAfFDR}   (p-grænse ${k.pGraense?.toExponential ? k.pGraense.toExponential(1) : k.pGraense}, forventet falske ${k.forventedeFalske})`);
   l.push(`    i systematiske fund     ${k.iSystematisk}`);
-  l.push(`    sendt                   ${k.sendt}`);
+  l.push(`    under behandling        ${k.underBehandling ?? 0}   (åben opgave på faget i butikken efter bruddet)`);
+  l.push(`    ordnet siden bruddet    ${k.ordnetSidenBrud ?? 0}   (lukket opgave — afventer øjebliksbilledet)`);
+  l.push(`    uden årsag              ${k.udenAarsag ?? 0}   (afvigelse, motoren ikke kan sætte navn på)`);
+  l.push(`    sendt — ugens fem       ${k.sendt}`);
   l.push(`    venter på budget        ${k.overBudget}`);
   l.push(`  opgaver ind ${k.opgaver} · fordelt på målere ${k.opgaverFordelt} · ufordelt ${k.opgaverUfordelt}`);
   l.push(`  kvartersbekræftelser ${k.bekraeftelser}`);

@@ -372,16 +372,42 @@ export function sigt(varsler, { aabne = [], gate = GATE, maalFDR = 0.10, budget 
   }
   const enkeltsager = f.godkendt.filter((v) => !iSystematisk.has(v.id));
 
-  const { sendt, venter } = fordelEfterBudget(enkeltsager, { budget });
+  /* Det, der allerede er håndteret, og det, der ikke har en årsag, tager
+   * ikke plads i ugens fem.
+   *
+   * «Under behandling» er fund, hvor der allerede ligger en åben opgave på
+   * faget i butikken efter bruddet (korrelation.haandtering). Det er ikke
+   * nye fejl; det er den fejl, nogen er på. «Ordnet siden bruddet» er fund,
+   * hvor opgaven er lukket — og om afvigelsen så stadig står, kan først
+   * afgøres på halen af serien (øjebliksbilledet), som tabellen endnu ikke
+   * bærer. Indtil da holdes de tilbage, synligt. «Uden årsag» er afvigelser,
+   * motoren ikke kan sætte navn på; de er værd at vide, men de er ikke det,
+   * en faggruppe skal afbrydes med. */
+  const underBehandling = [];
+  const ordnetSidenBrud = [];
+  const udenAarsag = [];
+  const tilBudget = [];
+  for (const v of enkeltsager) {
+    const h = v.haandtering?.klasse;
+    if (h === 'i_gang') underBehandling.push(v);
+    else if (h === 'ordnet') ordnetSidenBrud.push(v);
+    else if (v.aarsagId === 'ukendt') udenAarsag.push(v);
+    else tilBudget.push(v);
+  }
+
+  const { sendt, venter } = fordelEfterBudget(tilBudget, { budget });
 
   return {
-    sendt, venter, systematiske,
+    sendt, venter, systematiske, underBehandling, ordnetSidenBrud, udenAarsag,
     regnskab: {
       ialt,
       faldtIGate: faldtIGate.length,
       gengangere: gengangere.length,
       afvistAfFDR: f.afvist.length,
       iSystematisk: iSystematisk.size,
+      underBehandling: underBehandling.length,
+      ordnetSidenBrud: ordnetSidenBrud.length,
+      udenAarsag: udenAarsag.length,
       overBudget: venter.length,
       sendt: sendt.length,
       tests: f.tests,

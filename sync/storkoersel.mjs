@@ -37,6 +37,15 @@ if (typeof laeringSti === 'string') {
   catch { console.error(`ingen læring på ${laeringSti} — kører på grundpriors`); }
 }
 const koerselId = flag('koersel');
+/* Forrige kørsels rapport.json: det, der allerede er sendt, skal ikke sendes
+ * igen som nyt. Dedupering sker på enhed + årsag, så ugens fem i sidste uge
+ * bliver gengangere i denne — synligt i regnskabet, ikke i nogens indbakke. */
+const forrigeSti = flag('forrige');
+let aabne = [];
+if (typeof forrigeSti === 'string') {
+  try { aabne = JSON.parse(await readFile(forrigeSti, 'utf8')).sendt || []; }
+  catch { console.error(`ingen forrige rapport på ${forrigeSti} — alt regnes som nyt`); }
+}
 
 const log = (...a) => console.error(`[storkoersel ${new Date().toISOString().slice(11, 19)}]`, ...a);
 
@@ -122,7 +131,8 @@ if (kilde.anlaeg?.length && kilde.meters?.length) {
   log(`kobling læst: ${Object.keys(anlaegPrMaaler).length} målere`);
 }
 
-const rapport = storkoersel({ signaturer, opgaver, kvarter: kilde.kvarter, anlaegPrMaaler, laering });
+const rapport = storkoersel({ signaturer, opgaver, kvarter: kilde.kvarter, anlaegPrMaaler, laering, aabne });
+if (aabne.length) log(`forrige kørsel: ${aabne.length} allerede sendt — regnes som gengangere`);
 if (laering) log(`læring: ${(laering.svar || []).length} svar · ${(laering.domme || []).length} domme fra beslutningsarket`);
 const tekst = rapportTekst(rapport);
 console.log(tekst);
@@ -139,11 +149,18 @@ if (udMappe) {
     kobling: v.kobling ? { klasse: v.kobling.klasse, dage: v.kobling.dage, opgave: v.kobling.opgave?.opgavenr || null } : null,
     tilbagefald: v.historik?.tilbagefald || false, afvistTidligere: v.historik?.afvistTidligere || false,
     kvarter: v.kvarter ? { detektor: v.kvarter.detektor, vaerdier: v.kvarter.vaerdier } : null,
+    haandtering: v.haandtering ? {
+      klasse: v.haandtering.klasse, dage: v.haandtering.dage, antal: v.haandtering.antal ?? 0,
+      opgave: v.haandtering.opgave ? { opgavenr: v.haandtering.opgave.opgavenr, dato: v.haandtering.opgave.dato, lukket: v.haandtering.opgave.lukket, status: v.haandtering.opgave.status, titel: v.haandtering.opgave.titel } : null,
+    } : null,
     forbehold: v.forbehold, tjekpunkter: v.tjekpunkter, p: v.p ?? null,
   });
   const ud = {
     tidspunkt: rapport.tidspunkt, koerselId: rapport.koerselId, regnskab: rapport.regnskab,
     sendt: rapport.sigtet.sendt.map(slank), venter: rapport.sigtet.venter.map(slank),
+    underBehandling: (rapport.sigtet.underBehandling || []).map(slank),
+    ordnetSidenBrud: (rapport.sigtet.ordnetSidenBrud || []).map(slank),
+    udenAarsag: (rapport.sigtet.udenAarsag || []).map(slank),
     systematiske: rapport.sigtet.systematiske, foerste: rapport.foerste.opgoerelse,
     /* Det, første kørsel samler: kampagnerne er de beslutninger, der erstatter
      * hundredvis af enkeltsager, og straks-listen er dét, der ikke kan vente. */
