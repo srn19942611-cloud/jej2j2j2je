@@ -1182,6 +1182,11 @@ export const KVARTERSBEKRAEFTELSE = {
                     tekst: 'Kvartersdata viser afrimninger, der ikke afsluttes.' },
   kortcykling:    { aarsager: ['kompressor_delvist', 'koelemiddel_laekage'],
                     tekst: 'Kvartersdata viser kortcykling — kompressoren starter og stopper for tit.' },
+  /* Vand: natflowet kl. 01–05 som andel af døgnets flow, regnet af Lovable på
+   * kvartersdata. Nul er tæt. Over 0,3 er vand, der løber, mens butikken er
+   * lukket — og det er de tre første årsager, ikke en ændret drift. */
+  natflow:        { aarsager: ['vand_laekage', 'toilet_loeber', 'koelevand_spild'],
+                    tekst: 'Kvartersdata viser et konstant natflow kl. 01–05 — vand, der løber, mens butikken er lukket.' },
   samtidig_koel_varme: { aarsager: ['genvinding_bortkoeles', 'ventil_utaet'],
                     tekst: 'Kvartersdata viser køl og varme over deres eget normalniveau på samme time.' },
 };

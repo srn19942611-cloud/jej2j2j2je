@@ -386,10 +386,30 @@ export function sigt(varsler, { aabne = [], gate = GATE, maalFDR = 0.10, budget 
   const underBehandling = [];
   const ordnetSidenBrud = [];
   const udenAarsag = [];
+  const vaekIgen = [];
+  const doedeMaalere = [];
   const tilBudget = [];
+  let tilbagefaldEfterLukket = 0;
   for (const v of enkeltsager) {
     const h = v.haandtering?.klasse;
+    const hale = v.hale?.klasse || 'ukendt';
+    /* Halen afgør øjebliksbilledet, hvor den findes. Er afvigelsen væk i de
+     * sidste 14 døgn, er der ikke noget at sende — uanset hvad der stod i
+     * juli. Er en opgave lukket, og halen afviger stadig, er det ikke
+     * «ordnet», det er et tilbagefald, og det skal ud. En død måler er
+     * stadig et fund (blindt punkt), og den går sin egen vej i diagnosen. */
+    if (hale === 'vaek_igen') { vaekIgen.push(v); continue; }
+    /* Halen er nul: måleren leverer ikke længere, uanset hvad segmentet fik
+     * som diagnose. Det er en sag til Enity om dataleverancen, ikke en
+     * tekniker — og det er ét systematisk fund, ikke én opgave pr. måler. */
+    if (hale === 'doed' && v.aarsagId !== 'maaler_doed') { doedeMaalere.push(v); continue; }
     if (h === 'i_gang') underBehandling.push(v);
+    else if (h === 'ordnet' && hale === 'staar_stadig') {
+      tilbagefaldEfterLukket++;
+      v.tilbagefald = true;
+      v.forbehold = [...(v.forbehold || []), 'Opgaven er lukket, men halen afviger stadig. Det er et tilbagefald — find årsagen, ikke kun symptomet.'];
+      if (v.aarsagId === 'ukendt') udenAarsag.push(v); else tilBudget.push(v);
+    }
     else if (h === 'ordnet') ordnetSidenBrud.push(v);
     else if (v.aarsagId === 'ukendt') udenAarsag.push(v);
     else tilBudget.push(v);
@@ -398,7 +418,7 @@ export function sigt(varsler, { aabne = [], gate = GATE, maalFDR = 0.10, budget 
   const { sendt, venter } = fordelEfterBudget(tilBudget, { budget });
 
   return {
-    sendt, venter, systematiske, underBehandling, ordnetSidenBrud, udenAarsag,
+    sendt, venter, systematiske, underBehandling, ordnetSidenBrud, udenAarsag, vaekIgen, doedeMaalere,
     regnskab: {
       ialt,
       faldtIGate: faldtIGate.length,
@@ -408,6 +428,9 @@ export function sigt(varsler, { aabne = [], gate = GATE, maalFDR = 0.10, budget 
       underBehandling: underBehandling.length,
       ordnetSidenBrud: ordnetSidenBrud.length,
       udenAarsag: udenAarsag.length,
+      vaekIgen: vaekIgen.length,
+      doedeMaalere: doedeMaalere.length,
+      tilbagefaldEfterLukket,
       overBudget: venter.length,
       sendt: sendt.length,
       tests: f.tests,

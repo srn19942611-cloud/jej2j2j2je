@@ -149,6 +149,7 @@ if (udMappe) {
     kobling: v.kobling ? { klasse: v.kobling.klasse, dage: v.kobling.dage, opgave: v.kobling.opgave?.opgavenr || null } : null,
     tilbagefald: v.historik?.tilbagefald || false, afvistTidligere: v.historik?.afvistTidligere || false,
     kvarter: v.kvarter ? { detektor: v.kvarter.detektor, vaerdier: v.kvarter.vaerdier } : null,
+    hale: v.hale || null,
     haandtering: v.haandtering ? {
       klasse: v.haandtering.klasse, dage: v.haandtering.dage, antal: v.haandtering.antal ?? 0,
       opgave: v.haandtering.opgave ? { opgavenr: v.haandtering.opgave.opgavenr, dato: v.haandtering.opgave.dato, lukket: v.haandtering.opgave.lukket, status: v.haandtering.opgave.status, titel: v.haandtering.opgave.titel } : null,
@@ -161,6 +162,8 @@ if (udMappe) {
     underBehandling: (rapport.sigtet.underBehandling || []).map(slank),
     ordnetSidenBrud: (rapport.sigtet.ordnetSidenBrud || []).map(slank),
     udenAarsag: (rapport.sigtet.udenAarsag || []).map(slank),
+    vaekIgen: (rapport.sigtet.vaekIgen || []).map(slank),
+    doedeMaalere: (rapport.sigtet.doedeMaalere || []).map(slank),
     systematiske: rapport.sigtet.systematiske, foerste: rapport.foerste.opgoerelse,
     /* Det, første kørsel samler: kampagnerne er de beslutninger, der erstatter
      * hundredvis af enkeltsager, og straks-listen er dét, der ikke kan vente. */

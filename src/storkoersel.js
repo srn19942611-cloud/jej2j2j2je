@@ -53,7 +53,38 @@ export function signaturFraDb(r) {
     vejrforhold: tal(r.vejrforhold), b: tal(r.b),
     beregnetAt: tekst(r.beregnet_at) || null,
     vurderingsdoegn: 120,
+    /* Halen — de sidste 14 døgn — er øjebliksbilledet. Uden den er
+     * afvigelsen et gennemsnit over hele perioden efter bruddet, og så kan
+     * en fejl fra juli, der er rettet i august, stadig se ud som en fejl. */
+    sidsteDato: r.sidste_dato ? tekst(r.sidste_dato).slice(0, 10) : null,
+    haleDoegn: tal(r.hale_doegn), haleAfvigPct: tal(r.hale_afvig_pct), haleRestniveau: tal(r.hale_restniveau),
+    /* Vand: natflow kl. 01–05 delt med døgnets flow, på kvartersdata. Nul er
+     * tæt; over 0,3 er vand, der løber, mens butikken er lukket. */
+    natAndel: tal(r.nat_andel),
   };
+}
+
+/* Hvor lille et grundlag kan bære en procent? Varme om sommeren og vand på
+ * en bimåler ligger tit på få enheder om dagen, og dér er 1.670 % ikke et
+ * fund — det er 34 kWh på en flade, der plejer at bruge 2. Under gulvet
+ * regnes rækken som ikke modelleret, med grund. El har intet gulv; det har
+ * effektstørrelsen i diagnosen. */
+export const GRUNDLAGSGULV = { Heat: 5, Water: 0.05 };
+
+/**
+ * Øjebliksbilledet på én række: står afvigelsen der stadig i dag?
+ *   'staar_stadig' — halen afviger i samme retning
+ *   'vaek_igen'    — halen ligger på normalen igen
+ *   'doed'         — halen er nul: måleren leverer ikke (siden sidsteDato)
+ *   'ukendt'       — for få døgn i halen, eller halen mangler
+ */
+export function halevurdering(r, retning = null) {
+  if (r.haleDoegn == null || r.haleDoegn < 7 || r.haleRestniveau == null) return { klasse: 'ukendt', doegn: r.haleDoegn ?? 0, restniveau: r.haleRestniveau ?? null, sidsteDato: r.sidsteDato };
+  const ud = { doegn: r.haleDoegn, restniveau: r.haleRestniveau, afvigPct: r.haleAfvigPct, sidsteDato: r.sidsteDato };
+  if (r.haleRestniveau <= 0.02) return { klasse: 'doed', ...ud };
+  const op = retning ? retning === 'op' : (r.afvigPct ?? 0) > 0;
+  const normal = op ? r.haleRestniveau <= 1.05 : r.haleRestniveau >= 0.95;
+  return { klasse: normal ? 'vaek_igen' : 'staar_stadig', ...ud };
 }
 
 /** En Dalux-række til den form korrelation.js læser. */
@@ -378,6 +409,11 @@ export function storkoersel({
   for (const s of nyestePrMaaler.values()) {
     const e = enhedFraSignatur(s, { anlaeg: anlaegPrMaaler[s.maalerId] || [] });
     if (s.status && s.status !== 'ok') { ikkeModelleret.push({ enhed: e, status: s.status, signaturraekke: s }); continue; }
+    const gulv = GRUNDLAGSGULV[s.energitype];
+    if (gulv != null && s.medianForudsagt != null && s.medianForudsagt < gulv) {
+      ikkeModelleret.push({ enhed: e, status: 'for_lille_grundlag', signaturraekke: s });
+      continue;
+    }
     enheder.push({ enhed: e, raekke: s });
   }
   regnskab.ikkeModelleret = ikkeModelleret.length;
@@ -410,7 +446,11 @@ export function storkoersel({
   const ingenAfvigelse = [];
   const afvistSignatur = [];
   for (const { enhed, raekke } of enheder) {
-    const bek = bekraeftelser.get(raekke.maalerId);
+    let bek = bekraeftelser.get(raekke.maalerId);
+    /* Vand bærer sin egen bekræftelse i rækken: natflowet. */
+    if (!bek && raekke.energitype === 'Water' && raekke.natAndel != null && raekke.natAndel >= 0.3) {
+      bek = { bekraeftelse: 'natflow', detektor: 'natflow', note: `natflow ${raekke.natAndel} af døgnflowet`, vaerdier: [raekke.natAndel, null, null], kwh: null };
+    }
     const signatur = signaturFraMaaling({ ...raekke, bekraeftelse: bek?.bekraeftelse || null });
     if (!signatur.brugbar) { afvistSignatur.push({ enhed, grund: signatur.grund }); continue; }
     const egne = fordeling.prEnhed[enhed.id] || [];
@@ -423,8 +463,13 @@ export function storkoersel({
       opgaverPrButik.get(normButik(v.butiksnummer)) || [], { nu },
     );
     if (v.haandtering.klasse !== 'ingen') v.forbehold = [...(v.forbehold || []), v.haandtering.tekst];
+    /* Øjebliksbilledet: er afvigelsen der stadig i dag? */
+    v.hale = halevurdering(raekke, signatur.retning);
+    if (v.hale.klasse === 'vaek_igen') v.forbehold = [...(v.forbehold || []), `De sidste ${v.hale.doegn} døgn ligger på normalen igen (restniveau ${v.hale.restniveau}). Afvigelsen er væk.`];
+    if (v.hale.klasse === 'doed') v.forbehold = [...(v.forbehold || []), `De sidste ${v.hale.doegn} døgn er nul — måleren leverer ikke (sidste data ${v.hale.sidsteDato || 'ukendt'}).`];
     varsler.push(v);
   }
+  regnskab.medHale = varsler.filter((v) => v.hale.klasse !== 'ukendt').length;
   regnskab.underBehandlingIalt = varsler.filter((v) => v.haandtering.klasse === 'i_gang').length;
   regnskab.ordnetSidenBrudIalt = varsler.filter((v) => v.haandtering.klasse === 'ordnet').length;
   regnskab.afvistSignatur = afvistSignatur.length;
@@ -503,6 +548,9 @@ export function rapportTekst(r) {
   l.push(`    i systematiske fund     ${k.iSystematisk}`);
   l.push(`    under behandling        ${k.underBehandling ?? 0}   (åben opgave på faget i butikken efter bruddet)`);
   l.push(`    ordnet siden bruddet    ${k.ordnetSidenBrud ?? 0}   (lukket opgave — afventer øjebliksbilledet)`);
+  l.push(`    væk igen                ${k.vaekIgen ?? 0}   (halen ligger på normalen — rækker med hale: ${k.medHale ?? 0})`);
+  l.push(`    tilbagefald efter lukket ${k.tilbagefaldEfterLukket ?? 0}   (opgave lukket, halen afviger stadig)`);
+  l.push(`    døde målere (hale nul)  ${k.doedeMaalere ?? 0}   (til Enity, ikke til en tekniker)`);
   l.push(`    uden årsag              ${k.udenAarsag ?? 0}   (afvigelse, motoren ikke kan sætte navn på)`);
   l.push(`    sendt — ugens fem       ${k.sendt}`);
   l.push(`    venter på budget        ${k.overBudget}`);
