@@ -420,10 +420,23 @@ export function sigt(varsler, { aabne = [], gate = GATE, maalFDR = 0.10, budget 
  * regnet, bliver til en forventning, ingen kan holde.
  */
 
+const STRAKS_KONFIDENS = 40;
+
 export function foersteKoersel(varsler, { budget = STANDARDBUDGET, personer = 9, minSambesoeg = 3, minKampagne = 12 } = {}) {
-  /* 1 · Straks. Varer i fare og blinde punkter venter ikke på en kø. */
-  const straks = varsler.filter((v) => v.hastende);
-  const resten = varsler.filter((v) => !v.hastende);
+  /* 1 · Straks. Varer i fare og blinde punkter venter ikke på en kø.
+   *
+   * Men "haster" er årsagens egenskab, ikke diagnosens sikkerhed. På hele
+   * porteføljen blev 194 varsler til straks-sager, og 51 af dem var
+   * "kølemiddellækage" med omkring 20 % konfidens — det er knap bedre end
+   * udgangspunktet, og 194 udrykninger på den baggrund er en agent, der
+   * bliver slået fra. Straks kræver derfor enten en direkte aflæsning
+   * (anlægget står, restniveau under 0,35) eller en konfidens, der bærer
+   * en udrykning. Resten af de hastende går i den almindelige kø — forrest,
+   * for prioriteten er stadig P1/P2, men ikke som alarm. */
+  const baererStraks = (v) => v.hastende && (v.diagnose?.bedste?.direkte || v.konfidens >= STRAKS_KONFIDENS
+    || (Number.isFinite(v.signatur?.restniveau) && v.signatur.restniveau <= 0.35));
+  const straks = varsler.filter(baererStraks);
+  const resten = varsler.filter((v) => !baererStraks(v));
 
   /* 2 · Kampagner. Den samme årsag mange steder er én beslutning.
    *
@@ -434,6 +447,9 @@ export function foersteKoersel(varsler, { budget = STANDARDBUDGET, personer = 9,
    * anden er "sådan er de anlæg bygget". */
   const prAarsag = new Map();
   for (const v of resten) {
+    /* "Kan ikke afgøres" i 104 butikker er ikke én kampagne — det er 104
+     * steder, hvor døgndata ikke rakte, og de venter på kvartersdata. */
+    if (v.aarsagId === 'ukendt') continue;
     const n = `${v.faggruppe}|${v.aarsagId}`;
     if (!prAarsag.has(n)) prAarsag.set(n, []);
     prAarsag.get(n).push(v);

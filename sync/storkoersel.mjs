@@ -136,6 +136,11 @@ if (udMappe) {
     tidspunkt: rapport.tidspunkt, koerselId: rapport.koerselId, regnskab: rapport.regnskab,
     sendt: rapport.sigtet.sendt.map(slank), venter: rapport.sigtet.venter.map(slank),
     systematiske: rapport.sigtet.systematiske, foerste: rapport.foerste.opgoerelse,
+    /* Det, første kørsel samler: kampagnerne er de beslutninger, der erstatter
+     * hundredvis af enkeltsager, og straks-listen er dét, der ikke kan vente. */
+    kampagner: (rapport.foerste.kampagner || []).map((k) => ({ id: k.id, faggruppe: k.faggruppe, aarsagId: k.aarsagId, navn: k.navn, butikker: k.butikker, varsler: k.varsler, krSamlet: k.krSamlet, ejerNavn: k.ejerNavn, tolkning: k.tolkning, handling: k.handling })),
+    sambesoeg: (rapport.foerste.sambesoeg || []).map((b) => ({ butiksnummer: b.butiksnummer, butik: b.butik, antal: b.varsler?.length ?? b.antal, krSamlet: b.krSamlet })),
+    straks: (rapport.foerste.straks || []).map(slank),
     prFaggruppe: rapport.prFaggruppe.map((g) => ({ ...g, varsler: g.varsler.map(slank) })),
     prEjer: rapport.prEjer.map((g) => ({ ...g, varsler: g.varsler.map(slank) })),
     ikkeDiagnoserbare: rapport.ikkeDiagnoserbare.map((v) => ({ enhed: v.enhed.id, navn: v.enhed.navn, butiksnummer: v.enhed.butiksnummer, grund: v.grund })),
