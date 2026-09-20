@@ -160,7 +160,9 @@ export function signaturFraMaaling(m) {
     z,
     brudStyrke: m.brudStyrke ?? null,
     retning: afvig > 0 ? 'op' : afvig < 0 ? 'ned' : 'flad',
-    afvigKwhPrDoegn: Math.round(afvig),
+    /* Tre decimaler, ikke heltal: vand måles i m³, og 0,3 m³/døgn er 110 m³ om
+     * året — rundet til nul blev en lækage til 0 kr. */
+    afvigKwhPrDoegn: Math.round(afvig * 1000) / 1000,
     afvigPct: Math.round(pct * 10) / 10,
     forventetKwhPrDoegn: Math.round(forventet),
     normalKwhPrDoegn: Math.round(forventet),
