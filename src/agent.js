@@ -25,7 +25,8 @@ import { samtidighed, tilbagefald, FG_FAGOMRAADER, varslingsstatistik } from './
 import { ejerMedRolle, ejerAfFaggruppe, PERSON, VISITATOR } from './personer.js';
 import { fgNavn } from './taxonomy.js';
 
-export const PRISER = { elpris: 0.77, varmepris: 0.65 };
+/* kr pr. kWh el, kr pr. kWh fjernvarme, kr pr. m³ vand inkl. afledning (ekskl. moms). */
+export const PRISER = { elpris: 0.77, varmepris: 0.65, vandpris: 65 };
 
 /* ---- Afvisningsgrundene ---------------------------------------------------
  * Seks grunde, og de er valgt sådan, at hver af dem peger på noget forskelligt,
@@ -107,27 +108,31 @@ export function prioriter(aarsag, kr, konfidens) {
  *   blindt      forbrug, vi ikke kan se — hverken tab eller gevinst
  *   ingen       ingen elregning at hente; værdien ligger i varer og driftssikkerhed
  */
-export function prissaet(signatur, aarsag, { elpris, varmepris } = PRISER, enhed = 'el') {
-  const pris = enhed === 'varme' ? varmepris : elpris;
+export function prissaet(signatur, aarsag, { elpris, varmepris, vandpris } = PRISER, enhed = 'el') {
+  const pris = enhed === 'varme' ? varmepris : enhed === 'vand' ? (vandpris ?? PRISER.vandpris) : elpris;
+  /* Mængden hedder kwhAar i hele kæden; for vand er den m³. Navnet i
+   * teksten følger enheden, feltet gør ikke — så tabeller og sider, der
+   * læser kwhAar, bliver ved med at virke. */
+  const E = enhed === 'vand' ? 'm³' : 'kWh';
   const kwhAar = Math.round(Math.abs(signatur.afvigKwhPrDoegn) * 365);
 
   if (aarsag.aldrigBesparelse || aarsag.klasse === 'ingen') {
     return {
       kr: 0, kwhAar, klasse: 'ingen',
       metode: aarsag.id === 'maaler_doed'
-        ? `Målepunktet dækker ${fmt(kwhAar)} kWh/år, som ikke længere kan ses. Det er hverken et tab eller en gevinst — det er et blindt punkt, og det prissættes derfor ikke.`
-        : `Anlægget bruger ${fmt(kwhAar)} kWh/år mindre, men det er ikke en besparelse: kapaciteten er væk. `
+        ? `Målepunktet dækker ${fmt(kwhAar)} ${E}/år, som ikke længere kan ses. Det er hverken et tab eller en gevinst — det er et blindt punkt, og det prissættes derfor ikke.`
+        : `Anlægget bruger ${fmt(kwhAar)} ${E}/år mindre, men det er ikke en besparelse: kapaciteten er væk. `
           + 'Værdien ligger i varer, der ikke bliver for varme, og i at fejlen ikke vokser — ikke på elregningen.',
     };
   }
   if (aarsag.klasse === 'blindt') {
     return { kr: 0, kwhAar, klasse: 'blindt',
-      metode: `${fmt(kwhAar)} kWh/år kan ikke henføres. Beløbet er ikke regnet, fordi vi ikke ved, om der er noget at hente.` };
+      metode: `${fmt(kwhAar)} ${E}/år kan ikke henføres. Beløbet er ikke regnet, fordi vi ikke ved, om der er noget at hente.` };
   }
   const kr = Math.round(kwhAar * pris);
   return {
     kr, kwhAar, klasse: aarsag.klasse,
-    metode: `${fmt(Math.abs(signatur.afvigKwhPrDoegn))} kWh/døgn over den vejrkorrigerede normal × 365 døgn × ${pris} kr/kWh. `
+    metode: `${fmt(Math.abs(signatur.afvigKwhPrDoegn))} ${E}/døgn over den vejrkorrigerede normal × 365 døgn × ${pris} kr/${E}. `
       + `Normalen er tilpasset på ${signatur.referencedoegn} døgn før afvigelsen og indeholder derfor ikke fejlen selv. `
       + (aarsag.klasse === 'potentiale'
         ? 'Regnet som potentiale og ikke som besparelse: der kan være en driftsmæssig grund til ændringen, og den skal høres først.'

@@ -583,6 +583,7 @@ export const FAGORD = {
   varme_fjern: /varme|fjernvarme|veksler|radiator|kedel|vvb/i,
   solceller:   /solcelle|inverter|\bpv\b/i,
   cts:         /cts|styring|automatik|\bbms\b/i,
+  vand:        /\bvand|toilet|urinal|afløb|kloak|\bvvs\b|vandhane|blandingsbatteri|lækage|drypper|løber|rørbrud|stophane/i,
 };
 const FAGORD_NAVN = {
   koel_frys: 'køl/frys', koeleflader: 'klima/køleflader', ventilation: 'ventilation', lys_inde: 'belysning',

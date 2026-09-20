@@ -881,6 +881,97 @@ export const AARSAGER = [
     grundlag: 'Regnet som potentiale, fordi gevinsten afhænger af forsyningens tarif og ikke kan regnes på kWh alene.',
   },
 
+  /* Varme uden for sæsonen: den fejl, en månedsopgørelse om vinteren aldrig
+   * viser, fordi den drukner i det rigtige forbrug. Om sommeren står den
+   * alene. Stefan bad om varmemålerne 20. september; det her er den første
+   * varmeårsag, der er skrevet til døgnsignaturen frem for til graddage. */
+  {
+    id: 'varme_uden_for_saeson', navn: 'Varmen kører uden for fyringssæsonen',
+    faggrupper: ['varme_fjern', 'varme_el'], prior: 0.14, klasse: 'besparelse', hastende: false,
+    signatur: { form: ['spring', 'glidende'], retning: 'op', vejrafhaengig: 'nej', vejrrespons: ['brudt', 'uændret'] },
+    forklaring: 'Varmeforbruget er steget, uden at udetemperaturen er faldet. Det er mønsteret for et anlæg, '
+      + 'der ikke er sat i sommerdrift: en varmekurve, der ikke er slået fra, en natsænkning, der er '
+      + 'taget ud, eller en varmeflade i ventilationen, der kalder på varme, mens kølefladen køler. '
+      + 'Forbruget er lille i kWh, men det er hundrede procent spild.',
+    tjek: [
+      'Aflæs, om anlægget står i sommerdrift, og hvornår det sidst blev skiftet.',
+      'Kontrollér udekompensering og setpunkt for fremløb: er varmekurven sat, så den kalder på varme ved 15–18 °C ude?',
+      'Kontrollér i CTS, om varme- og køleflade i samme aggregat kan være åbne samtidig (dødbånd).',
+      'Sammenlign med samme måned året før — kørte anlægget også dengang uden for sæsonen, er det en indstilling, ikke en fejl.',
+    ],
+    typiskFund: 'En varmekurve eller et sommerdriftsskift, der aldrig er sat, eller et dødbånd, der er for smalt.',
+    grundlag: 'Ligger tæt på «utæt ventil» i signaturen; forskellen er, at ventilen viser sig ved konstant lille flow, mens sæsonfejlen følger de kølige nætter.',
+  },
+
+  /* ---- Vand ---------------------------------------------------------------
+   * Vand er den enkleste af alle målere at læse: en butik har ikke et
+   * grundforbrug om natten. Det, der løber mellem 01 og 05, er en lækage,
+   * et toilet eller en køling med brugsvand — og alle tre er en opgave, ikke
+   * en driftsbeslutning. Kataloget er skrevet uden at have set vanddata fra
+   * porteføljen; dækningen er sat derefter (KATALOGDAEKNING.vand). */
+  {
+    id: 'vand_laekage', navn: 'Lækage i installation eller rør',
+    faggrupper: ['vand'], prior: 0.30, klasse: 'besparelse', hastende: true,
+    signatur: { form: ['spring', 'glidende'], retning: 'op', vejrafhaengig: 'nej', vejrrespons: ['uændret', 'brudt'] },
+    forklaring: 'Vandforbruget er steget og bliver oppe, også på dage uden mere aktivitet i butikken. Et '
+      + 'forbrug, der ikke følger åbningstiden, er vand, der løber af sig selv: et rør, en samling, en '
+      + 'sikkerhedsventil på en varmtvandsbeholder eller en kølekreds med brugsvand. Det haster, fordi '
+      + 'vand, der løber et sted, det ikke skal, ødelægger bygningen, før det ses på regningen.',
+    tjek: [
+      'Luk alle tapsteder efter lukketid og aflæs vandmåleren to gange med et kvarters mellemrum. Tæller den, løber der vand.',
+      'Kontrollér sikkerhedsventilen på varmtvandsbeholderen — en åben ventil kan løbe i månedsvis uden at nogen ser det.',
+      'Se efter fugt og misfarvning ved gulve, kældre og teknikrum, og lyt efter rislen ved stophanen om natten.',
+      'Er der kvartersdata: natflowet mellem 01 og 05 er lækagens størrelse — den er konstant, hvor et toilet er trinvist.',
+    ],
+    typiskFund: 'En sikkerhedsventil, der løber, eller et rør, der drypper et sted, hvor ingen kommer.',
+    grundlag: 'Vand koster omkring 65 kr/m³ inkl. afledning; 1 m³ i timen året rundt er over en halv million kr.',
+  },
+  {
+    id: 'toilet_loeber', navn: 'Toilet eller urinal løber',
+    faggrupper: ['vand'], prior: 0.25, klasse: 'besparelse', hastende: false,
+    signatur: { form: ['spring'], retning: 'op', vejrafhaengig: 'nej', vejrrespons: ['uændret'] },
+    forklaring: 'Forbruget sprang op fra den ene dag til den anden og har ligget der siden. Det er mønsteret '
+      + 'for en cisterne, der ikke lukker, eller et urinal, der skyller i ét: et fast tillæg døgnet rundt, '
+      + 'uden sammenhæng med kunder eller vejr. Det er den billigste vandfejl at finde og den hyppigste.',
+    tjek: [
+      'Gå toiletterne igennem — personale, kunder, bageri — og lyt. En løbende cisterne kan høres.',
+      'Kontrollér urinaler med tidsstyret skyl: står skyllet på hele natten?',
+      'Aflæs måleren efter lukketid: et toilet giver 50–200 liter i timen, en lækage typisk mere og helt jævnt.',
+    ],
+    typiskFund: 'En cisterne med slidt flyder eller pakning.',
+    grundlag: 'Et løbende toilet er 400–1.500 m³ om året — 25.000 til 100.000 kr.',
+  },
+  {
+    id: 'koelevand_spild', navn: 'Køling med brugsvand',
+    faggrupper: ['vand'], prior: 0.10, klasse: 'besparelse', hastende: false,
+    signatur: { form: ['glidende', 'spring'], retning: 'op', vejrafhaengig: 'ja', vejrrespons: ['forstærket', 'uændret'] },
+    forklaring: 'Vandforbruget stiger med varmen udenfor. Vand, der følger udetemperaturen, er vand, der '
+      + 'bruges til at køle: en kondensator eller en kompressor med gennemstrømskøling på brugsvand, '
+      + 'eller en nødkøling, der er blevet permanent. Det er dyrt vand — og det ses i Dalux som '
+      + '«Vandspild – køling af anlæg», så det er set før.',
+    tjek: [
+      'Find kølekredsen: er der en vandtilslutning på køleanlæg, kompressor eller ismaskine, som løber til afløb?',
+      'Kontrollér, om en midlertidig køling er sat op efter et nedbrud og aldrig taget ned igen.',
+      'Sammenhold med udetemperaturen: stiger forbruget på varme dage, er det køling.',
+    ],
+    typiskFund: 'En gennemstrømskølet kompressor eller ismaskine på brugsvand.',
+    grundlag: 'Sat lavt som prior, fordi de fleste anlæg er luftkølede; hvor det findes, er det stort.',
+  },
+  {
+    id: 'vand_drift_aendret', navn: 'Vanding, rengøring eller produktion ændret',
+    faggrupper: ['vand'], prior: 0.12, klasse: 'potentiale', hastende: false,
+    signatur: { form: ['spring'], retning: 'op', vejrafhaengig: 'nej', vejrrespons: ['uændret'] },
+    forklaring: 'Forbruget flyttede sig til et nyt niveau og er blevet der. Det kan være en fejl — men det '
+      + 'kan lige så godt være, at bageriet er begyndt at producere mere, at der er sat vanding op, '
+      + 'eller at rengøringen er lagt om. Det er butikkens svar, der afgør det, ikke måleren.',
+    tjek: [
+      'Spørg butikken: er der sket noget i produktion, rengøring eller udenomsarealer på datoen?',
+      'Kontrollér, om en vandingsautomatik står på hele døgnet.',
+    ],
+    typiskFund: 'En ændret drift, som er bevidst — eller en automatik, der ikke er.',
+    grundlag: 'Regnet som potentiale: der kan være en driftsmæssig grund, og den skal høres først.',
+  },
+
   {
     id: 'genvinding_bortkoeles', navn: 'Overskudsvarmen bliver ikke genvundet',
     faggrupper: ['overskudsvarme'], prior: 0.28, klasse: 'besparelse', hastende: false,
@@ -1121,6 +1212,7 @@ export const KATALOGDAEKNING = {
   overskudsvarme: 0.55,
   lys_inde:       0.50,  // mange måder at ændre en lysgruppe på, som vi ikke kender
   cts:            0.40,
+  vand:           0.60,  // få fejlmåder — lækage, toilet, køling med brugsvand — men vi har ikke set dem i data endnu
   produktion:     0.35,  // ovne, friture, kipstegere — vi har næsten intet her
 };
 const DAEKNING_UKENDT = 0.45;

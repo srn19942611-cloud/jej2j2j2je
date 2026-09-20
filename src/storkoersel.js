@@ -331,7 +331,13 @@ export function enhedFraSignatur(s, { anlaeg = [] } = {}) {
    * diagnose: her skal ukendt være null, så motoren afviser med grund i
    * stedet for at lede efter en årsag i faggruppen "øvrigt". Første prøve
    * sendte 38 af 40 målere den vej. */
-  const fg = k.konfidens > 0 && k.faggruppe !== 'oevrigt' ? k.faggruppe : (e.fg || null);
+  let fg = k.konfidens > 0 && k.faggruppe !== 'oevrigt' ? k.faggruppe : (e.fg || null);
+  /* Varme- og vandmålere: energitypen afgør faggruppen, når tagget ikke gør.
+   * En Heat-måler er fjernvarme (eller en veksler), også når den bærer et
+   * el-tag som «Varme VVB (EL skal måles)» — det tag er skrevet til elmåleren
+   * på samme beholder. En Water-måler er vand, uanset tag. */
+  if (e.stroem === 'varme' && (!fg || fg === 'varme_el')) fg = 'varme_fjern';
+  if (e.stroem === 'vand') fg = 'vand';
   return {
     id: `E-${s.maalerId}`,
     slags: anlaeg.length > 1 ? 'gruppe' : 'anlæg',
@@ -341,7 +347,7 @@ export function enhedFraSignatur(s, { anlaeg = [] } = {}) {
     faggruppe: fg,
     maalerrolle: k.maalerrolle && k.maalerrolle !== 'bimaaler' ? k.maalerrolle : null,
     energirolle: e.rolle,
-    energienhed: e.stroem === 'varme' ? 'varme' : 'el',
+    energienhed: e.stroem === 'varme' ? 'varme' : e.stroem === 'vand' ? 'vand' : 'el',
     dedikeret: anlaeg.length <= 1,
     klassifikationskonfidens: k.konfidens,
   };

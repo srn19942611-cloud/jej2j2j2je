@@ -83,6 +83,8 @@ export const PERSONER = [
       // Fjernvarme, vekslere og VVB — men ikke varmefladen i et
       // ventilationsaggregat, som følger aggregatet.
       { fg: 'varme_fjern', undtagenRoller: ['varmeflade'], note: 'Fjernvarme, vekslere og varmtvandsbeholdere' },
+      // Vand hører under VVS og sanitet: lækager, løbende toiletter, køling med brugsvand.
+      { fg: 'vand', note: 'Vand, afløb og toiletter' },
     ],
     fagomraader: ['VVS/Sanitet'],
     fag: 'VVS',
