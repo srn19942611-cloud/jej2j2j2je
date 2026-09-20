@@ -177,9 +177,15 @@ export function varselFraSignatur(enhed, signatur, {
 
   const relevante = FG_FAGOMRAADER[enhed.faggruppe];
   const haendelse = { dato: signatur.segmentStart || signatur.brud?.dato };
+  /* Uden bruddato kan opgaverne ikke tidsrettes — men "ingen opgave på
+   * anlægget overhovedet" er stadig et svar, og det er dét, der holder
+   * "ny kapacitet sat i drift" fra at vinde på formen alene. 68 ventilations-
+   * og 72 lysmålere fik den diagnose i første porteføljekørsel, uden én
+   * opgave i Dalux; en ombygning efterlader mindst én. */
   const kobling = haendelse.dato
     ? samtidighed(haendelse, opgaver, { faggruppe: enhed.faggruppe, relevante })
-    : null;
+    : (opgaver || []).length ? null : { klasse: 'uledsaget', konfidensbidrag: 0, opgave: null, dage: null, faggruppe: enhed.faggruppe,
+        tekst: 'Der er ingen opgave i Dalux på anlægget.' };
 
   const hist = tilbagefald(historik || opgaver, { foer: haendelse.dato, nu });
 

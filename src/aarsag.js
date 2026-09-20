@@ -1224,7 +1224,16 @@ export function diagnosticer(signatur, { faggruppe, maalerrolle = null, kobling,
       }
 
       /* Historikken på anlægget. Den vejer stærkt, for den siger noget, ingen
-       * måling kan: om det her er set før, og hvad der skete med det. */
+       * måling kan: om det her er set før, og hvad der skete med det.
+       *
+       * Og uden historik findes tilbagefaldet ikke. Årsagen "sat før og
+       * holder ikke" må ikke kunne vinde på en kvartersbekræftelse alene —
+       * den gjorde det 32 gange i køl/frys på hele porteføljen, uden én
+       * eneste gammel opgave bag sig. */
+      if (a.id === 'indstilling_falder_tilbage' && !historik?.tilbagefald) {
+        score -= VÆGT.staerk * 3;
+        beviser.push({ for: false, vaegt: 'stærk', tekst: 'Der er ingen tidligere rettelse på anlægget i Dalux, så der er ikke noget at falde tilbage fra.' });
+      }
       if (historik?.tilbagefald) {
         if (a.id === 'indstilling_falder_tilbage') {
           score += VÆGT.staerk * 1.5;

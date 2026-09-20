@@ -28,6 +28,7 @@ import { fordelOpgaver, normButik } from './korrelation.js';
 import { varselFraSignatur, PRISER } from './agent.js';
 import { sigt, foersteKoersel, STANDARDBUDGET } from './flaade.js';
 import { fgNavn } from './taxonomy.js';
+import { weekendforventning } from './doegnprofil.js';
 
 /* ---- Rækker fra databasen ------------------------------------------------- */
 
@@ -50,6 +51,7 @@ export function signaturFraDb(r) {
     medianForudsagt: tal(r.median_forudsagt), medianResidual: tal(r.median_residual),
     afvigPct: tal(r.afvig_pct), restniveau: tal(r.restniveau),
     vejrforhold: tal(r.vejrforhold), b: tal(r.b),
+    beregnetAt: tekst(r.beregnet_at) || null,
     vurderingsdoegn: 120,
   };
 }
@@ -141,11 +143,44 @@ export function butiksnummerFraBygning(opgaver, locations) {
 const DETEKTOR_TIL_BEKRAEFTELSE = { samtidig: 'samtidig_koel_varme', weekend: 'weekenddrift', nat: 'natforbrug', afrimning: 'afrimning', kortcykling: 'kortcykling' };
 const BEKRAEFTELSE_RANG = ['samtidig_koel_varme', 'kortcykling', 'afrimning', 'weekenddrift', 'natforbrug'];
 
-export function bekraeftelserFraDb(rows) {
+/* Kørslens eget weekend-flag ramte 594 af 616 målere — det slog til på
+ * forholdet alene, og rigtig mange målere er ren fastlast. Flaget tages
+ * derfor ikke for pålydende: weekend afgøres her på de rå tal, som
+ * doegnprofil.weekendnedsaettelse gør det — samme driftstimer (±1 t) OG et
+ * weekendforbrug på mindst 85 % af hverdagens — og først derefter på, om
+ * området overhovedet burde have været nedsat (L3-tagget, via enheden). */
+export function weekendFlagEgen(r) {
+  const t1 = tal(r.vaerdi_1), t2 = tal(r.vaerdi_2), f = tal(r.vaerdi_3);
+  if (t1 == null || t2 == null) return false;
+  if (Math.abs(t1 - t2) > 1) return false;
+  if (f != null && f < 0.85) return false;
+  return true;
+}
+
+export function bekraeftelserFraDb(rows, { omraadeAf = null } = {}) {
   const pr = new Map();
   for (const r of rows || []) {
-    if (!r.flag) continue;
-    const b = DETEKTOR_TIL_BEKRAEFTELSE[tekst(r.detektor)];
+    const det = tekst(r.detektor);
+    let flag = !!r.flag;
+    if (det === 'weekend') {
+      flag = weekendFlagEgen(r);
+      /* Butikken har åbent om lørdagen: kun områder uden weekendaktivitet tæller.
+       * Og kun ventilation, klima og lys — en kølekompressor kører 24 timer
+       * lørdag og onsdag, fordi det er det, den skal. Kørslen kørte weekend
+       * på alle 751 målere; 688 af dem ligger ens, og det er ikke 688 fund. */
+      if (flag && omraadeAf) {
+        const o = omraadeAf(tekst(r.enity_meter_id));
+        if (!o || o.weekenddrift !== 'uventet' || !['ventilation', 'koeleflader', 'lys_inde', 'cts'].includes(o.faggruppe)) flag = false;
+      }
+    }
+    /* Nat gælder lys. En kølekompressor, der ikke slukker om natten, gør sit
+     * arbejde — 392 af 751 målere havde nat-flag, og det er ikke 392 fund. */
+    if (det === 'nat' && flag && omraadeAf) {
+      const o = omraadeAf(tekst(r.enity_meter_id));
+      if (!o || !['lys_inde', 'lys_ude'].includes(o.faggruppe)) flag = false;
+    }
+    if (!flag) continue;
+    const b = DETEKTOR_TIL_BEKRAEFTELSE[det];
     if (!b) continue;
     /* Et par, hvor den ene er overskudsvarme, er ikke spild — Svendborg. */
     if (b === 'samtidig_koel_varme' && /overskudsvarme/i.test(tekst(r.note))) continue;
@@ -322,9 +357,19 @@ export function storkoersel({
 
   /* 1 · Enheder. Rækker, endpointet selv afviste, bliver til fund af den
    * slags "anlægget stod stille i referencen" — de skal ses, ikke tabes. */
+  /* Én række pr. måler. Bølgerne overlapper — de 11 butikker og 40 Kvickly'er
+   * i BOELGE-1 kom igen i kædebølgen — og den nyeste beregning vinder. Uden
+   * det blev 297 varsler til gengangere af sig selv. */
+  const nyestePrMaaler = new Map();
+  for (const s of signaturer) {
+    const f = nyestePrMaaler.get(s.maalerId);
+    if (!f || String(s.beregnetAt || '') > String(f.beregnetAt || '')) nyestePrMaaler.set(s.maalerId, s);
+  }
+  regnskab.dubletterFjernet = signaturer.length - nyestePrMaaler.size;
+
   const enheder = [];
   const ikkeModelleret = [];
-  for (const s of signaturer) {
+  for (const s of nyestePrMaaler.values()) {
     const e = enhedFraSignatur(s, { anlaeg: anlaegPrMaaler[s.maalerId] || [] });
     if (s.status && s.status !== 'ok') { ikkeModelleret.push({ enhed: e, status: s.status, signaturraekke: s }); continue; }
     enheder.push({ enhed: e, raekke: s });
@@ -336,8 +381,11 @@ export function storkoersel({
   regnskab.opgaverFordelt = fordeling.begrundelser.length;
   regnskab.opgaverUfordelt = fordeling.ufordelt.length;
 
-  /* 3 · Kvartersbekræftelser. */
-  const bekraeftelser = bekraeftelserFraDb(kvarter);
+  /* 3 · Kvartersbekræftelser — weekend kun i områder uden weekendaktivitet. */
+  const enhedPrMaaler = new Map(enheder.map((x) => [x.enhed.meterId, x.enhed]));
+  const bekraeftelser = bekraeftelserFraDb(kvarter, {
+    omraadeAf: (id) => { const e = enhedPrMaaler.get(id); return e ? { ...weekendforventning(e.navn, e.tags), faggruppe: e.faggruppe } : null; },
+  });
   regnskab.bekraeftelser = bekraeftelser.size;
 
   /* 4 · Varsler. */
