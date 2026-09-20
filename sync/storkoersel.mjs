@@ -28,6 +28,14 @@ const flag = (navn, standard = null) => {
 };
 const fraMappe = flag('fra');
 const udMappe = flag('ud');
+/* Læringen — svar og domme fra tidligere kørsler (se sync/domme.mjs). Uden
+ * filen kører motoren på sine grundpriors, og det skal den kunne. */
+const laeringSti = flag('laering');
+let laering = null;
+if (typeof laeringSti === 'string') {
+  try { laering = JSON.parse(await readFile(laeringSti, 'utf8')); }
+  catch { console.error(`ingen læring på ${laeringSti} — kører på grundpriors`); }
+}
 const koerselId = flag('koersel');
 
 const log = (...a) => console.error(`[storkoersel ${new Date().toISOString().slice(11, 19)}]`, ...a);
@@ -114,7 +122,8 @@ if (kilde.anlaeg?.length && kilde.meters?.length) {
   log(`kobling læst: ${Object.keys(anlaegPrMaaler).length} målere`);
 }
 
-const rapport = storkoersel({ signaturer, opgaver, kvarter: kilde.kvarter, anlaegPrMaaler });
+const rapport = storkoersel({ signaturer, opgaver, kvarter: kilde.kvarter, anlaegPrMaaler, laering });
+if (laering) log(`læring: ${(laering.svar || []).length} svar · ${(laering.domme || []).length} domme fra beslutningsarket`);
 const tekst = rapportTekst(rapport);
 console.log(tekst);
 

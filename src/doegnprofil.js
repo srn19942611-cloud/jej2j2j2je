@@ -562,11 +562,17 @@ export const WEEKENDFORVENTNING = [
   { proev: /kontor|kantine|mødelokal|personale|velfærd|administration/i,
     weekenddrift: 'uventet',
     note: 'Kontor og personaleområder er tomme i weekenden.' },
-  { proev: /bager|bageri|slagter|køkken|produktion|kiosk køkken|opskær/i,
-    weekenddrift: 'uventet',
-    note: 'Produktionen kører ikke i weekenden, selv om disken er åben.' },
-
-  /* Områder MED weekendaktivitet — butikken har åbent. */
+  /* Områder MED weekendaktivitet — butikken har åbent.
+   *
+   * Produktionen hører til her, ikke under «uventet». Den første dom fra
+   * Stefan på beslutningsarket (sag 2, 2026-09-16) var «forkert» med noten
+   * «Der er altid produktion i disse områder»: bageri, slagter og køkken
+   * bager og skærer også lørdag og søndag. Otte målere var flaget på den
+   * gamle regel, og de største af dem — 08090 Vent bageri, 08090 Klimaanlæg
+   * slagter — var netop produktion. Så weekenddrift dér er det rigtige. */
+  { proev: /bager|bageri|slagter|køkken|produktion|kiosk køkken|opskær|delikatesse/i,
+    weekenddrift: 'forventet',
+    note: 'Produktionen kører også i weekenden (butikkens svar, sag 2). Drift på samme tid er det rigtige.' },
   { proev: /butik|salgsområde|indgang|kasse|frugt|grønt|parking|p-plads|udv/i,
     weekenddrift: 'forventet',
     note: 'Butikken har åbent i weekenden. Drift på samme tid er det rigtige.' },
@@ -587,7 +593,7 @@ export const WEEKENDFORVENTNING = [
 const L3_OMRAADE = [
   { proev: /^L3 (Alt i butikken blandet)/i, weekenddrift: 'kan ikke afgøres', note: 'L3 «Alt i butikken blandet» — måleren dækker både butik og produktion.' },
   { proev: /^L3 (Kontor|Personale|Kantine|Mødelokale|Administration)/i, weekenddrift: 'uventet', note: 'Kontor og personaleområder er tomme i weekenden.' },
-  { proev: /^L3 (Bager|Slagter|Køkken|Produktion|Delikatesse|Opskæring)/i, weekenddrift: 'uventet', note: 'Produktionen kører ikke i weekenden, selv om disken er åben.' },
+  { proev: /^L3 (Bager|Slagter|Køkken|Produktion|Delikatesse|Opskæring)/i, weekenddrift: 'forventet', note: 'Produktionen kører også i weekenden (butikkens svar, sag 2). Drift på samme tid er det rigtige.' },
   { proev: /^L3 (Lager|Varemodtagelse|Teknik)/i, weekenddrift: 'uventet', note: 'Lager og varemodtagelse har ikke weekenddrift.' },
   { proev: /^L3 (Salgsområde|Butik|Indgang|Kasse|Frugt)/i, weekenddrift: 'forventet', note: 'Butikken har åbent i weekenden. Drift på samme tid er det rigtige.' },
   { proev: /^L3 (Udvendigt|Parkering)/i, weekenddrift: 'forventet', note: 'Udendørs område — drift følger ikke ugedagen.' },
