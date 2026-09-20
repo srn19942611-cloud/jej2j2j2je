@@ -61,6 +61,13 @@ export function signaturFraDb(r) {
     /* Vand: natflow kl. 01–05 delt med døgnets flow, på kvartersdata. Nul er
      * tæt; over 0,3 er vand, der løber, mens butikken er lukket. */
     natAndel: tal(r.nat_andel),
+    /* Aktive referencedøgn: hvor mange døgn i referencen lå over 25 % af
+     * medianen i vurderingsvinduet. Et køleanlæg, der står stille om vinteren,
+     * har en reference uden køledage — og så er sommerens normal modellens
+     * forlængelse ud ad temperaturbåndene, ikke noget, den har set. −1 betyder,
+     * at måleren blev afvist, før referencen blev dannet. Bæres med som tal;
+     * reglen, der bruger det i sien, kommer, når Stefan har set siden. */
+    refAktiveDoegn: tal(r.ref_aktive_doegn),
   };
 }
 

@@ -176,6 +176,7 @@ export function signaturFraMaaling(m) {
     doegn: m.segmentdoegn ?? null,
     vurderingsdoegn: m.vurderingsdoegn ?? null,
     referencedoegn: m.referencedoegn ?? null,
+    refAktiveDoegn: m.refAktiveDoegn ?? null,   // aktive referencedøgn fra kørslen; −1 = kunne ikke opgøres
     // Målt et andet sted — det skal følge med, så det kan ses i forbeholdene.
     modelleret: false,
     maaltEksternt: true,

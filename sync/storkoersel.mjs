@@ -150,6 +150,8 @@ if (udMappe) {
     tilbagefald: v.historik?.tilbagefald || false, afvistTidligere: v.historik?.afvistTidligere || false,
     kvarter: v.kvarter ? { detektor: v.kvarter.detektor, vaerdier: v.kvarter.vaerdier } : null,
     hale: v.hale || null,
+    refAktiveDoegn: v.signatur?.refAktiveDoegn ?? null,
+    referencedoegn: v.signatur?.referencedoegn ?? null,
     haandtering: v.haandtering ? {
       klasse: v.haandtering.klasse, dage: v.haandtering.dage, antal: v.haandtering.antal ?? 0,
       opgave: v.haandtering.opgave ? { opgavenr: v.haandtering.opgave.opgavenr, dato: v.haandtering.opgave.dato, lukket: v.haandtering.opgave.lukket, status: v.haandtering.opgave.status, titel: v.haandtering.opgave.titel } : null,
