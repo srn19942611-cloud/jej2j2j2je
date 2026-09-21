@@ -102,7 +102,7 @@
     </div>
     <div class="stack">
       <div class="card">
-        <div class="card-head"><div><span class="eyebrow">Før du tester</span><h2 style="margin-top:4px">Otte tjek på fem minutter</h2></div></div>
+        <div class="card-head"><div><span class="eyebrow">Før du tester</span><h2 style="margin-top:4px">Ni tjek på fem minutter</h2></div></div>
         <div class="stack" id="trendChecks"></div>
       </div>
       <div class="card" id="scrapeNote"></div>
@@ -113,8 +113,8 @@
 <!-- ======================= VURDÉR PRODUKT ======================= -->
 <section class="view" id="view-hunt" role="tabpanel">
   <div class="view-head">
-    <h1>Find produkt</h1>
-    <p>Sæt linket ind. Du får varekost, anbefalet pris, dækningsbidrag og en score, før du bruger en krone på annoncer.</p>
+    <h1>Vurdér produkt</h1>
+    <p>Sæt linket ind. Du får varekost, told, anbefalet pris, dækningsbidrag og en score, før du bruger en krone på annoncer.</p>
   </div>
 
   <div class="split">
@@ -462,6 +462,7 @@
     <label class="field suffix"><span>Retur/fejlrate</span><input type="number" data-bind="settings.returnRate" step="0.5" min="0"><em>%</em></label>
     <label class="field suffix"><span>Standard annonce pr. salg</span><input type="number" data-bind="settings.cpa" step="5" min="0"><em>kr.</em></label>
     <label class="field suffix"><span>USD-kurs</span><input type="number" data-bind="settings.usdRate" step="0.05" min="0"><em>kr.</em></label>
+    <label class="field suffix"><span>Told pr. ordre (3 € siden 1.7.2026)</span><input type="number" data-bind="settings.duty" step="1" min="0"><em>kr.</em></label>
   </div>
   <div class="inline-fields">
     <label class="field suffix"><span>Ønsket avance</span><input type="number" data-bind="settings.targetMultiple" step="0.1" min="1"><em>×</em></label>

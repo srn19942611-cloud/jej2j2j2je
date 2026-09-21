@@ -30,11 +30,19 @@ Pr. ordre, ud fra dine egne tal i **Opsætning**:
 
 ```
 netto        = salgspris / (1 + moms)
-dækningsbidrag = netto − varekost − fragt ind − betalingsgebyr
+dækningsbidrag = netto − varekost − fragt ind − betalingsgebyr − told
 efter returer  = DB × (1 − returrate) − (varekost + fragt) × returrate
 tilbage        = efter returer − annonce pr. salg + upsalg
 break-even ROAS = salgspris / dækningsbidrag
 ```
+
+**Told:** EU indførte 1. juli 2026 en fast told på 3 € (ca. 22 kr.) pr. varepost på pakker
+til en værdi under 150 € fra lande uden for EU — og et håndteringsgebyr oveni senest
+1. november 2026. Den er med i regnestykket som standard. Sætter du flueben i
+*Sendes fra EU-lager* på et produkt, regnes den til nul.
+Kilde: [Toldstyrelsen](https://toldst.dk/borger/internethandel/ny-told-fra-1-juli-2026),
+[PostNord](https://www.postnord.dk/postnord-i-danmark/presse-og-medier/nyheder/2026/nye-eu-toldregler-for-pakker-uden-for-eu/),
+[EU-Oplysningen](https://www.eu.dk/da/faq/alle-faqs/skal-jeg-betale-told-af-varer-koebt-i-storbritannien).
 
 Scoren er 60 % produkt (de otte spørgsmål) og 40 % penge (avance og kroner pr. ordre).
 

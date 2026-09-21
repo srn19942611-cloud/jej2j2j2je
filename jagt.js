@@ -84,7 +84,8 @@ const TREND_CHECKS = [
   {id:'ads',     t:'Nogen kører aktive annoncer på det',       d:'Ingen brænder penge af i månedsvis for sjov.'},
   {id:'trend',   t:'Google Trends er fladt eller opad',        d:'Nedadgående kurve er et produkt, du kommer for sent til.'},
   {id:'ship',    t:'Under 1 kg, uden batteri, væske eller knive', d:'Batterier og væsker giver told, gebyrer og afviste pakker.'},
-  {id:'margin',  t:'Kan sælges til mindst 3× varekost + fragt', d:'Ellers er der ikke plads til annoncer, returer og gebyrer.'}
+  {id:'margin',  t:'Kan sælges til mindst 3× varekost + fragt', d:'Ellers er der ikke plads til annoncer, returer og gebyrer.'},
+  {id:'eu',      t:'Findes den på et EU-lager?',              d:'Siden 1. juli 2026 koster hver varepost fra lande uden for EU 3 € i told. EU-lager fjerner den og halverer leveringstiden.'}
 ];
 
 function jagtQuery(){
@@ -135,9 +136,10 @@ function renderJagt(){
     </label>`).join('');
 
   const hits = TREND_CHECKS.filter(c => state.hunt.checks[c.id]).length;
+  const total = TREND_CHECKS.length;
   $('#scrapeNote').innerHTML = `
     <span class="eyebrow">Status</span>
-    <h3 style="margin:5px 0 8px">${hits}/8 tjek klaret${hits >= 6 ? ' — den er værd at teste' : hits >= 3 ? ' — bliv færdig, før du bruger penge' : ''}</h3>
+    <h3 style="margin:5px 0 8px">${hits}/${total} tjek klaret${hits >= 7 ? ' — den er værd at teste' : hits >= 3 ? ' — bliv færdig, før du bruger penge' : ''}</h3>
     <div class="divider"></div>
     <span class="eyebrow">Hvorfor søger siden ikke selv?</span>
     <p class="hint" style="margin-top:6px">En side, der ligger i din browser, må ikke hente data fra AliExpress eller TikTok — det blokerer browseren (CORS), og der findes ikke et åbent, gratis produkt-API.

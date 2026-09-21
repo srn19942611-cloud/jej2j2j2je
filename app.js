@@ -27,7 +27,8 @@ const DEFAULTS = {
     contactEmail: '',
     cvr: '',
     checkoutUrl: '',
-    brandColor: '#0B7A5D'
+    brandColor: '#0B7A5D',
+    duty: 22
   },
   products: [],
   log: [],
@@ -125,15 +126,18 @@ function economics(p){
   const fee   = price * num(s.feePct) / 100 + num(s.feeFix);
   const r     = num(s.returnRate) / 100;
   const cpa   = (p.cpa === '' || p.cpa == null) ? num(s.cpa) : num(p.cpa);
+  // EU indførte 1. juli 2026 en fast told på 3 € pr. varepost på pakker under 150 €
+  // fra lande uden for EU. Sendes varen fra et EU-lager, er den nul.
+  const duty  = p.euStock ? 0 : num(s.duty);
 
-  const dbOrder   = net - cogs - fee;              // pr. leveret ordre, før annoncer
+  const dbOrder   = net - cogs - fee - duty;       // pr. leveret ordre, før annoncer
   const dbReturns = dbOrder * (1 - r) - cogs * r;  // returer koster varen og fragten
   const profit    = dbReturns - cpa;               // det du reelt har tilbage
   const up        = upsell(p);
   const profitUp  = profit + up.perOrder;
 
   return {
-    price, cogs, net, fee, cpa,
+    price, cogs, net, fee, cpa, duty,
     dbOrder, dbReturns, profit, profitUp,
     up,
     beRoas:   dbOrder > 0 ? price / dbOrder : Infinity,
@@ -563,6 +567,7 @@ function renderHuntResult(){
 
   const warn = [];
   if(e.multiple < 2.5) warn.push('Avancen er under 2,5× varekost — der er sjældent plads til annoncer.');
+  if(e.duty > 0) warn.push(`Told: ${kr(e.duty)} pr. varepost siden 1. juli 2026. Find en leverandør med EU-lager, så forsvinder den.`);
   if(e.profitUp < 0)   warn.push('Du taber penge på hver ordre med de tal her.');
   if(e.beRoas > 3)     warn.push('Break-even ROAS over 3× er hårdt arbejde på kolde annoncer.');
 
@@ -573,6 +578,7 @@ function renderHuntResult(){
     <div class="stat-line"><span>− Moms</span><b>−${kr(e.price - e.net)}</b></div>
     <div class="stat-line"><span>− Vare + fragt ind</span><b>−${kr(e.cogs)}</b></div>
     <div class="stat-line"><span>− Betalingsgebyr</span><b>−${kr(e.fee)}</b></div>
+    ${e.duty > 0 ? `<div class="stat-line"><span>− Told pr. varepost (3 €)</span><b>−${kr(e.duty)}</b></div>` : ''}
     <div class="stat-line"><span>− Returer (${fmt(num(state.settings.returnRate))} %)</span><b>−${kr(e.dbOrder - e.dbReturns)}</b></div>
     <div class="stat-line"><span>− Annonce pr. salg</span><b>−${kr(e.cpa)}</b></div>
     ${e.up.perOrder > 0 ? `<div class="stat-line"><span>+ Upsalg</span><b class="pos">+${kr(e.up.perOrder)}</b></div>` : ''}
@@ -679,6 +685,11 @@ function drawerBody(p, e){
         <label class="field suffix"><span>Annonce pr. salg</span><input type="number" step="1" data-p="cpa" value="${p.cpa === '' ? '' : num(p.cpa)}" placeholder="${num(state.settings.cpa)}"><em>kr.</em></label>
       </div>
       <button class="btn sm" data-suggest>Foreslå pris (×${state.settings.targetMultiple})</button>
+      <label class="task" style="margin-top:12px">
+        <input type="checkbox" data-eu ${p.euStock ? 'checked' : ''}>
+        <div><div class="t-title">Sendes fra EU-lager</div>
+        <div class="t-why">Så slipper du for de 22 kr. i told pr. varepost og halverer typisk leveringstiden. Spørg leverandøren — CJ, Zendrop og mange AliExpress-sælgere har EU-lager.</div></div>
+      </label>
       <label class="field" style="margin-top:12px"><span>Betalingslink til netop dette produkt (valgfrit)</span>
         <input type="text" data-p="payLink" value="${esc(p.payLink || '')}" placeholder="https://buy.stripe.com/... — bruges i den eksporterede butik"></label>
     </div>
@@ -755,6 +766,7 @@ function ecoBlock(e){
     <div class="stat-line"><span>− Moms</span><b>−${kr(e.price - e.net)}</b></div>
     <div class="stat-line"><span>− Vare + fragt</span><b>−${kr(e.cogs)}</b></div>
     <div class="stat-line"><span>− Gebyr</span><b>−${kr(e.fee)}</b></div>
+    ${e.duty > 0 ? `<div class="stat-line"><span>− Told pr. varepost (3 €)</span><b>−${kr(e.duty)}</b></div>` : ''}
     <div class="stat-line"><span>− Returer</span><b>−${kr(e.dbOrder - e.dbReturns)}</b></div>
     <div class="stat-line"><span>− Annonce pr. salg</span><b>−${kr(e.cpa)}</b></div>
     ${e.up.perOrder > 0 ? `<div class="stat-line"><span>+ Upsalg</span><b class="pos">+${kr(e.up.perOrder)}</b></div>` : ''}
@@ -969,6 +981,7 @@ const SETUP_ONCE = [
   {id:'pay',      title:'Betaling: kort + MobilePay',    text:'Danskere dropper kurven, hvis MobilePay mangler. Det er den billigste konvertering du kan købe.'},
   {id:'policy',   title:'Handelsbetingelser og returret', text:'14 dages fortrydelsesret er lovpligtig. Skriv leveringstiden tydeligt — det halverer sure mails.'},
   {id:'supplier', title:'Aftal leveringstid med leverandøren', text:'Bed om DK-lager eller europæisk lager, hvis det findes. 6 dage slår 20 dage hver gang.'},
+  {id:'ioss',     title:'Told og moms styr på',           text:'Siden 1. juli 2026 er der 3 € (ca. 22 kr.) i told pr. varepost på pakker under 150 € fra lande uden for EU — og et håndteringsgebyr oveni senest 1. november. Vælg EU-lager hvor du kan, og tal med en revisor om IOSS og EORI.'},
   {id:'autopay',  title:'Automatisk ordreafsendelse',    text:'DSers, CJ eller Zendrop kobler shoppen til leverandøren, så ordrer sendes af sig selv.'},
   {id:'mail',     title:'Tre automatiske mails',         text:'Tak for ordren, pakken er sendt, og "husk din kurv". Sættes op én gang, tjener penge hver uge.'},
   {id:'pixel',    title:'Pixel og konverteringssporing', text:'Uden sporing annoncerer du i blinde. Det er 20 minutter, der afgør alt andet.'}
@@ -979,7 +992,8 @@ const RULES = [
   'Ingen vinder efter 500 kr. i annoncer og 0 salg? Så er det produktet — ikke annoncen.',
   'Hæv aldrig budgettet mere end 20 % ad gangen.',
   'Køb aldrig lager, før det samme produkt har solgt i tre uger.',
-  'Et produkt, du ikke selv gider vente 10 dage på, skal du ikke sælge.'
+  'Et produkt, du ikke selv gider vente 10 dage på, skal du ikke sælge.',
+  'EU-lager slår Kina-lager: ingen told pr. varepost, kortere levering, færre sure mails.'
 ];
 
 function renderRoutine(){
@@ -1113,6 +1127,12 @@ document.addEventListener('change', e => {
     state.done[key] = [...list];
     save(); renderToday();
     if(task.checked) toast('Færdig for i dag 👊');
+    return;
+  }
+  const eu = e.target.closest('[data-eu]');
+  if(eu){
+    const p = state.products.find(x => x.id === openId);
+    if(p){ p.euStock = eu.checked; save(); renderDrawer(); }
     return;
   }
   const setup = e.target.closest('[data-setup]');
