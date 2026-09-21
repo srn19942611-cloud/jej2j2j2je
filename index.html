@@ -21,9 +21,12 @@
 
   <nav class="tabs" id="tabs" role="tablist" aria-label="Sektioner">
     <button class="tab" role="tab" data-view="today" aria-selected="true"><span class="dot"></span>I dag</button>
-    <button class="tab" role="tab" data-view="hunt" aria-selected="false"><span class="dot"></span>Find produkt</button>
+    <button class="tab" role="tab" data-view="jagt" aria-selected="false"><span class="dot"></span>Jagt</button>
+    <button class="tab" role="tab" data-view="hunt" aria-selected="false"><span class="dot"></span>Vurdér</button>
     <button class="tab" role="tab" data-view="catalog" aria-selected="false"><span class="dot"></span>Katalog</button>
+    <button class="tab" role="tab" data-view="images" aria-selected="false"><span class="dot"></span>Billeder</button>
     <button class="tab" role="tab" data-view="shop" aria-selected="false"><span class="dot"></span>Butik</button>
+    <button class="tab" role="tab" data-view="flow" aria-selected="false"><span class="dot"></span>Flow</button>
     <button class="tab" role="tab" data-view="numbers" aria-selected="false"><span class="dot"></span>Tal</button>
     <button class="tab" role="tab" data-view="routine" aria-selected="false"><span class="dot"></span>Rutine</button>
   </nav>
@@ -71,7 +74,43 @@
   </div>
 </section>
 
-<!-- ======================= FIND PRODUKT ======================= -->
+
+<!-- ======================= JAGT ======================= -->
+<section class="view" id="view-jagt" role="tabpanel">
+  <div class="view-head">
+    <h1>Jagt</h1>
+    <p>Her finder du kandidaterne. Skriv en niche eller et produkt, og gå direkte ind i de søgninger, hvor vinderne plejer at dukke op først.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-head">
+      <div><span class="eyebrow">Søgestarter</span><h2 style="margin-top:4px">Hvad leder du efter?</h2></div>
+    </div>
+    <div class="inline-fields">
+      <label class="field"><span>Søgeord (dansk eller engelsk)</span><input type="text" id="jagtQuery" placeholder="fx nakkemassager / neck massager"></label>
+    </div>
+    <div class="chips" id="nicheChips" style="margin-bottom:12px"></div>
+    <div class="grid g3" id="searchLinks"></div>
+    <div class="note" style="margin-top:12px" id="jagtNote"></div>
+  </div>
+
+  <div class="split">
+    <div class="card">
+      <div class="card-head"><div><span class="eyebrow">Sæson</span><h2 style="margin-top:4px">Hvad sælger hvornår i Danmark</h2>
+      <p>Bestil testvarer 6–8 uger før sæsonen — leveringstiden æder forspringet.</p></div></div>
+      <div id="seasonList"></div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <div class="card-head"><div><span class="eyebrow">Før du tester</span><h2 style="margin-top:4px">Otte tjek på fem minutter</h2></div></div>
+        <div class="stack" id="trendChecks"></div>
+      </div>
+      <div class="card" id="scrapeNote"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= VURDÉR PRODUKT ======================= -->
 <section class="view" id="view-hunt" role="tabpanel">
   <div class="view-head">
     <h1>Find produkt</h1>
@@ -160,6 +199,71 @@
   <div class="rows" id="catalogList"></div>
 </section>
 
+
+<!-- ======================= BILLEDER ======================= -->
+<section class="view" id="view-images" role="tabpanel">
+  <div class="view-head">
+    <h1>Billeder</h1>
+    <p>Gør leverandørens rodede billeder til dine egne. Beskær til de formater annoncerne kræver, læg ren baggrund og pris på — alt sammen i din browser, intet uploades nogen steder.</p>
+  </div>
+
+  <div class="split">
+    <div class="stack">
+      <div class="card">
+        <div class="card-head">
+          <div><span class="eyebrow">Billede</span><h2 style="margin-top:4px">Træk et billede herind</h2></div>
+          <button class="btn sm" id="imgPick">Vælg fil</button>
+        </div>
+        <div id="dropZone" class="dropzone">
+          <p><b>Slip billedet her</b></p>
+          <p class="hint">Eller kopier et produktbillede og tryk Ctrl+V. PNG, JPG og WebP. Flere ad gangen er fint.</p>
+        </div>
+        <input type="file" id="imgFile" accept="image/*" multiple hidden>
+        <div class="filmstrip" id="filmstrip"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><span class="eyebrow">Forhåndsvisning</span><h2 style="margin-top:4px" id="canvasTitle">Kvadratisk · 1080 × 1080</h2>
+        <p>Træk i billedet for at flytte det. Zoom med skyderen.</p></div></div>
+        <div class="canvas-stage"><canvas id="imgCanvas"></canvas></div>
+        <div class="btn-row" style="margin-top:12px">
+          <button class="btn primary" id="imgDownload">Hent dette format</button>
+          <button class="btn" id="imgDownloadAll">Hent alle fire</button>
+          <button class="btn" id="imgSetProduct">Sæt som produktbillede</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <span class="eyebrow">Format</span>
+        <h3 style="margin:5px 0 10px">Hvor skal det bruges?</h3>
+        <div class="chips" id="formatChips"></div>
+        <div class="divider"></div>
+        <label class="field"><span>Zoom</span><input type="range" id="imgZoom" min="100" max="300" step="1" value="100"></label>
+        <label class="field"><span>Luft omkring (%)</span><input type="range" id="imgPad" min="0" max="22" step="1" value="6"></label>
+        <label class="field"><span>Hjørner</span><input type="range" id="imgRadius" min="0" max="60" step="1" value="0"></label>
+      </div>
+
+      <div class="card">
+        <span class="eyebrow">Baggrund</span>
+        <h3 style="margin:5px 0 10px">Ren baggrund sælger bedre</h3>
+        <div class="chips" id="bgChips"></div>
+        <label class="field" style="margin-top:12px"><span>Brandfarve</span><input type="color" data-bind="settings.brandColor" style="height:42px;padding:4px"></label>
+      </div>
+
+      <div class="card">
+        <span class="eyebrow">Påskrift</span>
+        <h3 style="margin:5px 0 10px">Tekst på billedet</h3>
+        <label class="field"><span>Produkt (henter navn og pris)</span><select id="imgProduct"></select></label>
+        <label class="field"><span>Mærkat øverst</span><input type="text" id="imgBadge" placeholder="fx NYHED, −30 %, FRI FRAGT"></label>
+        <label class="field"><span>Pris nederst</span><input type="text" id="imgPrice" placeholder="fx 399 kr."></label>
+        <label class="field"><span>Butiksnavn</span><input type="text" id="imgStore" placeholder="Min butik"></label>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ======================= BUTIK ======================= -->
 <section class="view" id="view-shop" role="tabpanel">
   <div class="view-head">
@@ -187,7 +291,77 @@
           </select>
         </label>
       </div>
+      <div class="card" id="exportCard"></div>
       <div class="card" id="shopTips"></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ======================= FLOW ======================= -->
+<section class="view" id="view-flow" role="tabpanel">
+  <div class="view-head">
+    <h1>Flow</h1>
+    <p>Kunder kommer ikke af sig selv. Her er tragten, planen for de første 14 dage, opslagene, annoncemanuskripterne og mailsene — og en beregner, der siger hvor det siver.</p>
+  </div>
+
+  <div class="split" style="margin-bottom:14px">
+    <div class="card">
+      <div class="card-head"><div><span class="eyebrow">Tragten</span><h2 style="margin-top:4px">Fra besøg til ordre</h2>
+      <p>Skriv dine egne tal fra Shopify eller Google Analytics. Kender du dem ikke endnu, så lad dem stå — de er typiske startværdier.</p></div></div>
+      <div class="inline-fields">
+        <label class="field suffix"><span>Besøgende pr. uge</span><input type="number" min="0" step="10" data-bind="flow.visitors"></label>
+        <label class="field suffix"><span>Lægger i kurv</span><input type="number" min="0" max="100" step="0.5" data-bind="flow.atc"><em>%</em></label>
+        <label class="field suffix"><span>Går til betaling</span><input type="number" min="0" max="100" step="1" data-bind="flow.checkout"><em>%</em></label>
+        <label class="field suffix"><span>Gennemfører køb</span><input type="number" min="0" max="100" step="1" data-bind="flow.purchase"><em>%</em></label>
+        <label class="field suffix"><span>Pris pr. klik</span><input type="number" min="0" step="0.1" data-bind="flow.cpc"><em>kr.</em></label>
+      </div>
+      <div id="funnel"></div>
+    </div>
+    <div class="stack">
+      <div class="card" id="funnelVerdict"></div>
+      <div class="card" id="utmCard">
+        <span class="eyebrow">Sporing</span>
+        <h3 style="margin:5px 0 10px">Byg et link, du kan måle på</h3>
+        <label class="field"><span>Din side</span><input type="text" id="utmUrl" placeholder="https://minbutik.dk/produkt"></label>
+        <div class="inline-fields">
+          <label class="field"><span>Kilde</span><input type="text" id="utmSource" value="tiktok"></label>
+          <label class="field"><span>Medie</span><input type="text" id="utmMedium" value="organic"></label>
+          <label class="field"><span>Kampagne</span><input type="text" id="utmCampaign" value="lancering"></label>
+        </div>
+        <div class="out" id="utmOut" style="margin-bottom:10px"></div>
+        <button class="btn sm" id="utmCopy">Kopiér link</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-head">
+      <div><span class="eyebrow">De første 14 dage</span><h2 style="margin-top:4px">Lanceringsplanen</h2>
+      <p>Én ting om dagen. Krydser du af hver dag, står du med en butik, der har fået en ærlig chance.</p></div>
+      <span class="badge neutral" id="launchProgress">0/14</span>
+    </div>
+    <div class="grid g2" id="launchPlan"></div>
+  </div>
+
+  <div class="split">
+    <div class="stack">
+      <div class="card">
+        <div class="card-head"><div><span class="eyebrow">Indhold</span><h2 style="margin-top:4px">14 opslag, du bare kan filme</h2></div>
+          <select id="flowProduct" style="max-width:200px"></select></div>
+        <div class="stack" id="contentPlan"></div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <div class="card-head"><div><span class="eyebrow">Annoncer</span><h2 style="margin-top:4px">Tre manuskripter</h2>
+        <p>30 sekunder, filmet på en telefon. Test dem mod hinanden med samme budget.</p></div></div>
+        <div class="stack" id="adScripts"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><span class="eyebrow">Mails</span><h2 style="margin-top:4px">Fire mails, der kører af sig selv</h2></div></div>
+        <div class="stack" id="mailFlows"></div>
+      </div>
     </div>
   </div>
 </section>
@@ -295,6 +469,18 @@
     <label class="field suffix"><span>Din tid pr. uge</span><input type="number" data-bind="settings.minutesPerWeek" step="15" min="15"><em>min</em></label>
   </div>
   <div class="divider"></div>
+  <p class="eyebrow" style="margin-bottom:8px">Butiksoplysninger — bruges i den eksporterede butik</p>
+  <div class="inline-fields">
+    <label class="field"><span>Kontakt-e-mail</span><input type="text" data-bind="settings.contactEmail" placeholder="hej@minbutik.dk"></label>
+    <label class="field"><span>CVR-nummer</span><input type="text" data-bind="settings.cvr" placeholder="12345678"></label>
+  </div>
+  <div class="inline-fields">
+    <label class="field suffix"><span>Fragtpris</span><input type="number" data-bind="settings.shipPrice" step="1" min="0"><em>kr.</em></label>
+    <label class="field suffix"><span>Fri fragt over</span><input type="number" data-bind="settings.freeShipFrom" step="10" min="0"><em>kr.</em></label>
+    <label class="field suffix"><span>Returret</span><input type="number" data-bind="settings.returnDays" step="1" min="14"><em>dage</em></label>
+  </div>
+  <label class="field"><span>Betalingslink (Stripe Payment Link, MobilePay-link eller lignende)</span><input type="text" data-bind="settings.checkoutUrl" placeholder="https://buy.stripe.com/..."></label>
+  <div class="divider"></div>
   <div class="btn-row">
     <button class="btn" id="exportBtn">Eksportér data</button>
     <button class="btn" id="importBtn">Importér data</button>
@@ -307,5 +493,9 @@
 
 <div class="toast" id="toast"></div>
 <script src="app.js"></script>
+<script src="jagt.js"></script>
+<script src="images.js"></script>
+<script src="shopexport.js"></script>
+<script src="flow.js"></script>
 </body>
 </html>

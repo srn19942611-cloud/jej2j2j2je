@@ -4,6 +4,7 @@
 /* ---------------------------------------------------------------- state */
 
 const KEY = 'medvind.v1';
+const LAUNCH_LENGTH = 14;
 
 const DEFAULTS = {
   settings: {
@@ -20,12 +21,20 @@ const DEFAULTS = {
     targetMultiple: 3,
     goal: 5000,
     minutesPerWeek: 90,
-    freeShipFrom: 299
+    freeShipFrom: 299,
+    shipPrice: 39,
+    returnDays: 30,
+    contactEmail: '',
+    cvr: '',
+    checkoutUrl: '',
+    brandColor: '#0B7A5D'
   },
   products: [],
   log: [],
   done: {},
-  routine: {}
+  routine: {},
+  flow: { visitors: 400, atc: 7, checkout: 50, purchase: 60, cpc: 3.5, launch: {}, content: {} },
+  hunt: { keyword: '', checks: {} }
 };
 
 let state = load();
@@ -38,13 +47,20 @@ function load(){
     return {
       ...structuredClone(DEFAULTS),
       ...saved,
-      settings: { ...DEFAULTS.settings, ...(saved.settings||{}) }
+      settings: { ...DEFAULTS.settings, ...(saved.settings||{}) },
+      flow: { ...DEFAULTS.flow, ...(saved.flow||{}) },
+      hunt: { ...DEFAULTS.hunt, ...(saved.hunt||{}) }
     };
   }catch(e){ return structuredClone(DEFAULTS); }
 }
 function save(){
   try{ localStorage.setItem(KEY, JSON.stringify(state)); }
-  catch(e){ toast('Kunne ikke gemme — browseren blokerer lagring'); }
+  catch(e){
+    // Typisk fordi produktbillederne fylder for meget til browserens 5 MB
+    toast(String(e).includes('uota')
+      ? 'Der er ikke plads til mere — slet et produktbillede eller eksportér dine data'
+      : 'Kunne ikke gemme — browseren blokerer lagring');
+  }
 }
 
 /* ---------------------------------------------------------------- helpers */
@@ -363,6 +379,17 @@ function tasks(){
   if(noUpsell)
     add('upsell', `Byg et upsalg på ${noUpsell.name}`, 'Et 2-for-1 eller et tilbehør hæver ordren uden at koste en eneste annoncekrone ekstra.', 8, 'catalog', 2);
 
+  const noImage = st.live.find(p => !p.image);
+  if(noImage)
+    add('image', `Lav produktbilleder til ${noImage.name}`, 'Leverandørens billeder ligner leverandørens billeder. Beskær, læg ren baggrund på og skriv prisen — ti minutter under Billeder.', 10, 'images', 2);
+
+  if(st.live.length && !state.settings.checkoutUrl && !state.settings.contactEmail)
+    add('pay', 'Gør butikken klar til at tage imod ordrer', 'Uden betalingslink eller e-mail kan kunden ikke bestille. Sæt et Stripe- eller MobilePay-link ind under Opsætning.', 6, 'shop', 0);
+
+  const launchDone = Object.values(state.flow.launch || {}).filter(Boolean).length;
+  if(st.live.length && launchDone < LAUNCH_LENGTH)
+    add('launch', `Lanceringsplanen — ${launchDone}/14 klaret`, 'Én ting om dagen i to uger. Det er hele forskellen mellem en butik, der fik en chance, og en der ikke gjorde.', 15, 'flow', 1);
+
   if(st.daysSinceLog > 6 && state.products.length > 0)
     add('log', 'Log ugens tal', 'Ordrer, omsætning og annonceforbrug. Ét minut — og så ved du, om der er forretning i det.', 2, 'numbers', 1);
 
@@ -577,7 +604,7 @@ function renderCatalog(){
   $('#catalogList').innerHTML = list.length ? list.map(p => {
     const e = economics(p), sc = scoreOf(p);
     return `<button class="row" data-open="${p.id}">
-      <span class="thumb">${emojiFor(p.name)}</span>
+      <span class="thumb">${p.image ? `<img src="${p.image}" alt="">` : emojiFor(p.name)}</span>
       <span class="main">
         <b>${esc(p.name || 'Uden navn')}</b>
         <span>${esc(p.source || 'egen kilde')} · ${kr(e.price)} · score ${sc.total}</span>
@@ -652,6 +679,8 @@ function drawerBody(p, e){
         <label class="field suffix"><span>Annonce pr. salg</span><input type="number" step="1" data-p="cpa" value="${p.cpa === '' ? '' : num(p.cpa)}" placeholder="${num(state.settings.cpa)}"><em>kr.</em></label>
       </div>
       <button class="btn sm" data-suggest>Foreslå pris (×${state.settings.targetMultiple})</button>
+      <label class="field" style="margin-top:12px"><span>Betalingslink til netop dette produkt (valgfrit)</span>
+        <input type="text" data-p="payLink" value="${esc(p.payLink || '')}" placeholder="https://buy.stripe.com/... — bruges i den eksporterede butik"></label>
     </div>
     <div class="card tight" id="drawerEco">${ecoBlock(e)}</div>`;
 
@@ -770,7 +799,7 @@ function renderShop(){
       const bullets = String(p.features || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 3);
       const u = p.upsell || {};
       return `<article class="p-card">
-        <div class="img">${emojiFor(p.name)}${p.status === 'vinder' ? '<span class="tag">Bestseller</span>' : ''}</div>
+        <div class="img">${p.image ? `<img src="${p.image}" alt="${esc(p.name)}">` : emojiFor(p.name)}${p.status === 'vinder' ? '<span class="tag">Bestseller</span>' : ''}</div>
         <div class="body">
           <h4>${esc(p.name || 'Produkt')}</h4>
           ${p.benefit ? `<p class="hint" style="font-size:.78rem">${esc(p.benefit)}</p>` : ''}
@@ -986,6 +1015,9 @@ function render(){
   renderNumbers();
   renderRoutine();
   if(draft) renderHuntResult();
+  // moduler i egne filer — kaldes kun hvis de er indlæst
+  [window.renderJagt, window.renderImages, window.renderFlow, window.renderExportCard]
+    .forEach(fn => { if(typeof fn === 'function') fn(); });
 }
 
 function showView(name){
@@ -1333,7 +1365,7 @@ function seedDemo(){
 
 /* ---------------------------------------------------------------- init */
 
-(function init(){
+function init(){
   const savedTheme = localStorage.getItem(KEY + '.theme');
   if(savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
 
@@ -1346,4 +1378,6 @@ function seedDemo(){
   if(!state.products.length && !state.log.length){
     $('#parseNote').innerHTML = `<div class="note" style="margin-top:12px">Ny her? Tryk <b>Opsætning → Indlæs eksempel</b> for at se en butik med tal i — og slet det igen bagefter.</div>`;
   }
-})();
+}
+
+document.addEventListener('DOMContentLoaded', init);
