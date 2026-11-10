@@ -1,0 +1,66 @@
+# Ever Gauzy (open source projektstyring) – demo-opsætning til Coop × Solselskabet
+# Baseret på ever-co/ever-gauzy docker-compose.demo.yml.
+# Images er låst til de versioner, der er testet med seed-scriptet (10.11.2026).
+# Start med ./start.sh – den laver .env med tilfældige nøgler første gang.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: gauzy
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: gauzy_password
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+      - ./init-user-db.sh:/docker-entrypoint-initdb.d/init-user-db.sh
+    networks:
+      - overlay
+
+  api:
+    image: ghcr.io/ever-co/gauzy-api@sha256:ffa2be9beae4171fb2f954b053d6b256cd10bd612b446b72032495052e1c3d8e
+    environment:
+      DB_HOST: db
+    env_file:
+      - .env
+    entrypoint: './entrypoint.compose.sh'
+    command: ['node', 'main.js']
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    networks:
+      - overlay
+
+  webapp:
+    image: ghcr.io/ever-co/gauzy-webapp@sha256:9757fbe2a198e8289ef00a384179bf0239aa5ca002a2db1feda850ae733d02e0
+    environment:
+      DEMO: 'true'
+    entrypoint: './entrypoint.compose.sh'
+    command: ['nginx', '-g', 'daemon off;']
+    env_file:
+      - .env
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    ports:
+      - '4200:4200'
+    networks:
+      - overlay
+
+volumes:
+  postgres_data: {}
+
+networks:
+  overlay:
+    driver: bridge
