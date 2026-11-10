@@ -15,7 +15,8 @@ if [ ! -f .env ]; then
   rm -f .env.bak
 fi
 
-docker compose up -d
+# --build: bygger den danske udgave af Gauzys webapp (dansk/Dockerfile) første gang
+docker compose up -d --build
 
 echo "Venter på at API'et er klar (første start tager 3-6 minutter, fordi databasen bygges) ..."
 for i in $(seq 1 90); do
@@ -25,6 +26,9 @@ done
 curl -sf http://localhost:3000/api/health >/dev/null || { echo "API'et svarer ikke. Se: docker compose logs api"; exit 1; }
 
 node seed/seed.mjs
+
+# Danske navne på Gauzys standarddata (rapporter, prioriteter, nyheder) og 24-timers ur
+docker compose exec -T db psql -U postgres -d gauzy -q -v ON_ERROR_STOP=1 < dansk/data.sql
 
 IP=$( (hostname -I 2>/dev/null | awk '{print $1}') || true)
 [ -z "$IP" ] && IP=$(ipconfig getifaddr en0 2>/dev/null || true)

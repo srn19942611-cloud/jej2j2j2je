@@ -11,11 +11,24 @@
 
 ## 1. Gauzy på dansk
 
-Hele brugerfladen er oversat til dansk (7.000 tekster): menuer, knapper, formularer og meddelelser i alle moduler. Det gælder projekter, opgaver, tidsregistrering, timesedler, medarbejdere, teams, mål/KPI, kontakter, tilbud, fakturaer, udgifter, lager, udstyr, dokumenter og rapporter.
+Hele brugerfladen er på dansk: menuer, knapper, formularer, meddelelser, brødkrummer, datovælger, kalender, tabeller og datoer i alle moduler. Det gælder projekter, opgaver, tidsregistrering, timesedler, medarbejdere, teams, mål/KPI, kontakter, tilbud, fakturaer, udgifter, lager, udstyr, dokumenter, AI-assistent, plugins og rapporter.
 
-- Oversættelsen ligger i `dansk/da.json` og lægges oven på Gauzys engelske sprogfil (se `docker-compose.yml`). Selve programmet er ikke ændret.
-- Nogle få tekster er skrevet direkte ind i Gauzys kode og kan ikke oversættes uden at ombygge programmet. Det gælder fx demobanneret øverst og datovælgerens "Today/Last Week".
-- Vil du rette en oversættelse, så ret i `dansk/da.json` og genindlæs siden.
+| Hvad | Antal | Fil |
+|---|---|---|
+| Gauzys sprogfil | 7.000 tekster | `dansk/da.json` |
+| Indbyggede ordbøger i nyere moduler (dokumenter, AI-chat, indbakke, plugins m.m.) | 1.530 tekster | `dansk/plugins-da.json` |
+| Tekster skrevet direkte i koden (knapper, pladsholdere, demobanner, sideskift …) | 460 tekster | `dansk/ui-tekster.json` |
+| Biblioteker og formater: kalender, datovælger, rullelister, tabeller, måneds-/dagnavne, datoformat (10. nov. 2026), 24-timers ur, mandag som første ugedag | 58 regler | `dansk/patch.cjs` |
+| Standarddata i databasen: rapportnavne, prioriteter, størrelser, opgavetyper, nyhedskort | | `dansk/data.sql` |
+
+**Sådan virker det:** `docker compose up --build` bygger en dansk udgave af Gauzys officielle webapp-image (`dansk/Dockerfile`). Byggetrinnet kører `dansk/patch.cjs`, som lægger de danske tekster ind og skriver til sidst en linje som `Dansk: 57 filer ændret · … · 58/58 regler`. Står der færre regler end i alt, har Gauzy ændret sig, og den del er stadig engelsk.
+
+- **Ret en oversættelse:** ret i den relevante fil i `dansk/`, og kør `docker compose up -d --build webapp`.
+- **Efter `node seed/seed.mjs --reset`:** kør også `docker compose exec -T db psql -U postgres -d gauzy < dansk/data.sql`, så nye brugere får 24-timers ur.
+- **Det, der stadig er engelsk:**
+  - Gauzys egne demofirmaer og -data, fx "Ever Technologies" og "Default Employee". De ses kun, hvis man skifter til de organisationer.
+  - E-mails, som serveren sender, fx invitationer og nulstilling af adgangskode.
+  - Enkelte statusmærker skrives med stort i hvert ord ("Ikke Startet").
 
 ## 2. Feltappen til telefonen
 

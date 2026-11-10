@@ -40,11 +40,14 @@ services:
       - overlay
 
   webapp:
-    image: ghcr.io/ever-co/gauzy-webapp@sha256:9757fbe2a198e8289ef00a384179bf0239aa5ca002a2db1feda850ae733d02e0
+    # Dansk udgave bygget oven på det officielle image (se dansk/Dockerfile)
+    build: ./dansk
+    image: solselskabet-gauzy-webapp-dansk
     environment:
       DEMO: 'true'
     entrypoint: './entrypoint.compose.sh'
-    command: ['nginx', '-g', 'daemon off;']
+    # Browsere skal altid hente den aktuelle (danske) kode – ikke en gammel engelsk kopi fra cachen
+    command: ['sh', '-c', "sed -i 's/public, max-age=31536000, immutable/public, no-cache/' /etc/nginx/conf.d/runtime-config-bundles.conf && exec nginx -g 'daemon off;'"]
     env_file:
       - .env
     restart: on-failure
@@ -53,9 +56,6 @@ services:
         condition: service_healthy
       api:
         condition: service_started
-    volumes:
-      # Dansk oversættelse: lægges oven på den engelske sprogfil, så hele brugerfladen er på dansk
-      - ./dansk/da.json:/srv/gauzy/assets/i18n/en.json:ro
     ports:
       - '4200:4200'
     networks:
