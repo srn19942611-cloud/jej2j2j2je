@@ -99,3 +99,10 @@ export const PROJEKTER_OEVRIGE = [
 		]
 	}
 ];
+
+// Demo-brugere til mobil-appen (rollen "Employee" i Gauzy). Skift adgangskoder før rigtig brug.
+// `lokationer` = hvilke lokationers opgaver brugeren står på. `oevrige` = projekter fra PROJEKTER_OEVRIGE.
+export const MONTOERER = [
+	{ fornavn: 'Mads', efternavn: 'Montør', email: 'montoer@solselskabet.demo', adgangskode: 'Montoer2026!', lokationer: [1, 2, 3, 4], oevrige: [] },
+	{ fornavn: 'Sara', efternavn: 'Servicetekniker', email: 'service@solselskabet.demo', adgangskode: 'Service2026!', lokationer: [5, 6, 7, 8], oevrige: ['Drift og service'] }
+];

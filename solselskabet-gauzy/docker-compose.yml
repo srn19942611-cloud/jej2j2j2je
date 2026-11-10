@@ -53,8 +53,25 @@ services:
         condition: service_healthy
       api:
         condition: service_started
+    volumes:
+      # Dansk oversættelse: lægges oven på den engelske sprogfil, så hele brugerfladen er på dansk
+      - ./dansk/da.json:/srv/gauzy/assets/i18n/en.json:ro
     ports:
       - '4200:4200'
+    networks:
+      - overlay
+
+  # Mobil-app til håndværkere (tjeklister, fotos, underskrift). Åbn http://<pc-ens-ip>:8080 på telefonen.
+  feltapp:
+    image: nginx:1.27-alpine
+    restart: on-failure
+    depends_on:
+      - api
+    volumes:
+      - ./app:/usr/share/nginx/html:ro
+      - ./app/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - '8080:8080'
     networks:
       - overlay
 

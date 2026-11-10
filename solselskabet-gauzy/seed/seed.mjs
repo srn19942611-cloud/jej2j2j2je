@@ -5,7 +5,7 @@
 //
 // Miljøvariabler: GAUZY_API (standard http://localhost:3000/api),
 //                 GAUZY_EMAIL / GAUZY_PASSWORD (standard admin@ever.co / admin)
-import { ORGANIZATION, STATUSES, TAGS, LOKATIONER, FASER, PROJEKTER_OEVRIGE } from './data.mjs';
+import { ORGANIZATION, STATUSES, TAGS, LOKATIONER, FASER, PROJEKTER_OEVRIGE, MONTOERER } from './data.mjs';
 
 const API = process.env.GAUZY_API || 'http://localhost:3000/api';
 const EMAIL = process.env.GAUZY_EMAIL || 'admin@ever.co';
@@ -53,7 +53,7 @@ const api = (method, path, body, orgId) =>
 	http(method, path, body, orgId ? { ...auth, 'Organization-Id': orgId } : auth);
 
 // --- Organisation -----------------------------------------------------------
-const memberships = await api('GET', '/user-organization?relations[]=organization');
+const memberships = await api('GET', `/user-organization?relations[]=organization&where[userId]=${login.user.id}&where[tenantId]=${tenantId}`);
 const found = (memberships.items || [])
 	.map((m) => m.organization)
 	.filter((o, i, all) => o && o.name === ORGANIZATION.name && all.findIndex((x) => x?.id === o.id) === i);
@@ -121,9 +121,33 @@ for (const [key, t] of Object.entries(TAGS)) {
 	tagId[key] = created.id;
 }
 
+// --- Montører (brugere til mobil-appen) --------------------------------------
+const medarbejder = {}; // email -> employeeId
+for (const m of MONTOERER) {
+	// Demo-brugeren slettes og oprettes forfra, så adgangskode og organisation passer
+	try {
+		const u = await api('GET', `/user/email/${encodeURIComponent(m.email)}`);
+		if (u?.id) await api('DELETE', `/user/${u.id}`);
+	} catch {
+		/* findes ikke */
+	}
+	const e = await call('POST', '/employee', {
+		...scope,
+		startedWorkOn: iso(PROGRAM_START),
+		password: m.adgangskode,
+		user: { firstName: m.fornavn, lastName: m.efternavn, email: m.email, tenantId, preferredLanguage: 'en' }
+	});
+	medarbejder[m.email] = e.id;
+}
+const ansvarligFor = (lokationNr, projektNavn) =>
+	MONTOERER.filter((m) => (lokationNr && m.lokationer.includes(lokationNr)) || (projektNavn && m.oevrige.includes(projektNavn))).map((m) => ({
+		id: medarbejder[m.email]
+	}));
+console.log(`Montører: ${MONTOERER.map((m) => m.email).join(', ')}`);
+
 // --- Opgaver ----------------------------------------------------------------
 let taskCount = 0;
-async function task(projectId, { titel, tekst, tags = [], status, start, due, priority = 'medium' }) {
+async function task(projectId, { titel, tekst, tags = [], status, start, due, priority = 'medium', members = [] }) {
 	await call('POST', '/tasks', {
 		...scope,
 		projectId,
@@ -135,7 +159,7 @@ async function task(projectId, { titel, tekst, tags = [], status, start, due, pr
 		startDate: start ? iso(start) : undefined,
 		dueDate: due ? iso(due) : undefined,
 		tags: tags.map((k) => ({ id: tagId[k] })),
-		members: []
+		members
 	});
 	taskCount++;
 }
@@ -150,7 +174,7 @@ for (const p of PROJEKTER_OEVRIGE) {
 	const proj = await project(p.navn, p.beskrivelse);
 	for (const o of p.opgaver) {
 		const prio = o.tags.includes('afklaring') ? 'high' : 'medium';
-		await task(proj.id, { ...o, due: addDays(today, o.dage), priority: o.status === 'blocked' ? 'urgent' : prio });
+		await task(proj.id, { ...o, members: ansvarligFor(null, p.navn), due: addDays(today, o.dage), priority: o.status === 'blocked' ? 'urgent' : prio });
 	}
 	console.log(`Projekt: ${p.navn} (${p.opgaver.length} opgaver)`);
 }
@@ -170,7 +194,8 @@ for (const [i, lok] of LOKATIONER.entries()) {
 			status,
 			start,
 			due,
-			priority: n === lok.fremdrift ? 'high' : 'medium'
+			priority: n === lok.fremdrift ? 'high' : 'medium',
+			members: f.tags.includes('solselskabet') ? ansvarligFor(i + 1) : []
 		});
 		start = due;
 	}

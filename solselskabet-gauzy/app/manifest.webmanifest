@@ -1,0 +1,11 @@
+{
+  "name": "Feltapp – Coop × Solselskabet",
+  "short_name": "Feltapp",
+  "lang": "da",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f3d2e",
+  "theme_color": "#0f3d2e",
+  "icons": [{ "src": "ikon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

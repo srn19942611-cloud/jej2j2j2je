@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="da">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+	<meta name="theme-color" content="#0f3d2e" />
+	<meta name="apple-mobile-web-app-capable" content="yes" />
+	<meta name="apple-mobile-web-app-title" content="Feltapp" />
+	<title>Feltapp – Coop × Solselskabet</title>
+	<link rel="manifest" href="manifest.webmanifest" />
+	<link rel="icon" href="ikon.svg" type="image/svg+xml" />
+	<link rel="apple-touch-icon" href="ikon.svg" />
+	<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+	<header class="top">
+		<button id="tilbage" class="ikonknap" hidden aria-label="Tilbage">‹</button>
+		<div class="top-titel">
+			<div id="top-titel">Feltapp</div>
+			<div id="top-under" class="top-under"></div>
+		</div>
+		<button id="menu" class="ikonknap" hidden aria-label="Menu">⋯</button>
+	</header>
+	<main id="app" aria-live="polite"></main>
+	<div id="besked" class="besked" role="status" hidden></div>
+	<script type="module" src="app.js"></script>
+</body>
+</html>

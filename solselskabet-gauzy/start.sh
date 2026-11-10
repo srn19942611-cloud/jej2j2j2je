@@ -26,7 +26,13 @@ curl -sf http://localhost:3000/api/health >/dev/null || { echo "API'et svarer ik
 
 node seed/seed.mjs
 
+IP=$( (hostname -I 2>/dev/null | awk '{print $1}') || true)
+[ -z "$IP" ] && IP=$(ipconfig getifaddr en0 2>/dev/null || true)
+[ -z "$IP" ] && IP="<pc-ens-ip>"
+
 echo
-echo "Klar:  http://localhost:4200"
-echo "Login: admin@ever.co / admin"
-echo "Vælg organisationen 'Coop × Solselskabet' øverst til højre."
+echo "Kontor (pc):     http://localhost:4200   –  admin@ever.co / admin"
+echo "                 Vælg organisationen 'Coop × Solselskabet' øverst til højre."
+echo "Feltapp (mobil): http://$IP:8080         –  telefonen skal være på samme netværk"
+echo "                 montoer@solselskabet.demo / Montoer2026!"
+echo "                 service@solselskabet.demo / Service2026!"
