@@ -66,6 +66,15 @@ saet API_BASE_URL "https://$DOMAENE"
 saet CLIENT_BASE_URL "https://$DOMAENE"
 saet ALLOWED_ORIGINS "https://$DOMAENE"
 saet TRUST_PROXY 1                       # Caddy står foran
+# AI (valgfrit): angiv nøgler ved kørsel, fx  ANTHROPIC_API_KEY=sk-ant-... MISTRAL_API_KEY=... sudo -E ./online/installer.sh domæne
+# Nøglerne kan også lægges ind senere i Gauzy under Indstillinger → AI.
+for k in ANTHROPIC_API_KEY OPENAI_API_KEY MISTRAL_API_KEY; do
+	[ -n "${!k:-}" ] && saet "$k" "${!k}"
+done
+if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+	saet GAUZY_AI_CHAT_DEFAULT_PROVIDER anthropic
+	saet GAUZY_AI_CHAT_DEFAULT_MODEL claude-sonnet-5
+fi
 chmod 600 .env
 
 echo "▸ 5/7 Bygger og starter (første gang 5–10 minutter)"
