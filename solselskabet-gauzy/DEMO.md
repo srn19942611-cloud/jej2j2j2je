@@ -2,6 +2,11 @@
 
 ## Den sikre vej: ét Vercel-link (ingen server, virker på alt)
 
+**Demoen er udgivet: https://solselskabet-demo.vercel.app**
+Tilbud for en lokation: https://solselskabet-demo.vercel.app/app/#tilbud/3
+
+Opdater demoen efter ændringer: `npx vercel@latest deploy --prod` i mappen `solselskabet-gauzy`.
+
 Feltappen har en indbygget **demotilstand**. Hele forløbet kører i browseren uden server, og det tager kun et par minutter at sætte op:
 
 - montøren på taget
