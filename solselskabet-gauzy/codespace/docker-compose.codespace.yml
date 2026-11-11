@@ -2,5 +2,5 @@
 # Codespaces står selv for HTTPS, så Caddy lytter kun på port 8080 (uden certifikat).
 services:
   caddy:
-    ports: !reset
+    ports: !override
       - '8080:8080'

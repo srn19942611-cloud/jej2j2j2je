@@ -78,3 +78,21 @@ UPDATE organization SET "imageUrl" = 'assets/images/logos/solselskabet-ikon.svg'
 -- Alle brugere lander i Coop × Solselskabet efter login
 UPDATE "user" SET "defaultOrganizationId" = o.id, "lastOrganizationId" = o.id
 FROM organization o WHERE o.name = 'Coop × Solselskabet' AND o."tenantId" = "user"."tenantId";
+
+-- Coop × Solselskabet er standardorganisationen; den tomme "Default Company" skjules
+UPDATE organization SET "isDefault" = (name = 'Coop × Solselskabet')
+WHERE "tenantId" IN (SELECT "tenantId" FROM organization WHERE name = 'Coop × Solselskabet');
+UPDATE organization SET "isActive" = false
+WHERE name = 'Default Company' AND "tenantId" IN (SELECT "tenantId" FROM organization WHERE name = 'Coop × Solselskabet')
+  AND NOT EXISTS (SELECT 1 FROM task t WHERE t."organizationId" = organization.id);
+UPDATE user_organization uo SET "isDefault" = (o.name = 'Coop × Solselskabet'),
+	"isActive" = (o.name <> 'Default Company' OR NOT EXISTS (
+		SELECT 1 FROM user_organization x JOIN organization c ON c.id = x."organizationId"
+		WHERE x."userId" = uo."userId" AND c.name = 'Coop × Solselskabet'))
+FROM organization o WHERE o.id = uo."organizationId";
+
+-- Gauzy åbner den organisation, brugerens medarbejderpost hører til: flyt dem fra den tomme "Default Company"
+UPDATE employee e SET "organizationId" = c.id
+FROM organization d, organization c
+WHERE e."organizationId" = d.id AND d.name = 'Default Company'
+  AND c.name = 'Coop × Solselskabet' AND c."tenantId" = d."tenantId";
