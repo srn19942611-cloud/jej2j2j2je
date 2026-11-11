@@ -28,8 +28,7 @@ DNS_IP=$(getent ahostsv4 "$DOMAENE" | awk 'NR==1{print $1}' || true)
 if [ "$DOMAENE" != "localhost" ] && [ "$SERVER_IP" != "$DNS_IP" ]; then
 	echo "  ADVARSEL: $DOMAENE peger på '${DNS_IP:-ingenting}', men serveren har IP $SERVER_IP."
 	echo "  Opret en A-record hos din domæneudbyder: $DOMAENE → $SERVER_IP, og vent et par minutter."
-	read -r -p "  Fortsæt alligevel? [j/N] " svar
-	[ "$svar" = "j" ] || exit 1
+	if [ -t 0 ]; then read -r -p "  Fortsæt alligevel? [j/N] " svar; [ "$svar" = "j" ] || exit 1; fi
 fi
 
 echo "▸ 2/7 Installerer Docker (hvis det mangler)"
@@ -51,11 +50,11 @@ if [ ! -f .env ]; then
 		saet "$k" "$(openssl rand -hex 32)"
 	done
 	# Gauzys standardbrugere får lange tilfældige adgangskoder (ellers nægter Gauzy at starte)
-	saet DEMO_SUPER_ADMIN_PASSWORD "$(tilfaeldig)"
+	saet DEMO_SUPER_ADMIN_PASSWORD "${ADMIN_ADGANGSKODE:-$(tilfaeldig)}"
 	saet DEMO_ADMIN_PASSWORD "$(tilfaeldig)"
 	saet DEMO_EMPLOYEE_PASSWORD "$(tilfaeldig)"
-	saet MONTOER_ADGANGSKODE "$(tilfaeldig)"
-	saet SERVICE_ADGANGSKODE "$(tilfaeldig)"
+	saet MONTOER_ADGANGSKODE "${MONTOER_ADGANGSKODE:-$(tilfaeldig)}"
+	saet SERVICE_ADGANGSKODE "${SERVICE_ADGANGSKODE:-$(tilfaeldig)}"
 fi
 saet DOMAENE "$DOMAENE"
 saet APP_NAME '"Coop × Solselskabet"'
