@@ -120,7 +120,7 @@ export async function demoApi(method, path, body) {
 	}
 	if (sti === '/comment' && method === 'GET') {
 		const id = q.get('where[entityId]');
-		return { items: d.kommentarer.filter((k) => k.entityId === id).map((k) => ({ ...k, comment: k.comment.replace(/mem:[a-z0-9]+/g, (x) => fotoHukommelse[x] || '') })) };
+		return { items: d.kommentarer.filter((k) => !id || k.entityId === id).map((k) => ({ ...k, comment: k.comment.replace(/mem:[a-z0-9]+/g, (x) => fotoHukommelse[x] || '') })) };
 	}
 	if (sti === '/comment' && method === 'POST') {
 		const k = { id: 'c-' + Date.now(), entity: body.entity, entityId: body.entityId, comment: body.comment };

@@ -197,3 +197,37 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 .tal-tabel th:first-child, .tal-tabel td:first-child { text-align: left; }
 .tal-tabel tr.sum td { font-weight: 700; }
 .forudsaetninger { font-size: 12px; padding: 0 4px; }
+
+/* ---------- Navigation mellem visninger ---------- */
+.nav { display: flex; gap: 6px; margin: 0 0 12px; padding: 4px; background: var(--kort); border: 1px solid var(--linje); border-radius: 14px; }
+.nav-punkt { flex: 1; text-align: center; padding: 10px 6px; border-radius: 10px; text-decoration: none; color: var(--tekst); font-weight: 650; font-size: 14px; white-space: nowrap; }
+.nav-punkt[aria-current="page"] { background: var(--brand); color: #fff; }
+
+/* ---------- Kontor-tavle ---------- */
+body.bred main { max-width: none; }
+.tavle-top { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 10px; }
+.tavle-top select { max-width: 340px; }
+.tavle { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(185px, 1fr); gap: 10px; overflow-x: auto; padding-bottom: 12px; align-items: start; }
+.kolonne { background: color-mix(in srgb, var(--graa) 8%, var(--bg)); border: 1px solid var(--linje); border-radius: 14px; padding: 8px; min-height: 160px; }
+.kolonne.over { outline: 2px dashed var(--brand); outline-offset: -2px; background: color-mix(in srgb, var(--mint) 18%, var(--bg)); }
+.kolonne header { display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 4px 4px 8px; border-bottom: 3px solid; margin-bottom: 8px; }
+.kolonne header .prik { width: 10px; height: 10px; border-radius: 50%; }
+.kolonne header .antal { margin-left: auto; font-size: 12px; color: var(--svag); background: var(--kort); border-radius: 999px; padding: 1px 8px; }
+.kort-liste { display: grid; gap: 8px; }
+.tkort { background: var(--kort); border: 1px solid var(--linje); border-radius: 10px; padding: 10px; cursor: grab; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+.tkort:focus-visible { outline: 2px solid var(--brand); }
+.tkort.traekkes { opacity: .5; }
+.tkort-titel { font-weight: 650; font-size: 14px; }
+.tkort-meta { color: var(--svag); font-size: 12px; margin-top: 2px; }
+.tkort-fod { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 12px; color: var(--svag); }
+.tkort-fod .forsinket { color: var(--fejl); font-weight: 700; }
+.initialer { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--brand); color: #fff; font-size: 10px; font-weight: 700; margin-left: 3px; }
+.rapport-maerke { margin-right: 4px; }
+
+/* ---------- Feltrapporter ---------- */
+.rapport { display: block; width: 100%; text-align: left; background: var(--kort); border: 1px solid var(--linje); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; }
+.rapport .titel { font-weight: 650; margin: 6px 0 2px; }
+.rapport-top { display: flex; justify-content: space-between; align-items: center; }
+.rapport-fotos { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
+.rapport-fotos img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; }
+.rapport-fotos .flere { color: var(--svag); font-size: 13px; }

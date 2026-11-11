@@ -195,6 +195,8 @@ const erFaerdig = (t) => !!statusAf(t).isDone;
 
 // ---------- Opgaveliste ------------------------------------------------------
 async function visListe(opdater = false) {
+	document.body.classList.remove('bred');
+	if (location.hash === '#tavle' || location.hash === '#rapporter') history.replaceState(null, '', location.pathname + location.search);
 	if (!state.session?.organizationId) return visLogin();
 	topbar('Opgaver', state.session.orgNavn, { menu: true });
 	if (!state.opgaver.length || opdater) {
@@ -248,6 +250,7 @@ function tegnListe() {
 
 	const chip = (v, tekst) => `<button class="chip" data-v="${v}" aria-pressed="${f.visning === v}">${tekst}</button>`;
 	$app.innerHTML = `
+		${navHtml('liste')}
 		<input id="soeg" type="search" placeholder="Søg opgave eller lokation" value="${esc(f.soeg)}" aria-label="Søg">
 		<div style="height:10px"></div>
 		<div class="chips" role="group" aria-label="Filter">
@@ -278,6 +281,134 @@ function tegnListe() {
 	$app.querySelectorAll('.opgave').forEach((b) => (b.onclick = () => visOpgave(b.dataset.id)));
 	$app.querySelectorAll('[data-anlaeg]').forEach((b) => (b.onclick = () => { location.hash = 'tilbud/' + b.dataset.anlaeg; }));
 	document.querySelector('.bund')?.remove();
+}
+
+// ---------- Navigation mellem visninger ------------------------------------
+function tilbageFraOpgave() {
+	if (location.hash === '#tavle') return visTavle();
+	if (location.hash === '#rapporter') return visRapporter();
+	visListe(true);
+}
+
+function navHtml(aktiv) {
+	const punkt = (id, href, tekst) => `<a class="nav-punkt" href="${href}" aria-current="${aktiv === id ? 'page' : 'false'}">${tekst}</a>`;
+	return `<nav class="nav" aria-label="Visninger">${punkt('liste', '#', '👷 Montør')}${punkt('tavle', '#tavle', '🗂 Kontor-tavle')}${punkt('rapporter', '#rapporter', '📋 Feltrapporter')}</nav>`;
+}
+
+async function sikrData() {
+	if (!state.session?.organizationId) { visLogin(); return false; }
+	try {
+		await hentStatusser();
+		if (!state.opgaver.length || !state.opgaver[0].project?.id) await hentOpgaver();
+	} catch (e) { besked(e.message, 'fejl'); }
+	return true;
+}
+
+async function hentRapporter() {
+	const r = await api('GET', '/comment?' + qs({ 'where[organizationId]': state.session.organizationId, 'where[tenantId]': state.session.tenantId, 'where[entity]': 'Task' }));
+	const ud = [];
+	for (const k of r.items || []) {
+		if (typeof k.comment !== 'string' || !k.comment.startsWith(MARKOER)) continue;
+		try { ud.push({ taskId: k.entityId, data: JSON.parse(k.comment.slice(k.comment.indexOf('\n') + 1)) }); } catch {}
+	}
+	return ud.sort((a, b) => String(b.data.opdateret).localeCompare(String(a.data.opdateret)));
+}
+
+// ---------- Kontor-tavle (kanban) --------------------------------------------
+async function visTavle() {
+	document.querySelector('.bund')?.remove();
+	document.body.classList.add('bred');
+	topbar('Kontor-tavle', state.session?.orgNavn || '', { menu: true });
+	$app.innerHTML = navHtml('tavle') + '<div class="tom">Henter tavle …</div>';
+	if (!(await sikrData())) return;
+	let rapporter = [];
+	try { rapporter = await hentRapporter(); } catch {}
+	const medRapport = new Set(rapporter.map((r) => r.taskId));
+	const projekter = [...new Map(state.opgaver.filter((t) => t.project).map((t) => [t.project.id, t.project])).values()].sort((a, b) => a.name.localeCompare(b.name, 'da', { numeric: true }));
+	const valgt = hent('feltapp.tavle.projekt') || '';
+
+	const tegn = (projektId) => {
+		const opg = state.opgaver.filter((t) => !projektId || t.project?.id === projektId);
+		const kort = (t) => {
+			const forsinket = t.dueDate && !erFaerdig(t) && new Date(t.dueDate) < new Date();
+			const folk = (t.members || []).map((m) => m.user?.name || m.user?.firstName || '').filter(Boolean);
+			return `<article class="tkort" draggable="true" data-id="${t.id}" tabindex="0">
+				<div class="tkort-titel">${esc(t.title)}</div>
+				<div class="tkort-meta">${esc(t.project?.name || '')}</div>
+				<div class="tkort-fod">
+					${t.dueDate ? `<span class="${forsinket ? 'forsinket' : ''}">${forsinket ? '⚠ ' : ''}${dato(t.dueDate)}</span>` : '<span></span>'}
+					<span>${medRapport.has(t.id) ? '<span class="rapport-maerke" title="Feltrapport modtaget">📋</span>' : ''}${folk.map((n) => `<span class="initialer" title="${esc(n)}">${esc(n.split(' ').map((x) => x[0]).join('').slice(0, 2))}</span>`).join('')}</span>
+				</div>
+			</article>`;
+		};
+		$app.innerHTML = `${navHtml('tavle')}
+			<div class="tavle-top">
+				<select id="t-projekt" aria-label="Vælg lokation eller projekt"><option value="">Alle lokationer og projekter</option>${projekter.map((p) => `<option value="${p.id}" ${p.id === projektId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+				<span class="svag">Træk et kort til en ny kolonne for at skifte status · tryk for at åbne</span>
+			</div>
+			<div class="tavle">
+				${state.statusser.map((st) => {
+					const i = opg.filter((t) => statusAf(t).id === st.id || t.taskStatusId === st.id).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+					const vis = st.isDone && !projektId ? i.slice(-6) : i;
+					return `<section class="kolonne" data-sid="${st.id}">
+						<header style="border-color:${esc(st.color)}"><span class="prik" style="background:${esc(st.color)}"></span>${esc(st.name)}<span class="antal">${i.length}</span></header>
+						<div class="kort-liste">${vis.map(kort).join('')}${vis.length < i.length ? `<div class="svag" style="padding:6px">+ ${i.length - vis.length} flere – vælg en lokation for at se alle</div>` : ''}</div>
+					</section>`;
+				}).join('')}
+			</div>`;
+		document.getElementById('t-projekt').onchange = (e) => { gemt('feltapp.tavle.projekt', e.target.value); tegn(e.target.value); };
+		$app.querySelectorAll('.tkort').forEach((k) => {
+			k.onclick = () => { document.body.classList.remove('bred'); visOpgave(k.dataset.id); };
+			k.onkeydown = (e) => { if (e.key === 'Enter') k.onclick(); };
+			k.ondragstart = (e) => { e.dataTransfer.setData('text/plain', k.dataset.id); k.classList.add('traekkes'); };
+			k.ondragend = () => k.classList.remove('traekkes');
+		});
+		$app.querySelectorAll('.kolonne').forEach((kol) => {
+			kol.ondragover = (e) => { e.preventDefault(); kol.classList.add('over'); };
+			kol.ondragleave = () => kol.classList.remove('over');
+			kol.ondrop = async (e) => {
+				e.preventDefault();
+				kol.classList.remove('over');
+				const id = e.dataTransfer.getData('text/plain');
+				const t = state.opgaver.find((x) => x.id === id);
+				const st = state.statusser.find((x) => x.id === kol.dataset.sid);
+				if (!t || !st || t.taskStatusId === st.id) return;
+				try {
+					await api('PUT', `/tasks/${id}/status`, { ...scope(), taskStatusId: st.id, status: st.value });
+					Object.assign(t, { taskStatusId: st.id, taskStatus: st, status: st.value });
+					besked(`${t.title.replace(/^\d+\.\s*/, '')} → ${st.name}`, 'ok');
+					tegn(document.getElementById('t-projekt').value);
+				} catch (err) { besked(err.message, 'fejl'); }
+			};
+		});
+	};
+	tegn(projekter.some((p) => p.id === valgt) ? valgt : '');
+}
+
+// ---------- Feltrapporter ----------------------------------------------------
+async function visRapporter() {
+	document.querySelector('.bund')?.remove();
+	document.body.classList.remove('bred');
+	topbar('Feltrapporter', state.session?.orgNavn || '', { menu: true });
+	$app.innerHTML = navHtml('rapporter') + '<div class="tom">Henter rapporter …</div>';
+	if (!(await sikrData())) return;
+	let rapporter = [];
+	try { rapporter = await hentRapporter(); } catch (e) { besked(e.message, 'fejl'); }
+	const fotos = (svar) => Object.values(svar || {}).flatMap((v) => (Array.isArray(v) ? v : v?.url ? [v] : [])).filter((p) => p?.url);
+	$app.innerHTML = `${navHtml('rapporter')}
+		${rapporter.length ? '' : '<div class="tom">Ingen feltrapporter endnu.<br>Åbn en opgave under <b>Montør</b>, udfyld tjeklisten og tryk <b>Send til godkendelse</b>.</div>'}
+		${rapporter.map((r) => {
+			const t = state.opgaver.find((x) => x.id === r.taskId);
+			const s = t ? statusAf(t) : { name: '', color: '#999' };
+			const f = fotos(r.data.svar);
+			return `<button class="rapport" data-id="${esc(r.taskId)}">
+				<div class="rapport-top"><span class="badge" style="background:${esc(s.color)}">${esc(s.name)}</span><span class="svag">${tid(r.data.opdateret)}</span></div>
+				<div class="titel">${esc(t?.title || 'Opgave')}</div>
+				<div class="svag">${esc(t?.project?.name || '')} · sendt af ${esc(r.data.af || '')}</div>
+				${f.length ? `<div class="rapport-fotos">${f.slice(0, 6).map((p) => `<img src="${esc(relativ(p.thumb || p.url))}" alt="" loading="lazy">`).join('')}${f.length > 6 ? `<span class="flere">+${f.length - 6}</span>` : ''}</div>` : ''}
+			</button>`;
+		}).join('')}`;
+	$app.querySelectorAll('.rapport').forEach((b) => (b.onclick = () => visOpgave(b.dataset.id)));
 }
 
 // ---------- Tilbud: anlæg, produktion og forbrug -----------------------------
@@ -327,7 +458,7 @@ async function visOpgave(id) {
 	const gemKladde = () => { aendret = true; gemt(kladdeNoegle, { tid: Date.now(), svar }); opdaterBund(); };
 
 	const basisBeskrivelse = (opgave.description || '').split(`<h3>${RAPPORT_OVERSKRIFT}`)[0];
-	topbar(opgave.title.replace(/^\d+\.\s*/, ''), opgave.project?.name || '', { tilbage: () => { if (!aendret || confirm('Du har ændringer, der ikke er sendt. Gå tilbage alligevel? (De gemmes som kladde på telefonen.)')) visListe(true); } });
+	topbar(opgave.title.replace(/^\d+\.\s*/, ''), opgave.project?.name || '', { tilbage: () => { if (!aendret || confirm('Du har ændringer, der ikke er sendt. Gå tilbage alligevel? (De gemmes som kladde på telefonen.)')) tilbageFraOpgave(); } });
 
 	const tegn = () => {
 		const s = statusAf(opgave);
@@ -605,7 +736,12 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 function rute() {
 	const m = /^#tilbud\/(\d+)/.exec(location.hash);
 	if (m) return visTilbud(Number(m[1]));
-	if (state.session?.token && state.session?.organizationId) visListe();
+	document.body.classList.remove('bred');
+	if (state.session?.token && state.session?.organizationId) {
+		if (location.hash === '#tavle') return visTavle();
+		if (location.hash === '#rapporter') return visRapporter();
+		visListe();
+	}
 	else visLogin();
 }
 window.addEventListener('hashchange', rute);
