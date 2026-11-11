@@ -3,6 +3,7 @@
 import { tjeklisteFor, erUdfyldt, mangler } from './tjeklister.js';
 import { tegnTilbud } from './tilbud.js';
 import { anlaegFor, lokationsNr } from './anlaeg.js';
+import { ER_DEMO, demoApi, nulstilDemo } from './demo.js';
 
 const API = '/api';
 const MARKOER = '📋 Feltrapport (feltapp)';
@@ -24,7 +25,7 @@ const state = {
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const dato = (d) => (d ? new Date(d).toLocaleDateString('da-DK', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 const tid = (d) => new Date(d).toLocaleString('da-DK', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const relativ = (url) => { try { const u = new URL(url, location.href); return u.pathname + u.search; } catch { return url; } };
+const relativ = (url) => { if (String(url).startsWith('data:')) return url; try { const u = new URL(url, location.href); return u.pathname + u.search; } catch { return url; } };
 
 let beskedTimer;
 function besked(tekst, type = '') {
@@ -49,6 +50,7 @@ function topbar(titel, under = '', { tilbage = null, menu = false } = {}) {
 }
 
 async function api(method, path, body, { raw = false } = {}) {
+	if (ER_DEMO) return demoApi(method, path, body);
 	const s = state.session;
 	const headers = {};
 	if (s?.token) headers.Authorization = 'Bearer ' + s.token;
@@ -83,10 +85,12 @@ function visLogin(fejl = '') {
 	$app.innerHTML = `
 		<img class="login-logo" src="logo.svg" alt="Solselskabet">
 		<h1 style="text-align:center">Log ind</h1>
-		<p class="svag" style="text-align:center;margin-top:0">Brug det samme login som i Gauzy</p>
+		${ER_DEMO
+			? `<p class="eksempel" style="display:block;text-align:center">Demo – data gemmes kun i denne browser.<br>Log ind som montør med en vilkårlig adgangskode.</p>`
+			: `<p class="svag" style="text-align:center;margin-top:0">Brug det samme login som i Gauzy</p>`}
 		<form id="login" class="kort" autocomplete="on">
 			<label class="felt" for="email">E-mail</label>
-			<input id="email" type="email" inputmode="email" autocomplete="username" required value="${esc(hent('feltapp.email') || '')}">
+			<input id="email" type="email" inputmode="email" autocomplete="username" required value="${esc(hent('feltapp.email') || (ER_DEMO ? 'montoer@solselskabet.demo' : ''))}">
 			<div style="height:12px"></div>
 			<label class="felt" for="pw">Adgangskode</label>
 			<input id="pw" type="password" autocomplete="current-password" required>
@@ -153,11 +157,14 @@ function visMenu() {
 			<button id="m-opd">↻ Opdater opgaver</button>
 			<button id="m-org">🏢 Skift organisation (${esc(state.session?.orgNavn || '')})</button>
 			<button id="m-ud">⎋ Log ud</button>
+			${ER_DEMO ? '<button id="m-nulstil">↺ Nulstil demo (start forfra)</button>' : ''}
 		</div>
 		<p class="svag" style="padding:0 6px">Tip: Tilføj appen til hjemmeskærmen via browserens menu ("Føj til startskærm"), så åbner den som en app.</p>`;
 	document.getElementById('m-opd').onclick = () => visListe(true);
 	document.getElementById('m-org').onclick = () => vaelgOrganisation(true).catch((e) => besked(e.message, 'fejl'));
 	document.getElementById('m-ud').onclick = logUd;
+	const nul = document.getElementById('m-nulstil');
+	if (nul) nul.onclick = () => { if (confirm('Slet alt, der er udfyldt i demoen, og start forfra?')) { nulstilDemo(); state.opgaver = []; state.statusser = []; visListe(true); } };
 }
 
 // ---------- Data -------------------------------------------------------------

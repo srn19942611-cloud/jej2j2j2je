@@ -1,0 +1,6 @@
+# Vercel udgiver kun demoen: feltappen og de data den bygger opgaverne af
+/*
+!/app
+!/seed
+/seed/seed.mjs
+!/vercel.json
