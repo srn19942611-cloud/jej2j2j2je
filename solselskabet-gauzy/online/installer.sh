@@ -119,3 +119,9 @@ echo "Færdig ✓"
 cat "$ADGANGSKODER"
 echo
 echo "(Adgangskoderne er gemt i $ADGANGSKODER – kun root kan læse filen.)"
+# QR-kode til feltappen, så den kan scannes med telefonen
+command -v qrencode >/dev/null || apt-get install -y -qq qrencode >/dev/null 2>&1 || true
+if command -v qrencode >/dev/null; then
+	echo; echo "Scan med telefonen for at åbne feltappen:"
+	qrencode -t ANSIUTF8 "https://$DOMAENE/felt/"
+fi

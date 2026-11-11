@@ -54,6 +54,7 @@ Gauzy bruger ca. 0,7 GB RAM i drift. 8 GB giver rigeligt luft til database, AI o
    - Slå **Backups** til
    - Tilføj din SSH-nøgle, eller vælg adgangskode
 2. **Peg domænet på serveren.** Opret en **A-record** hos din domæneudbyder, så domænet peger på serverens IP-adresse.
+   **Intet domæne endnu (fx til en demo)?** Spring dette trin over, og brug den gratis adresse `<ip-med-bindestreger>.sslip.io`. Har serveren IP 95.217.10.20, er adressen `95-217-10-20.sslip.io`. Den peger automatisk på serveren og får også HTTPS.
 3. **Log ind på serveren og hent koden:**
    ```bash
    ssh root@<serverens-ip>
