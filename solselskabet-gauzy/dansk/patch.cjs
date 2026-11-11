@@ -8,7 +8,7 @@
 // 4. Biblioteker (kalender, datovælger, rullelister, tabeller) og datoformater ← regler nedenfor
 const fs = require('fs');
 const path = require('path');
-const [, , WEB, DA] = process.argv;
+const [, , WEB, DA, BRAND] = process.argv;
 const læs = (f) => JSON.parse(fs.readFileSync(path.join(DA, f), 'utf8'));
 
 // --- 1. Sprogfil -------------------------------------------------------------
@@ -18,6 +18,39 @@ fs.copyFileSync(path.join(DA, 'da.json'), path.join(WEB, 'assets/i18n/en.json'))
 	let h = fs.readFileSync(idx, 'utf8');
 	h = h.replace('<html lang="en"', '<html lang="da"').split('Loading dashboard').join('Indlæser overblik');
 	fs.writeFileSync(idx, h);
+}
+
+// --- 0. Solselskabets branding (logo, ikon, titel, grøn hovedfarve) ------------------
+if (BRAND) {
+	const logoer = path.join(WEB, 'assets/images/logos');
+	const kopi = (fra, til) => fs.copyFileSync(path.join(BRAND, fra), path.join(logoer, til));
+	kopi('logo.svg', 'solselskabet.svg');
+	kopi('logo-ikon.svg', 'solselskabet-ikon.svg');
+	// Gauzys egne logofiler erstattes, så alle steder der viser "Gauzy" viser Solselskabet
+	kopi('logo.svg', 'logo_Gauzy.svg');
+	kopi('logo.png', 'logo_Gauzy.png');
+	kopi('logo.png', 'logo_Gauzy_large.png');
+	kopi('logo-512.png', 'logo_Gauzy_512x512.png');
+	kopi('ikon-512.png', 'ever512x512.jpg');
+	fs.copyFileSync(path.join(BRAND, 'ikon-64.png'), path.join(WEB, 'favicon.ico'));
+	const idx = path.join(WEB, 'index.html');
+	let h = fs.readFileSync(idx, 'utf8');
+	h = h.replace(/<title>[^<]*<\/title>/, '<title>Solselskabet</title>')
+		.replace('<link rel="icon" type="image/x-icon" href="favicon.ico">', '<link rel="icon" type="image/svg+xml" href="assets/images/logos/solselskabet-ikon.svg"><link rel="alternate icon" href="favicon.ico">');
+	fs.writeFileSync(idx, h);
+	// Grøn hovedfarve i stedet for Gauzys lilla (lyst og mørkt tema)
+	const css = fs.readdirSync(WEB).find((f) => /^styles\..*\.css$/.test(f));
+	if (css) {
+		const gron = ['#eef6ee', '#d3e9d2', '#a6d2a4', '#5fa35c', '#3e7b3c', '#326630', '#284f27', '#1d3a1c', '#132613'];
+		const t = (a) => `rgba(62, 123, 60, ${a})`;
+		const vars = gron.map((c, i) => `--color-primary-${(i + 1) * 100}: ${c};`).join('') +
+			[1, 2, 3, 4, 5, 6].map((n) => `--color-primary-transparent-${n}00: ${t((0.08 * n).toFixed(2))};`).join('');
+		const temaer = ['.nb-theme-gauzy-light', '.nb-theme-gauzy-dark', '.nb-theme-default', '.nb-theme-dark', '.nb-theme-cosmic', '.nb-theme-corporate', '.nb-theme-material-light', '.nb-theme-material-dark'].join(',');
+		let c = fs.readFileSync(path.join(WEB, css), 'utf8').split('#6e49e8').join('#3e7b3c').split('#6E49E8').join('#3e7b3c');
+		c += `\n/* Solselskabet */${temaer}{${vars}}\n`;
+		fs.writeFileSync(path.join(WEB, css), c);
+	}
+	console.log('Branding: Solselskabet-logo, ikon og grøn hovedfarve lagt ind');
 }
 
 const pluginDa = læs('plugins-da.json'); // { "<fil>#<n>": { ...ordbog } }

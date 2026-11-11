@@ -1,0 +1,46 @@
+# Tillæg til docker-compose.yml når systemet kører online bag HTTPS.
+# Bruges sådan:  docker compose -f docker-compose.yml -f online/docker-compose.online.yml up -d
+#
+# - Caddy er den eneste tjeneste der er åben mod internettet (port 80/443) og henter
+#   automatisk et gratis HTTPS-certifikat fra Let's Encrypt.
+# - Gauzy kører IKKE i demotilstand: ingen demo-logins og ingen eksempelfirmaer.
+# - API, webapp og feltapp er kun tilgængelige gennem Caddy.
+
+services:
+  api:
+    ports: !reset []
+
+  webapp:
+    environment:
+      DEMO: 'false'
+    ports: !reset []
+
+  feltapp:
+    ports: !reset []
+
+  db:
+    ports: !reset []
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - webapp
+      - api
+      - feltapp
+    environment:
+      DOMAENE: ${DOMAENE:?Sæt DOMAENE i .env}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./online/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - overlay
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}

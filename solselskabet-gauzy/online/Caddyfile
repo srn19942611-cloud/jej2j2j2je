@@ -1,0 +1,30 @@
+# Ét domæne til det hele:
+#   https://<domæne>/        Gauzy (kontoret)
+#   https://<domæne>/felt/   Feltapp (telefonen)
+{$DOMAENE} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# Gauzys API og uploadede fotos
+	@api path /api /api/* /public /public/*
+	handle @api {
+		reverse_proxy api:3000
+	}
+
+	# Feltappen
+	redir /felt /felt/ 308
+	handle_path /felt/* {
+		reverse_proxy feltapp:8080
+	}
+
+	# Gauzy webapp
+	handle {
+		reverse_proxy webapp:4200
+	}
+}

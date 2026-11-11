@@ -134,7 +134,7 @@ for (const m of MONTOERER) {
 	const e = await call('POST', '/employee', {
 		...scope,
 		startedWorkOn: iso(PROGRAM_START),
-		password: m.adgangskode,
+		password: (m.adgangskodeEnv && process.env[m.adgangskodeEnv]) || m.adgangskode,
 		user: { firstName: m.fornavn, lastName: m.efternavn, email: m.email, tenantId, preferredLanguage: 'en' }
 	});
 	medarbejder[m.email] = e.id;

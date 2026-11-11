@@ -1,6 +1,8 @@
 // Feltapp – mobil-app til håndværkere oven på Ever Gauzy.
 // Taler med Gauzys REST-API via samme adresse (/api og /public proxies i nginx).
 import { tjeklisteFor, erUdfyldt, mangler } from './tjeklister.js';
+import { tegnTilbud } from './tilbud.js';
+import { anlaegFor, lokationsNr } from './anlaeg.js';
 
 const API = '/api';
 const MARKOER = '📋 Feltrapport (feltapp)';
@@ -79,7 +81,7 @@ const qs = (o) => new URLSearchParams(o).toString();
 function visLogin(fejl = '') {
 	topbar('Feltapp', 'Coop × Solselskabet');
 	$app.innerHTML = `
-		<div class="logo">☀️</div>
+		<img class="login-logo" src="logo.svg" alt="Solselskabet">
 		<h1 style="text-align:center">Log ind</h1>
 		<p class="svag" style="text-align:center;margin-top:0">Brug det samme login som i Gauzy</p>
 		<form id="login" class="kort" autocomplete="on">
@@ -248,6 +250,7 @@ function tegnListe() {
 		${navne.length ? '' : `<div class="tom">Ingen opgaver her.${f.mine ? '<br>Prøv at slå "Mine" fra.' : ''}</div>`}
 		${navne.map((n) => `
 			<h2>${esc(n)} <span style="float:right">${fremdrift(n)} %</span></h2>
+			${anlaegFor(lokationsNr(n)) ? `<button class="anlaeg-knap" data-anlaeg="${lokationsNr(n)}" data-navn="${esc(n)}">☀ Se anlæg, produktion og forbrug</button>` : ''}
 			${grupper.get(n).sort((a, b) => a.title.localeCompare(b.title, 'da', { numeric: true })).map((t) => {
 				const s = statusAf(t);
 				const forsinket = t.dueDate && !erFaerdig(t) && new Date(t.dueDate) < new Date();
@@ -266,7 +269,18 @@ function tegnListe() {
 	$app.querySelectorAll('.chip[data-v]').forEach((b) => (b.onclick = () => { f.visning = b.dataset.v; gemt('feltapp.filter', f); tegnListe(); }));
 	document.getElementById('mine').onclick = () => { f.mine = !f.mine; gemt('feltapp.filter', f); tegnListe(); };
 	$app.querySelectorAll('.opgave').forEach((b) => (b.onclick = () => visOpgave(b.dataset.id)));
+	$app.querySelectorAll('[data-anlaeg]').forEach((b) => (b.onclick = () => { location.hash = 'tilbud/' + b.dataset.anlaeg; }));
 	document.querySelector('.bund')?.remove();
+}
+
+// ---------- Tilbud: anlæg, produktion og forbrug -----------------------------
+function visTilbud(nr) {
+	document.querySelector('.bund')?.remove();
+	const navn = state.opgaver.find((t) => lokationsNr(t.project?.name) === nr)?.project?.name || `Lokation ${nr}`;
+	topbar('Anlæg og tilbud', navn, { tilbage: state.session?.token ? () => { location.hash = ''; } : null });
+	$app.innerHTML = '<div id="tilbud"></div>';
+	tegnTilbud(document.getElementById('tilbud'), nr, { projektNavn: navn });
+	window.scrollTo(0, 0);
 }
 
 // ---------- Opgave med tjekliste --------------------------------------------
@@ -318,6 +332,7 @@ async function visOpgave(id) {
 				<h1>${esc(opgave.title)}</h1>
 				<div class="svag">${esc(opgave.project?.name || '')}${(opgave.tags || []).length ? ' · ' + opgave.tags.map((t) => esc(t.name)).join(', ') : ''}</div>
 				${basisBeskrivelse ? `<div class="beskrivelse" style="margin-top:8px">${basisBeskrivelse}</div>` : ''}
+				${anlaegFor(lokationsNr(opgave.project?.name)) ? `<a class="anlaeg-knap" href="#tilbud/${lokationsNr(opgave.project?.name)}">☀ Se anlæg, produktion og forbrug</a>` : ''}
 				${rapport.data?.opdateret ? `<p class="svag">Senest sendt ${tid(rapport.data.opdateret)} af ${esc(rapport.data.af || '')}</p>` : ''}
 			</div>
 
@@ -579,5 +594,12 @@ async function komprimer(fil, stempel) {
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
 	navigator.serviceWorker.register('sw.js').catch(() => {});
 }
-if (state.session?.token && state.session?.organizationId) visListe();
-else visLogin();
+// Tilbudsvisningen (#tilbud/3) kan åbnes uden login, så den kan vises for butikken
+function rute() {
+	const m = /^#tilbud\/(\d+)/.exec(location.hash);
+	if (m) return visTilbud(Number(m[1]));
+	if (state.session?.token && state.session?.organizationId) visListe();
+	else visLogin();
+}
+window.addEventListener('hashchange', rute);
+rute();

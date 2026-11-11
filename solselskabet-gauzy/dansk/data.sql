@@ -70,3 +70,11 @@ UPDATE changelog SET
 -- 24-timers ur som i Danmark
 UPDATE "user" SET "timeFormat" = '24';
 UPDATE organization SET "timeFormat" = '24';
+
+-- Solselskabets navn og logo i Gauzy (arbejdsområde og organisation)
+UPDATE tenant SET name = 'Solselskabet', logo = 'assets/images/logos/solselskabet-ikon.svg' WHERE name IN ('Default Tenant', 'Ever');
+UPDATE organization SET "imageUrl" = 'assets/images/logos/solselskabet-ikon.svg' WHERE name = 'Coop × Solselskabet';
+
+-- Alle brugere lander i Coop × Solselskabet efter login
+UPDATE "user" SET "defaultOrganizationId" = o.id, "lastOrganizationId" = o.id
+FROM organization o WHERE o.name = 'Coop × Solselskabet' AND o."tenantId" = "user"."tenantId";

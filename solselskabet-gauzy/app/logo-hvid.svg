@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 170" role="img" aria-label="Solselskabet">
+  <g transform="translate(65,6)">
+    <polygon points="56,8 144,8 100,84" fill="#8ED3B7"/>
+    <polygon points="8,92 50,18 92,92" fill="#BDBDBD"/>
+    <polygon points="108,92 150,18 192,92" fill="#5FA35C"/>
+  </g>
+  <text x="165" y="150" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="30" letter-spacing="7" fill="#FFFFFF">SOLSELSKABET</text>
+</svg>

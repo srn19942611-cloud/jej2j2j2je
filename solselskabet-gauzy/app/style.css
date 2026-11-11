@@ -1,14 +1,25 @@
 :root {
-	--groen: #0f3d2e;
-	--groen-2: #1d6b4f;
-	--sol: #f2b705;
-	--bg: #f4f5f2;
+	/* Solselskabets farver (fra logoet) */
+	--brand: #3E7B3C;
+	--brand-mork: #2C5A2B;
+	--mint: #8ED3B7;
+	--graa: #7A7A7A;
+	--groen: var(--brand-mork);
+	--groen-2: var(--brand);
+	--sol: var(--mint);
+	--bg: #f5f7f5;
 	--kort: #ffffff;
-	--tekst: #16201b;
-	--svag: #5f6b65;
-	--linje: #dfe3de;
+	--tekst: #1f2621;
+	--svag: #5d6862;
+	--linje: #dde3df;
 	--fejl: #c62828;
-	--ok: #1e8e4e;
+	--ok: #2e7d32;
+	--top-bg: #ffffff;
+	--top-tekst: #1f2621;
+	/* grafer – valideret palet (farveblind-sikker) */
+	--sol-serie: #3E7B3C;
+	--net-serie: #3F78C4;
+	--gitter: #e7ebe8;
 	--radius: 14px;
 	color-scheme: light;
 }
@@ -19,6 +30,11 @@
 		--tekst: #e9efeb;
 		--svag: #9aa8a1;
 		--linje: #2a3530;
+		--top-bg: #19211d;
+		--top-tekst: #e9efeb;
+		--sol-serie: #5A9E57;
+		--net-serie: #5B8FD6;
+		--gitter: #26302b;
 		color-scheme: dark;
 	}
 }
@@ -27,11 +43,12 @@
 html, body { margin: 0; background: var(--bg); color: var(--tekst); font: 16px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
 button, input, select, textarea { font: inherit; color: inherit; }
 
-.top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 8px; padding: calc(10px + env(safe-area-inset-top)) 12px 10px; background: var(--groen); color: #fff; }
+.top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 12px 10px; background: var(--top-bg); color: var(--top-tekst); border-bottom: 3px solid var(--brand); }
+.top-logo { height: 30px; width: auto; flex: none; }
 .top-titel { flex: 1; min-width: 0; }
 #top-titel { font-weight: 700; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top-under { font-size: 13px; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ikonknap { width: 44px; height: 44px; border: 0; border-radius: 12px; background: rgba(255,255,255,.12); color: #fff; font-size: 26px; line-height: 1; }
+.ikonknap { width: 44px; height: 44px; border: 0; border-radius: 12px; background: var(--bg); color: var(--tekst); font-size: 26px; line-height: 1; }
 
 main { padding: 12px 12px calc(110px + env(safe-area-inset-bottom)); max-width: 720px; margin: 0 auto; }
 
@@ -48,7 +65,7 @@ textarea { min-height: 80px; resize: vertical; }
 
 .knap { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 52px; border: 0; border-radius: 12px; background: var(--groen-2); color: #fff; font-weight: 700; font-size: 17px; }
 .knap.sekundaer { background: transparent; color: var(--tekst); border: 1px solid var(--linje); }
-.knap.sol { background: var(--sol); color: #1b1b1b; }
+.knap.sol { background: var(--brand); color: #fff; }
 .knap:disabled { opacity: .5; }
 
 .chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 8px; scrollbar-width: none; }
@@ -110,3 +127,73 @@ textarea { min-height: 80px; resize: vertical; }
 .logo { font-size: 44px; text-align: center; margin: 24px 0 4px; }
 .menu-liste button { width: 100%; text-align: left; min-height: 52px; padding: 0 14px; border: 0; border-top: 1px solid var(--linje); background: transparent; font-size: 16px; }
 .menu-liste button:first-child { border-top: 0; }
+
+.login-logo { display: block; width: 220px; max-width: 70%; margin: 28px auto 8px; }
+@media (prefers-color-scheme: dark) { .login-logo, .tilbud-logo { background: #fff; border-radius: 12px; padding: 8px; } }
+
+/* ---------- Tilbudsvisning ---------- */
+.anlaeg-knap { display: block; width: 100%; margin: 0 0 8px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--brand); background: color-mix(in srgb, var(--mint) 22%, var(--kort)); color: var(--tekst); font-weight: 650; text-align: left; text-decoration: none; }
+.tilbud-hero { text-align: center; padding: 8px 4px 4px; }
+.tilbud-logo { width: 180px; max-width: 60%; }
+.tilbud-titel { text-transform: uppercase; letter-spacing: .2em; font-size: 12px; color: var(--svag); margin-top: 6px; }
+.tilbud-hero h1 { font-size: 26px; margin: 2px 0 4px; }
+.eksempel { display: inline-block; margin-top: 8px; padding: 4px 10px; border-radius: 999px; background: color-mix(in srgb, var(--mint) 35%, var(--kort)); font-size: 12px; font-weight: 600; }
+.noegletal { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 4px; }
+.tile { background: var(--kort); border: 1px solid var(--linje); border-radius: var(--radius); padding: 12px; }
+.tile-v { font-size: 26px; font-weight: 750; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tile-v small { font-size: 14px; font-weight: 600; color: var(--svag); }
+.tile-l { color: var(--svag); font-size: 13px; margin-top: 4px; }
+.tile.sol { border-color: var(--brand); box-shadow: inset 4px 0 0 var(--brand); }
+@media (min-width: 640px) { .noegletal { grid-template-columns: repeat(4, 1fr); } }
+
+.tag-svg { width: 100%; height: auto; display: block; }
+.tag-svg .tag-kant { stroke: var(--graa); stroke-width: .3; }
+.tag-svg .tag-flade { fill: color-mix(in srgb, var(--graa) 14%, var(--kort)); }
+.tag-svg .fri-streg { stroke: color-mix(in srgb, var(--graa) 45%, transparent); stroke-width: .25; }
+.tag-svg .felt { fill: none; stroke: var(--brand); stroke-width: .35; stroke-dasharray: 1.2 .8; }
+.tag-svg .felt-navn { font-size: 1.8px; font-weight: 700; fill: var(--brand); }
+.tag-svg .modul { stroke: #8fa6c9; stroke-width: .05; }
+.tag-svg .hindring { fill: #c9ced3; stroke: #6c757d; stroke-width: .2; }
+.tag-svg .hindring-navn { font-size: 1.3px; text-anchor: middle; fill: #3b4248; }
+.tag-svg .maal line, .tag-svg .maal path { stroke: var(--svag); stroke-width: .2; }
+.tag-svg .maal text, .tag-svg .nord text { font-size: 1.8px; text-anchor: middle; fill: var(--svag); }
+.tag-svg .nord path { fill: var(--tekst); }
+.forklaring { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--svag); margin: 8px 0; }
+.forklaring .fk { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+.fk.modul { background: #22355a; } .fk.felt { border: 1.5px dashed var(--brand); } .fk.hindring { background: #c9ced3; border: 1px solid #6c757d; }
+.fk.fri { background: repeating-linear-gradient(45deg, var(--linje) 0 2px, transparent 2px 4px); border: 1px solid var(--graa); }
+.fakta { width: 100%; border-collapse: collapse; font-size: 14px; }
+.fakta td { padding: 6px 0; border-top: 1px solid var(--linje); vertical-align: top; }
+.fakta td:first-child { color: var(--svag); width: 44%; }
+
+.graf { position: relative; }
+.graf-svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.graf-svg .gitter { stroke: var(--gitter); stroke-width: 1; }
+.graf-svg .akse { font-size: 11px; fill: var(--svag); font-variant-numeric: tabular-nums; }
+.graf-svg .direkte { font-size: 11px; font-weight: 700; fill: var(--tekst); }
+.graf-svg .sol-fyld { fill: var(--sol-serie); }
+.graf-svg .net-fyld { fill: var(--net-serie); }
+.graf-svg .hit { fill: transparent; }
+.graf-svg .zone.aktiv .sol-fyld, .graf-svg .zone.aktiv .net-fyld { filter: brightness(1.15); }
+.graf-svg rect.zone.aktiv { fill: color-mix(in srgb, var(--tekst) 5%, transparent); }
+.graf-svg .sol-linje { fill: none; stroke: var(--sol-serie); stroke-width: 2; }
+.graf-svg .net-linje { fill: none; stroke: var(--net-serie); stroke-width: 2; }
+.graf-svg .sol-flade { fill: color-mix(in srgb, var(--sol-serie) 22%, transparent); }
+.graf-svg .kryds { stroke: var(--svag); stroke-width: 1; stroke-dasharray: 3 3; }
+.legende { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--svag); margin-top: 6px; }
+.legende i, .serie i, .tip i.p { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.legende i.skravering { background: color-mix(in srgb, var(--sol-serie) 22%, transparent); border: 1px solid var(--sol-serie); }
+.tip { position: absolute; top: 0; z-index: 3; pointer-events: none; background: var(--kort); color: var(--tekst); border: 1px solid var(--linje); border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.45; box-shadow: 0 6px 18px rgba(0,0,0,.14); white-space: nowrap; }
+.donut-raekke { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
+.donut { width: 140px; flex: none; }
+.donut .sol-fyld { fill: var(--sol-serie); } .donut .net-fyld { fill: var(--net-serie); }
+.donut .donut-v { font-size: 22px; font-weight: 750; fill: var(--tekst); }
+.donut .akse { font-size: 11px; fill: var(--svag); }
+.serie { margin-bottom: 10px; font-size: 15px; }
+details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+.tabel-wrap { overflow-x: auto; }
+.tal-tabel { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; margin-top: 8px; }
+.tal-tabel th, .tal-tabel td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--linje); }
+.tal-tabel th:first-child, .tal-tabel td:first-child { text-align: left; }
+.tal-tabel tr.sum td { font-weight: 700; }
+.forudsaetninger { font-size: 12px; padding: 0 4px; }

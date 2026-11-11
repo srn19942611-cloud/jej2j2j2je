@@ -1,6 +1,6 @@
 // Gemmer appens skal, så den åbner hurtigt – data hentes altid fra serveren.
-const CACHE = 'feltapp-v2';
-const SKAL = ['./', 'index.html', 'style.css', 'app.js', 'tjeklister.js', 'ikon.svg', 'manifest.webmanifest'];
+const CACHE = 'feltapp-v3';
+const SKAL = ['./', 'index.html', 'style.css', 'app.js', 'tjeklister.js', 'tilbud.js', 'anlaeg.js', 'logo.svg', 'logo-ikon.svg', 'ikon.svg', 'manifest.webmanifest'];
 self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SKAL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', (e) => e.waitUntil(caches.keys().then((k) => Promise.all(k.filter((x) => x !== CACHE).map((x) => caches.delete(x)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', (e) => {
